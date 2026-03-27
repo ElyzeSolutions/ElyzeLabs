@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: control-plane-ci-${{ github.event.pull_request.number || github.ref }}
