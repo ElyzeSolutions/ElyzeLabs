@@ -2,11 +2,6 @@ name: Docker Release
 
 on:
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - ".agents/**"
-      - "skills/**"
   push:
     branches:
       - main
@@ -17,6 +12,11 @@ on:
       - "**/*.md"
       - ".agents/**"
       - "skills/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: docker-release-${{ github.ref }}
@@ -28,20 +28,65 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build-and-push:
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.force.outputs.release || steps.filter.outputs.release }}
+    steps:
+      - name: Mark Release Build Required
+        id: force
+        if: github.event_name != 'pull_request'
+        run: echo "release=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect Image Changes
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            release:
+              - '.github/workflows/docker-release.yml'
+              - 'Dockerfile.gateway'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig.base.json'
+              - 'tsconfig.json'
+              - 'eslint.config.mjs'
+              - 'vitest.config.ts'
+              - 'config/**'
+              - 'dashboard/**'
+              - 'packages/**'
+              - 'scripts/**'
+
+  build-and-push:
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       packages: write
       contents: read
     steps:
+      - name: Skip Release Build
+        if: github.event_name == 'pull_request' && needs.changes.outputs.release != 'true'
+        run: echo "No image-affecting changes detected. Passing the release gate without rebuilding."
+
       - name: Checkout
+        if: github.event_name != 'pull_request' || needs.changes.outputs.release == 'true'
         uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
+        if: github.event_name != 'pull_request' || needs.changes.outputs.release == 'true'
         uses: docker/setup-buildx-action@v4
 
       - name: Login to GitHub Container Registry
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' && needs.changes.outputs.release == 'true' }}
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -50,6 +95,7 @@ jobs:
 
       - name: Resolve image tags
         id: tags
+        if: github.event_name != 'pull_request' || needs.changes.outputs.release == 'true'
         shell: bash
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -73,6 +119,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push
+        if: github.event_name != 'pull_request' || needs.changes.outputs.release == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
