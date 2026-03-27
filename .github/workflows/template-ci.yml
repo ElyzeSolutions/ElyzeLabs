@@ -114,6 +114,10 @@ jobs:
         if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
         run: pnpm lint
 
+      - name: Build
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        run: pnpm build
+
       - name: Typecheck
         if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
         run: pnpm typecheck
@@ -129,10 +133,6 @@ jobs:
       - name: UI Tests
         if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
         run: pnpm test:ui
-
-      - name: Build
-        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
-        run: pnpm build
 
   browser-gates:
     needs: changes
@@ -158,6 +158,9 @@ jobs:
 
       - name: Install
         run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
 
       - name: Browser Tests
         run: pnpm test:browser
