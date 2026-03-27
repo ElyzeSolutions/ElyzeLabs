@@ -1,0 +1,15 @@
+# Local developer launcher profile
+
+scripts:
+  gateway:
+    cmd: "pnpm dev"
+    autostart: true
+    restart_on_crash: true
+    restart_delay: 2.0
+
+  dashboard_hmr:
+    cmd: "pnpm dev:dashboard"
+    autostart: false
+    restart_on_crash: true
+    restart_delay: 2.0
+    max_crashes: 5

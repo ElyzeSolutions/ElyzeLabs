@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+  - dashboard
+
+onlyBuiltDependencies:
+  - better-sqlite3
+  - esbuild

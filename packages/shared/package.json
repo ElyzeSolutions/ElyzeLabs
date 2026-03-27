@@ -1,0 +1,19 @@
+{
+  "name": "@ops/shared",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json --force",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "lint": "eslint src --ext .ts"
+  }
+}

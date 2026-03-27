@@ -1,0 +1,21 @@
+# Release Readiness Checklist
+
+- [ ] `pnpm install`
+- [ ] `pnpm build`
+- [ ] `pnpm lint`
+- [ ] `pnpm typecheck`
+- [ ] `pnpm test:unit`
+- [ ] `pnpm test:integration`
+- [ ] `pnpm test`
+- [ ] `pnpm test:perf`
+- [ ] `pnpm test:ui`
+- [ ] `pnpm test:browser`
+- [ ] `pnpm test:e2e`
+- [ ] `pnpm test:chaos`
+- [ ] `pnpm doctor:react`
+- [ ] `pnpm docker:smoke`
+- [ ] `pnpm quality:pipeline`
+- [ ] `pnpm quality:remediation`
+- [ ] `pnpm obsidian:sync`
+- [ ] `pnpm python:perf`
+- [ ] `pnpm refactor:pass`

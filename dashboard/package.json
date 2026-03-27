@@ -1,0 +1,39 @@
+{
+  "name": "dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b tsconfig.build.json && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src/App.tsx src/app src/pages src/components/ops src/components/office --ext .ts,.tsx",
+    "typecheck": "tsc -b tsconfig.build.json --pretty false",
+    "test:unit": "vitest run --config vitest.config.ts --passWithNoTests"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@tanstack/react-query": "^5.90.21",
+    "@tanstack/react-router": "^1.168.7",
+    "framer-motion": "^12.34.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "sonner": "^2.0.7",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.23",
+    "eslint": "^10.0.2",
+    "jsdom": "^26.1.0",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.1.18",
+    "typescript": "~5.9.3",
+    "vite": "^8.0.3"
+  }
+}

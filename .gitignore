@@ -1,0 +1,54 @@
+# OS / editor noise
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Runtime state and artifacts
+logs/
+*.log
+*.pid
+data/*
+!data/.gitkeep
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Frontend
+dashboard/node_modules/
+dashboard/dist/
+node_modules/
+package-lock.json
+packages/*/dist/
+*.tsbuildinfo
+coverage/
+
+# Tooling cache
+.uv-cache/
+.grepai/
+.pnpm-store/
+.desloppify/
+
+# Runtime data
+.ops/
+backups/
+.agents/
+MEMORY.md
+memory.md

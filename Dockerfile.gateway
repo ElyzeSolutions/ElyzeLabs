@@ -1,0 +1,158 @@
+# syntax=docker/dockerfile:1.7
+
+FROM node:22-bookworm-slim AS builder
+WORKDIR /app
+
+ENV PNPM_HOME=/pnpm
+ENV PATH=${PNPM_HOME}:${PATH}
+
+RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ git \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.json eslint.config.mjs vitest.config.ts ./
+COPY packages ./packages
+COPY config ./config
+COPY scripts ./scripts
+COPY dashboard ./dashboard
+
+RUN pnpm install --frozen-lockfile
+RUN pnpm build
+
+FROM node:22-bookworm-slim AS runner
+WORKDIR /app
+
+ENV PNPM_HOME=/pnpm
+ENV PATH=${PNPM_HOME}:${PATH}
+ENV NODE_ENV=production
+
+RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    curl \
+    git \
+    jq \
+    openssh-client \
+    python3 \
+    python3-venv \
+    ripgrep \
+    tmux \
+    tini \
+    unzip \
+    wget \
+  && rm -rf /var/lib/apt/lists/*
+
+# uv — needed for Python tool installs (PolyX, Polybot)
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+# bun — needed for repositories that use bun lockfiles / bun-based workflows
+RUN curl -fsSL https://bun.sh/install | env BUN_INSTALL=/usr/local bash
+ENV PATH="/usr/local/bin:${PATH}"
+
+# ── All CLI tools (npm + Python) via install-cli-suite.sh ──
+ARG CLI_INSTALL_STRICT=true
+ARG CODEX_NPM_PACKAGE=@openai/codex@latest
+ARG CLAUDE_NPM_PACKAGE=@anthropic-ai/claude-code@latest
+ARG GEMINI_NPM_PACKAGE=@google/gemini-cli@latest
+ARG POLYX_UV_PACKAGE=polyx-cli
+ARG POLYBOT_UV_PACKAGE=""
+ARG POLYBOT_UV_REF=main
+ARG SCRAPLING_UV_PACKAGE='scrapling[ai]'
+ARG BASELINE_SKILLS_REPO=https://github.com/ElyzeSolutions/skills.git
+ARG BASELINE_SKILLS_REF=main
+ARG BASELINE_SKILLS_STRICT=false
+
+ENV OPS_CLI_INSTALL_STRICT=${CLI_INSTALL_STRICT}
+ENV CODEX_NPM_PACKAGE=${CODEX_NPM_PACKAGE}
+ENV CLAUDE_NPM_PACKAGE=${CLAUDE_NPM_PACKAGE}
+ENV GEMINI_NPM_PACKAGE=${GEMINI_NPM_PACKAGE}
+ENV POLYX_UV_PACKAGE=${POLYX_UV_PACKAGE}
+ENV POLYBOT_UV_PACKAGE=${POLYBOT_UV_PACKAGE}
+ENV POLYBOT_UV_REF=${POLYBOT_UV_REF}
+ENV SCRAPLING_UV_PACKAGE=${SCRAPLING_UV_PACKAGE}
+ENV OPS_BASELINE_SKILLS_REPO=${BASELINE_SKILLS_REPO}
+ENV OPS_BASELINE_SKILLS_REF=${BASELINE_SKILLS_REF}
+ENV OPS_BASELINE_SKILLS_STRICT=${BASELINE_SKILLS_STRICT}
+ENV OPS_TOOLING_DIR=/opt/ops/tooling
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ops/playwright
+ENV POLYBOT_CONFIG_TARGET=/var/lib/ops/state/polybot/config.yaml
+ENV OPS_BROWSER_ENABLED=true
+ENV OPS_BROWSER_ALLOW_STEALTH=true
+ENV OPS_BROWSER_REQUIRE_APPROVAL_FOR_STEALTH=false
+ENV OPS_BROWSER_PROMPT_INJECTION_ESCALATION=annotate
+
+COPY scripts/docker/install-cli-suite.sh /usr/local/bin/install-cli-suite.sh
+RUN --mount=type=secret,id=github_token,required=false \
+    GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" \
+ && chmod +x /usr/local/bin/install-cli-suite.sh \
+ && GITHUB_TOKEN="${GITHUB_TOKEN}" /usr/local/bin/install-cli-suite.sh
+
+# Runtime vendor bootstrap writes mutable tools under /var/lib/ops, but image-baked
+# tools must stay outside that volume-backed path so they survive container restarts.
+ENV OPS_RUNTIME_TOOL_BIN_DIR=/var/lib/ops/tooling/bin
+ENV OPS_RUNTIME_UV_TOOL_DIR=/var/lib/ops/tooling/uv-tools
+ENV OPS_RUNTIME_UV_PYTHON_INSTALL_DIR=/var/lib/ops/tooling/python
+ENV UV_PYTHON_INSTALL_DIR=${OPS_RUNTIME_UV_PYTHON_INSTALL_DIR}
+ENV PATH="${OPS_RUNTIME_TOOL_BIN_DIR}:/usr/local/bin:${PATH}"
+
+# Polybot runtime config: data + logs under existing ElyzeLabs volumes
+ENV POLYBOT_DATA_DIR=/var/lib/ops/state/polybot
+ENV POLYBOT_LOG_DIR=/var/lib/ops/logs/polybot
+ENV POLYBOT_CONFIG=/var/lib/ops/state/polybot/config.yaml
+ENV POLYBOT_ENV_FILE=/var/lib/ops/state/polybot/.env
+
+COPY --from=builder /app /app
+
+# Seed baseline skills + create all runtime directories.
+RUN --mount=type=secret,id=github_token,required=false \
+    GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" \
+ && mkdir -p /var/lib/ops/state /var/lib/ops/state/polybot \
+    /var/lib/ops/workspaces /var/lib/ops/logs /var/lib/ops/logs/polybot \
+    /var/lib/ops/tooling /var/lib/ops/tooling/bin /var/lib/ops/tooling/uv-tools /var/lib/ops/tooling/python \
+    /var/lib/ops/skills /home/node/.agents/skills /etc/polybot /opt/ops /opt/ops/playwright \
+  && tmpdir="$(mktemp -d)" \
+  && baseline_skills_strict="$(printf '%s' "${BASELINE_SKILLS_STRICT}" | tr '[:upper:]' '[:lower:]')" \
+  && clone_ok=0 \
+  && skills_repo="${BASELINE_SKILLS_REPO}" \
+  && copied=0 \
+  && if [ -n "${skills_repo}" ]; then \
+       if [ -n "${GITHUB_TOKEN}" ] && [ "${skills_repo#https://github.com/}" != "${skills_repo}" ]; then \
+         skills_repo="https://x-access-token:${GITHUB_TOKEN}@github.com/${skills_repo#https://github.com/}"; \
+       fi; \
+       if git clone --depth 1 --branch "${BASELINE_SKILLS_REF}" "${skills_repo}" "${tmpdir}/skills"; then \
+         clone_ok=1; \
+       else \
+         echo "warn: failed to clone baseline skills repo; continuing with fallback skill seed."; \
+       fi; \
+     fi \
+  && if [ "${clone_ok}" -eq 1 ]; then \
+       for skilldir in "${tmpdir}/skills"/*; do \
+         if [ -d "${skilldir}" ] && [ -f "${skilldir}/SKILL.md" ]; then \
+           cp -a "${skilldir}" /var/lib/ops/skills/; \
+           copied="$((copied + 1))"; \
+         fi; \
+       done; \
+     fi \
+  && if [ "${copied}" -eq 0 ]; then \
+       if [ "${baseline_skills_strict}" = "true" ]; then \
+         if [ -n "${BASELINE_SKILLS_REPO}" ]; then \
+           echo "error: failed to seed baseline skills from ${BASELINE_SKILLS_REPO}@${BASELINE_SKILLS_REF}; if the repository requires auth, pass the BuildKit secret github_token." >&2; \
+         else \
+           echo "error: BASELINE_SKILLS_STRICT=true but BASELINE_SKILLS_REPO is not configured." >&2; \
+         fi; \
+         exit 1; \
+       fi; \
+       mkdir -p /var/lib/ops/skills/fallback-core; \
+       printf '# fallback-core\n\nFallback baseline skill seeded because remote skills repository was unavailable during image build.\n' \
+         > /var/lib/ops/skills/fallback-core/SKILL.md; \
+     fi \
+  && rm -rf "${tmpdir}" \
+  && chown -R node:node /app /var/lib/ops /opt/ops /home/node/.agents /etc/polybot
+
+USER node
+EXPOSE 8788
+
+ENTRYPOINT ["tini", "--"]
+CMD ["pnpm", "--filter", "@ops/gateway", "start"]

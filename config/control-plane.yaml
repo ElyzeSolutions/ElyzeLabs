@@ -1,0 +1,162 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8788,
+    "companyName": "Company",
+    "corsOrigin": "*",
+    "apiToken": "change-me-local-token",
+    "logLevel": "info"
+  },
+  "channel": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "",
+      "useWebhook": false,
+      "debugRawOutput": false,
+      "dmScope": "peer",
+      "requireMentionInGroups": true,
+      "allowlist": []
+    }
+  },
+  "queue": {
+    "defaultLane": "default",
+    "laneConcurrency": {
+      "default": 3,
+      "critical": 1,
+      "background": 2
+    },
+    "retry": {
+      "maxAttempts": 5,
+      "baseDelayMs": 300,
+      "maxDelayMs": 15000
+    }
+  },
+  "runtime": {
+    "defaultRuntime": "process",
+    "workspaceRoot": ".ops/workspaces",
+    "workspaceStrategy": "session",
+    "openrouterApiKey": "",
+    "adapters": {
+      "codex": {
+        "command": "codex",
+        "args": [
+          "-a",
+          "never",
+          "-s",
+          "workspace-write",
+          "exec",
+          "--skip-git-repo-check",
+          "--json"
+        ]
+      },
+      "claude": {
+        "command": "claude",
+        "args": []
+      },
+      "gemini": {
+        "command": "gemini",
+        "args": []
+      },
+      "process": {
+        "command": "node",
+        "args": [
+          "scripts/runtime/process-fail-closed.mjs"
+        ]
+      }
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "writeStructured": true,
+    "workspaceMemoryFile": "MEMORY.md",
+    "dailyMemoryDir": ".ops/memory-daily",
+    "retentionDays": 180,
+    "autoRemember": {
+      "enabled": true,
+      "triggerStatuses": [
+        "completed",
+        "failed"
+      ],
+      "minSignificance": 6,
+      "maxEntryChars": 2400,
+      "dedupeWindowRuns": 8,
+      "cooldownMinutes": 180,
+      "includeChannels": [],
+      "includeAgents": [],
+      "excludeAgents": []
+    },
+    "embedding": {
+      "provider": "noop",
+      "voyageModel": "voyage-4-large",
+      "voyageApiKey": ""
+    }
+  },
+  "vault": {
+    "enabled": true,
+    "requireUnlockOnStartup": false,
+    "autoUnlockFromEnv": false,
+    "envKey": "",
+    "allowPassphraseUnlock": true,
+    "passphraseSalt": "ops-control-plane-vault",
+    "passphraseIterations": 120000
+  },
+  "skills": {
+    "directories": [
+      "skills",
+      ".ops/skills",
+      "~/.agents/skills"
+    ],
+    "catalogStrict": false,
+    "sandboxDefault": true
+  },
+  "policy": {
+    "requirePairing": false,
+    "allowElevatedExecution": false,
+    "elevatedApprover": "operator",
+    "delegationGuards": {
+      "maxHops": 4,
+      "maxFanoutPerStep": 3,
+      "cycleDetection": true
+    },
+    "autoDelegation": {
+      "mode": "model",
+      "minConfidence": 0.45,
+      "timeoutMs": 20000,
+      "maxTargets": 3
+    }
+  },
+  "observability": {
+    "eventBufferSize": 2000,
+    "metricsWindowSec": 300
+  },
+  "housekeeping": {
+    "enabled": true,
+    "intervalSec": 180,
+    "sessionRetentionHours": {
+      "delegate": 1,
+      "dashboard": 6,
+      "agent": 6,
+      "internal": 4,
+      "telegram": 72,
+      "office": 168,
+      "unknown": 4
+    },
+    "runRetentionHours": 24,
+    "messageRetentionHours": 24,
+    "realtimeRetentionHours": 8,
+    "officePresenceRetentionHours": 8,
+    "llmUsageRetentionDays": 7,
+    "memoryRetentionDays": 14,
+    "auditRetentionDays": 14,
+    "protectedSessionKeys": [
+      "office:ceo-hq"
+    ]
+  },
+  "office": {
+    "enabled": true,
+    "defaultLayoutName": "Main Ops Floor"
+  },
+  "persistence": {
+    "sqlitePath": ".ops/state/control-plane.db"
+  }
+}

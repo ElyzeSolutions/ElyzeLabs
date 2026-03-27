@@ -1,0 +1,4 @@
+services:
+  gateway:
+    volumes:
+      - ${OPS_HOST_WORKSPACE:-./workspace}:/var/lib/ops/workspaces
