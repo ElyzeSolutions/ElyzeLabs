@@ -80,6 +80,12 @@ jobs:
         if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
         uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.30.3
+
       - name: Setup Node
         if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
         uses: actions/setup-node@v6
@@ -87,12 +93,6 @@ jobs:
           node-version: '22'
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-
-      - name: Setup pnpm
-        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
-        uses: pnpm/action-setup@v5
-        with:
-          version: 10.30.3
 
       - name: Install
         if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
@@ -144,17 +144,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.30.3
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v5
-        with:
-          version: 10.30.3
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -172,17 +172,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.30.3
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v5
-        with:
-          version: 10.30.3
 
       - name: Install
         run: pnpm install --frozen-lockfile
