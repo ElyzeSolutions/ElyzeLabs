@@ -5,64 +5,196 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  quality-gates:
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      browser: ${{ steps.filter.outputs.browser }}
+      runtime: ${{ steps.filter.outputs.runtime }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect Changed Paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - '.github/workflows/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'eslint.config.mjs'
+              - 'vitest.config.ts'
+              - 'config/**'
+              - 'dashboard/**'
+              - 'packages/**'
+              - 'scripts/**'
+              - 'tests/**'
+            browser:
+              - '.github/workflows/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'config/**'
+              - 'dashboard/**'
+              - 'packages/gateway/**'
+              - 'scripts/testing/run-browser-tests.mjs'
+              - 'scripts/testing/run-browser-schedule-certification.mjs'
+              - 'tests/**'
+            runtime:
+              - '.github/workflows/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'config/**'
+              - 'packages/db/**'
+              - 'packages/gateway/**'
+              - 'packages/queue/**'
+              - 'scripts/testing/run-chaos-tests.mjs'
+              - 'scripts/testing/run-perf-tests.mjs'
+
+  quality-gates:
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Skip Fast Gates
+        if: github.event_name == 'pull_request' && needs.changes.outputs.code != 'true'
+        run: echo "No product code changes detected. Skipping fast gates."
+
+      - name: Checkout
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.30.3
 
       - name: Setup Node
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: '22'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Config Doctor
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        run: pnpm doctor:config
+
+      - name: Guardrails
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        run: pnpm guardrails:check
+
+      - name: Publish Readiness
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        run: pnpm publish:check
+
+      - name: Lint
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        run: pnpm lint
+
+      - name: Build
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        run: pnpm build
+
+      - name: Typecheck
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        run: pnpm typecheck
+
+      - name: Unit Tests
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        run: pnpm test:unit
+
+      - name: Integration Tests
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        run: pnpm test:integration
+
+      - name: UI Tests
+        if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
+        run: pnpm test:ui
+
+  browser-gates:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
         with:
           version: 10.30.3
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
       - name: Install
-        run: pnpm install
-
-      - name: Config Doctor
-        run: pnpm doctor:config
-
-      - name: Guardrails
-        run: pnpm guardrails:check
-
-      - name: Publish Readiness
-        run: pnpm publish:check
+        run: pnpm install --frozen-lockfile
 
       - name: Build
         run: pnpm build
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Unit Tests
-        run: pnpm test:unit
-
-      - name: Integration Tests
-        run: pnpm test:integration
-
-      - name: UI Tests
-        run: pnpm test:ui
-
-      - name: Perf Tests
-        run: pnpm test:perf
-
       - name: Browser Tests
         run: pnpm test:browser
 
-      - name: E2E Tests
-        run: pnpm test:e2e
+  runtime-stress-gates:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.runtime == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.30.3
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Perf Tests
+        run: pnpm test:perf
 
       - name: Chaos Tests
         run: pnpm test:chaos

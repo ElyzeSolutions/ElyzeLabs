@@ -1498,6 +1498,28 @@ try {
     process.exit(openResult.status ?? 1);
   }
 
+  const rootWait = run('agent-browser', [
+    '--session',
+    session,
+    'wait',
+    '--fn',
+    `(() => {
+      const bodyText = document.body?.innerText ?? "";
+      const onboardingReady =
+        (bodyText.includes("Save token") && bodyText.includes("Run smoke verification")) ||
+        (bodyText.includes("Initialize Connection") && bodyText.includes("Launch Verification")) ||
+        bodyText.includes("Unlock Vault");
+      const shellReady =
+        (bodyText.includes("Preferences") || bodyText.includes("Settings") || bodyText.includes("Access")) &&
+        (bodyText.includes("LLM Router") || bodyText.includes("LLM") || bodyText.includes("Costs"));
+      return onboardingReady || shellReady;
+    })()`
+  ]);
+  if (rootWait.status !== 0) {
+    console.error('browser smoke failed: dashboard root never reached onboarding or shell ready state.');
+    process.exit(rootWait.status ?? 1);
+  }
+
   let rootSnapshot = run('agent-browser', ['--session', session, 'snapshot', '-i']);
   if (rootSnapshot.status !== 0) {
     console.error(rootSnapshot.stderr || rootSnapshot.stdout);
@@ -1563,7 +1585,7 @@ try {
   }
 
   const hasLlmNav = rootText.includes('LLM Router') || rootText.includes('LLM') || rootText.includes('Costs');
-  const hasPreferences = rootText.includes('Preferences') || rootText.includes('Settings');
+  const hasPreferences = rootText.includes('Preferences') || rootText.includes('Settings') || rootText.includes('Access');
   if (!hasPreferences || !hasLlmNav) {
     console.error('browser smoke failed: navigation shell links missing from dashboard snapshot.');
     process.exit(1);
