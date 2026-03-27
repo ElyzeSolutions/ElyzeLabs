@@ -1,10 +1,20 @@
-# ElyzeLabs
+<p align="center">
+  <img src=".github/assets/elyzelabs-logo.jpg" alt="ElyzeLabs logo" width="340">
+</p>
 
-<!-- Add logo above and hero banner below when assets are ready. -->
+<h1 align="center">ElyzeLabs</h1>
 
-> Open-source AI operations control plane for teams building internal copilots, agent workflows, and operator dashboards.
+<p align="center">
+  <strong>Open-source AI operations control plane for teams building internal copilots, agent workflows, and operator dashboards.</strong>
+</p>
 
-ElyzeLabs gives you a local-first gateway, a production-ready React dashboard, typed control-plane contracts, and deploy-ready workflows so you can move from prototype to operating surface without rebuilding the stack halfway through.
+<p align="center">
+  ElyzeLabs gives you a local-first gateway, a production-ready React dashboard, typed control-plane contracts, and deploy-ready workflows so you can move from prototype to operating surface without rebuilding the stack halfway through.
+</p>
+
+<p align="center">
+  <img src=".github/assets/elyzelabs-hero.jpg" alt="ElyzeLabs hero banner">
+</p>
 
 ## Why ElyzeLabs
 
