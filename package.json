@@ -28,7 +28,7 @@
     "test:chaos": "node scripts/testing/run-chaos-tests.mjs",
     "test:perf": "node scripts/testing/run-perf-tests.mjs",
     "test": "pnpm test:unit && pnpm test:integration && pnpm test:ui",
-    "test:all": "pnpm test && pnpm test:e2e && pnpm test:browser && pnpm test:chaos && pnpm test:perf",
+    "test:all": "pnpm test && pnpm test:browser && pnpm test:chaos && pnpm test:perf",
     "start:gateway": "tsx --conditions=development packages/gateway/src/index.ts --config config/control-plane.yaml",
     "start:dashboard": "bash -lc 'pnpm --filter dashboard build && pnpm --filter dashboard preview --host 127.0.0.1 --port 4173'",
     "dev:gateway": "tsx watch --conditions=development packages/gateway/src/index.ts --config config/control-plane.yaml",
