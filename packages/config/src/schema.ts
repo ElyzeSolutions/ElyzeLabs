@@ -82,7 +82,7 @@ export const controlPlaneConfigSchema = z
                 memoryRecall: z.number().int().min(0).max(128_000).default(1200)
               })
               .strict()
-              .default({}),
+              .prefault({}),
             dropOrder: z
               .array(z.enum(['memory_recall', 'recent_transcript', 'instructions']))
               .min(1)
@@ -90,7 +90,7 @@ export const controlPlaneConfigSchema = z
               .default(['memory_recall', 'recent_transcript', 'instructions'])
           })
           .strict()
-          .default({}),
+          .prefault({}),
         openrouterApiKey: z.string().optional(),
         adapters: z
           .object({
@@ -103,7 +103,7 @@ export const controlPlaneConfigSchema = z
             process: adapterSchema.default({ command: 'node', args: ['scripts/runtime/process-fail-closed.mjs'] })
           })
           .strict()
-          .default({})
+          .prefault({})
       })
       .strict(),
     browser: z
@@ -134,7 +134,7 @@ export const controlPlaneConfigSchema = z
             requireApprovalForProxy: z.boolean().default(true)
           })
           .strict()
-          .default({})
+          .prefault({})
       })
       .strict()
       .superRefine((value, ctx) => {
@@ -146,7 +146,7 @@ export const controlPlaneConfigSchema = z
           });
         }
       })
-      .default({}),
+      .prefault({}),
     memory: z
       .object({
         enabled: z.boolean().default(true),
@@ -167,7 +167,7 @@ export const controlPlaneConfigSchema = z
             excludeAgents: z.array(z.string().min(1)).default([])
           })
           .strict()
-          .default({}),
+          .prefault({}),
         embedding: z
           .object({
             provider: z.enum(['noop', 'voyage']).default('noop'),
@@ -184,7 +184,7 @@ export const controlPlaneConfigSchema = z
                 rollbackErrorThreshold: z.number().int().min(1).max(100).default(2)
               })
               .strict()
-              .default({}),
+              .prefault({}),
             voyageModel: z.string().default('voyage-4-large'),
             voyageApiKey: z.string().optional()
           })
@@ -202,7 +202,7 @@ export const controlPlaneConfigSchema = z
         passphraseIterations: z.number().int().min(10_000).max(1_000_000).default(120_000)
       })
       .strict()
-      .default({}),
+      .prefault({}),
     skills: z
       .object({
         directories: z.array(z.string()).default(['skills', '.ops/skills', '~/.agents/skills']),
@@ -219,7 +219,7 @@ export const controlPlaneConfigSchema = z
             installRoot: z.string().default('.ops/skills')
           })
           .strict()
-          .default({})
+          .prefault({})
       })
       .strict(),
     policy: z
@@ -234,7 +234,7 @@ export const controlPlaneConfigSchema = z
             cycleDetection: z.boolean().default(true)
           })
           .strict()
-          .default({}),
+          .prefault({}),
         autoDelegation: z
           .object({
             mode: autoDelegationModeSchema,
@@ -242,7 +242,7 @@ export const controlPlaneConfigSchema = z
             timeoutMs: z.number().int().min(1000).max(60_000).default(12_000),
             maxTargets: z.number().int().min(1).max(8).default(3)
           })
-          .default({})
+          .prefault({})
       })
       .strict(),
     observability: z
@@ -266,7 +266,7 @@ export const controlPlaneConfigSchema = z
             unknown: z.number().int().min(1).max(24 * 365).default(4)
           })
           .strict()
-          .default({}),
+          .prefault({}),
         runRetentionHours: z.number().int().min(1).max(24 * 365).default(24),
         terminalRetentionHours: z.number().int().min(1).max(24 * 365).default(24),
         messageRetentionHours: z.number().int().min(1).max(24 * 365).default(24),
@@ -280,7 +280,7 @@ export const controlPlaneConfigSchema = z
         protectedSessionKeys: z.array(z.string().min(1)).default(['office:ceo-hq'])
       })
       .strict()
-      .default({}),
+      .prefault({}),
     office: z
       .object({
         enabled: z.boolean().default(true),
