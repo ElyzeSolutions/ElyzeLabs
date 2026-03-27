@@ -23,7 +23,7 @@
     "@ops/skills": "workspace:*",
     "fastify": "^5.8.2",
     "fastify-plugin": "^5.0.1",
-    "nanoid": "^5.1.6"
+    "nanoid": "^5.1.7"
   },
   "scripts": {
     "build": "tsc -b tsconfig.build.json --force",

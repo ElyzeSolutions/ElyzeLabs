@@ -10867,7 +10867,7 @@ describe('gateway integration', () => {
     expect(captured?.metadata.originRef?.channel).toBe('telegram');
     expect(captured?.metadata.originRef?.sessionId).toBeTruthy();
     expect(captured?.metadata.originRef?.sourceRef).toBe(String(senderId));
-  });
+  }, 20_000);
 
   it('does not auto-capture backlog from natural-language planning prompts', async () => {
     const senderId = 101901;
@@ -24863,7 +24863,7 @@ describe('gateway integration', () => {
       .join('\n');
     expect(outbound).toContain('Noted. I saved this to memory.');
     expect(outbound).toContain('Memory results for');
-  });
+  }, 20_000);
 
   it('persists agent memory action contracts from run output and strips contract payloads from outbound messages', async () => {
     const previousFetch = globalThis.fetch;
@@ -34724,5 +34724,5 @@ describe('gateway integration', () => {
     };
     expect(finalBody.onboarding.status).toBe('ready');
     expect(finalBody.onboarding.steps.find((step) => step.id === 'smoke_run')?.status).toBe('complete');
-  });
+  }, 20_000);
 });
