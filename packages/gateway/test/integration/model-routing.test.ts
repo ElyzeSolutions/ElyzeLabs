@@ -113,6 +113,34 @@ describe('gateway model routing integration', () => {
     expect(body.details?.validation?.diagnostics[0]?.expectedRuntimes).toContain('codex');
   });
 
+  it('accepts Gemini provider aliases even when they are not pinned in the local registry', async () => {
+    const harness = await createHarness('llm-save-gemini-alias');
+
+    const response = await harness.inject({
+      method: 'PUT',
+      url: '/api/llm/limits',
+      payload: {
+        limits: {
+          fallbackByRuntime: {
+            process: [{ runtime: 'process', model: 'gemini-flash-latest' }]
+          }
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      limits: {
+        fallbackByRuntime: Record<string, Array<{ runtime: string; model: string | null }>>;
+      };
+      validation: {
+        valid: boolean;
+      };
+    };
+    expect(body.validation.valid).toBe(true);
+    expect(body.limits.fallbackByRuntime.process[0]?.model).toBe('gemini-flash-latest');
+  });
+
   it('surfaces persisted invalid limits in warn mode without silently rewriting them', async () => {
     process.env.OPS_LLM_STARTUP_VALIDATION_MODE = 'warn';
     process.env.OPENROUTER_API_KEY = 'test-openrouter';
