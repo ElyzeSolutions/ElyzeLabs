@@ -1316,6 +1316,11 @@ function normalizeModelInput(value: unknown): string | null {
   return canonicalizeOpenRouterAlias(trimmed);
 }
 
+function isGoogleProviderModel(model: string | null): boolean {
+  const normalized = normalizeModelInput(model);
+  return normalized?.toLowerCase().startsWith('gemini') ?? false;
+}
+
 type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
 function normalizeReasoningInput(value: unknown): ReasoningEffort | null {
@@ -3489,11 +3494,10 @@ function splitReasoningText(text: string): { reasoning: string; answer: string }
 
 function inferProvider(model: string | null): LlmProviderKey | null {
   const normalizedModel = normalizeModelInput(model);
-  const loweredModel = normalizedModel?.toLowerCase() ?? '';
   if (extractOpenRouterModelAlias(normalizedModel)) {
     return 'openrouter';
   }
-  if (loweredModel.startsWith('gemini')) {
+  if (isGoogleProviderModel(normalizedModel)) {
     return 'google';
   }
   if (!normalizedModel) {
@@ -6256,7 +6260,7 @@ export async function buildGatewayApp(
         trackEntry(normalized, 'openrouter', source, runtimeKinds);
         return;
       }
-      if (normalized.toLowerCase().startsWith('gemini')) {
+      if (isGoogleProviderModel(normalized)) {
         googleModels.add(normalized);
         trackEntry(normalized, 'google', source, runtimeKinds);
         return;
@@ -6287,7 +6291,7 @@ export async function buildGatewayApp(
         trackEntry(normalized, 'openrouter', source, runtimeKinds);
         return;
       }
-      if (normalized.toLowerCase().startsWith('gemini')) {
+      if (isGoogleProviderModel(normalized)) {
         googleModels.add(normalized);
         trackEntry(normalized, 'google', source, runtimeKinds);
       }
@@ -6378,7 +6382,7 @@ export async function buildGatewayApp(
       };
     }
 
-    if (registry.providers.google.includes(normalized)) {
+    if (registry.providers.google.includes(normalized) || isGoogleProviderModel(normalized)) {
       return {
         valid: true,
         provider: 'google'
@@ -6416,16 +6420,6 @@ export async function buildGatewayApp(
         provider: 'openrouter',
         issue: 'missing_registry_coverage',
         message: `${normalized} is namespaced for OpenRouter but is not present in the active model registry.`,
-        remediation: 'Add the model to OPS_MODELS_* or the runtime capabilities catalog before saving this policy.'
-      };
-    }
-
-    if (normalized.toLowerCase().startsWith('gemini')) {
-      return {
-        valid: false,
-        provider: 'google',
-        issue: 'missing_registry_coverage',
-        message: `${normalized} is not present in the active Google/Gemini model registry.`,
         remediation: 'Add the model to OPS_MODELS_* or the runtime capabilities catalog before saving this policy.'
       };
     }
