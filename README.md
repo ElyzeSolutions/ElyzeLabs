@@ -1,41 +1,43 @@
 # ElyzeLabs
 
-ElyzeLabs is a local-first AI operations control plane and dashboard template.
+<!-- Add logo above and hero banner below when assets are ready. -->
 
-It ships a typed Node gateway, a React operator UI, reusable control-plane contracts, and a deployment surface designed to start simple and stay adaptable. The vocabulary stays intentionally neutral: `module`, `worker`, `job`, `event`, `session`.
+> Open-source AI operations control plane for teams building internal copilots, agent workflows, and operator dashboards.
 
-## Why This Repo Exists
+ElyzeLabs gives you a local-first gateway, a production-ready React dashboard, typed control-plane contracts, and deploy-ready workflows so you can move from prototype to operating surface without rebuilding the stack halfway through.
 
-- Start operations dashboards quickly without inventing the control plane from scratch
-- Keep APIs stable and mock-friendly while you iterate on the UI
-- Add integrations later without rewriting the frontend contracts
-- Run locally first, then move to Docker or Dokploy when the shape is right
+## Why ElyzeLabs
+
+- Start with a working control plane instead of stitching one together from scratch
+- Keep frontend contracts stable while backend integrations evolve from mock to real
+- Stay domain-neutral so the same baseline can power ops tooling, internal AI products, and human-in-the-loop workflows
+- Develop locally first, then ship through Docker, GitHub Actions, or Dokploy when the shape is right
 
 ## What You Get
 
-- React dashboard for operations, tooling, schedules, backlog, config, and browser workflows
-- Typed gateway API with queueing, memory, vault, runtime adapters, and skills
+- React operator dashboard for mission control, schedules, backlog, browser workflows, tooling, config, and vault operations
+- Typed Node gateway with runtime adapters, queueing, memory, skills, vault, and orchestration endpoints
 - SQLite-backed local persistence for sessions, runs, audits, and catalog state
 - Public baseline skills plus optional external skills repositories
-- GitHub Actions, Docker, and Dokploy support for repeatable shipping
+- CI, Docker, and Dokploy support for repeatable shipping
 - Unit, integration, UI, browser, and end-to-end test coverage
 
-## What You Do Not Get
+## Good Fit For
 
-This is a baseline, not a vertical product.
+- Internal AI operations consoles
+- Agent back-office dashboards
+- Human-in-the-loop workflow systems
+- Operator surfaces for automation-heavy products
+- Teams that want a reusable control-plane baseline instead of a one-off admin panel
+
+## Intentionally Not Included
+
+ElyzeLabs is a baseline, not a locked vertical product.
 
 - No trading logic
 - No brokerage or exchange integrations
 - No strategy engine
 - No account or funds execution pipeline
-
-## Stack
-
-- Frontend: React 19 + Vite
-- Backend: TypeScript + Node.js
-- Monorepo: `pnpm`
-- Persistence: SQLite
-- Config entrypoint: [`config/control-plane.yaml`](./config/control-plane.yaml)
 
 ## Quick Start
 
@@ -61,27 +63,15 @@ pnpm test
 pnpm publish:check
 ```
 
-## Configuration
+## Stack
 
-- Minimal env: [`.env.example`](./.env.example)
-- Full env surface: [`env.full.example`](./env.full.example)
-- Runtime config: [`config/control-plane.yaml`](./config/control-plane.yaml)
+- Frontend: React 19 + Vite
+- Backend: TypeScript + Node.js
+- Monorepo: `pnpm`
+- Persistence: SQLite
+- Config entrypoint: [`config/control-plane.yaml`](./config/control-plane.yaml)
 
-Real secrets belong in local env, your deployment platform, or the built-in vault. Do not commit them.
-
-## GitHub Access
-
-`GITHUB_TOKEN` is optional.
-
-You only need it when you want:
-
-- GitHub-backed delivery or backlog flows
-- Private vendor repositories such as a private `Polybot` checkout
-- Authenticated GitHub API access from the running control plane
-
-Public baseline skills do not require `OPS_GH_READ_TOKEN`, the Docker release workflow no longer depends on that secret, and public `polyx-cli` installs do not need GitHub auth.
-
-## Docker And Deploy
+## Deploy And Operate
 
 For a minimal local container run:
 
@@ -96,6 +86,26 @@ Further docs:
 - [`dashboard/README.md`](./dashboard/README.md)
 - [`docs/runbooks`](./docs/runbooks)
 
+## Optional GitHub Access
+
+`GITHUB_TOKEN` is optional.
+
+You only need it when you want:
+
+- GitHub-backed delivery or backlog flows
+- Private vendor repositories such as a private `Polybot` checkout
+- Authenticated GitHub API access from the running control plane
+
+Public baseline skills do not require `OPS_GH_READ_TOKEN`, the Docker release workflow does not depend on that secret, and public `polyx-cli` installs do not need GitHub auth.
+
+## Configuration
+
+- Minimal env: [`.env.example`](./.env.example)
+- Full env surface: [`env.full.example`](./env.full.example)
+- Runtime config: [`config/control-plane.yaml`](./config/control-plane.yaml)
+
+Real secrets belong in local env, your deployment platform, or the built-in vault. Do not commit them.
+
 ## Repository Layout
 
 - [`dashboard`](./dashboard): operator UI
@@ -105,16 +115,6 @@ Further docs:
 - [`packages/db`](./packages/db): persistence and migrations
 - [`packages/memory`](./packages/memory): memory providers and service layer
 - [`packages/skills`](./packages/skills): skill manifest, registry, and catalog loading
-
-## Public Release Checklist
-
-Before publishing or tagging a release:
-
-1. Run `pnpm publish:check`
-2. Run `pnpm build` and `pnpm test`
-3. Confirm `.env` stays local-only
-4. Rotate any credential that may have been exposed during development
-5. Enable secret scanning, push protection, branch protection, and Dependabot on the GitHub repo
 
 ## License
 
