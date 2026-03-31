@@ -21,7 +21,7 @@
     "@ops/runtime": "workspace:*",
     "@ops/shared": "workspace:*",
     "@ops/skills": "workspace:*",
-    "fastify": "^5.8.2",
+    "fastify": "^5.8.4",
     "fastify-plugin": "^5.0.1",
     "nanoid": "^5.1.7"
   },
