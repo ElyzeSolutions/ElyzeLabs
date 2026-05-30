@@ -11449,7 +11449,7 @@ export async function buildGatewayApp(
     if (!skill.enabled) {
       return false;
     }
-    return (skill.requiredTools ?? []).every((requiredTool) => isRequiredSkillToolCallable(requiredTool));
+    return (skill.requiredTools ?? []).every((requiredTool: string) => isRequiredSkillToolCallable(requiredTool));
   };
 
   const describeUncallableSkillReason = (
