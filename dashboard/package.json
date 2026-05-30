@@ -14,7 +14,7 @@
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-query": "^5.95.2",
-    "@tanstack/react-router": "^1.168.7",
+    "@tanstack/react-router": "^1.168.10",
     "framer-motion": "^12.38.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -29,7 +29,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.4.23",
-    "eslint": "^10.1.0",
+    "eslint": "^10.2.0",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",

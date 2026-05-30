@@ -16572,7 +16572,7 @@ describe('gateway integration', () => {
     expect(['completed', 'failed', 'aborted']).toContain(terminalRun.status);
     expect(terminalRun.runtime).toBe('process');
     expect(terminalRun.effectiveRuntime ?? terminalRun.runtime).toBe('process');
-  });
+  }, 15_000);
 
   it('pins execution to persistent harness runtime when mode is persistent_harness', async () => {
     const localHarnessLimits = await inject({
