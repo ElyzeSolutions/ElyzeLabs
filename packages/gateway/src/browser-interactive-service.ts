@@ -210,6 +210,17 @@ interface CdpTab {
   webSocketDebuggerUrl: string;
 }
 
+interface CdpCommandClient {
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>;
+}
+
+interface CdpSelectorPoint {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 class CdpClient {
   private sequence = 0;
   private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
@@ -306,11 +317,8 @@ async function executeCdpAction(input: {
 
     if (action.type === 'click') {
       const selector = requireSelector(action);
-      const clicked = await evaluateBoolean(
-        client,
-        `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`
-      );
-      if (!clicked) {
+      const point = await dispatchNativeClick(client, selector);
+      if (!point) {
         throw new Error(`Selector not found: ${selector}`);
       }
       await delay(Math.min(Math.max(action.timeoutMs ?? 500, 100), 5_000));
@@ -320,15 +328,16 @@ async function executeCdpAction(input: {
     if (action.type === 'type') {
       const selector = requireSelector(action);
       const text = action.text ?? '';
-      const typed = await evaluateBoolean(
-        client,
-        `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.focus(); el.value = ${JSON.stringify(
-          text
-        )}; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`
-      );
-      if (!typed) {
+      const point = await dispatchNativeClick(client, selector);
+      if (!point) {
         throw new Error(`Selector not found: ${selector}`);
       }
+      const focused = await focusAndSelectSelector(client, selector);
+      if (!focused) {
+        throw new Error(`Selector not focusable: ${selector}`);
+      }
+      await client.send('Input.insertText', { text });
+      await delay(Math.min(Math.max(action.timeoutMs ?? 250, 50), 5_000));
       return actionResult(index, action, true, `Typed into ${selector}`, text.slice(0, previewChars));
     }
 
@@ -562,6 +571,10 @@ async function waitForCdpHttpEndpointTab(endpoint: string, fallbackUrl: string):
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     try {
+      const openedTab = await openCdpTab(baseUrl, fallbackUrl);
+      if (openedTab) {
+        return openedTab;
+      }
       const tabs = await fetchJsonArray(`${baseUrl}/json`);
       const pageTab = tabs.find(
         (entry) =>
@@ -572,7 +585,6 @@ async function waitForCdpHttpEndpointTab(endpoint: string, fallbackUrl: string):
       if (isRecord(pageTab) && typeof pageTab.webSocketDebuggerUrl === 'string') {
         return { webSocketDebuggerUrl: pageTab.webSocketDebuggerUrl };
       }
-      await openCdpTab(baseUrl, fallbackUrl);
     } catch {
       await delay(150);
     }
@@ -593,13 +605,22 @@ function cdpBrowserWebSocketToHttpEndpoint(value: string): string | null {
   }
 }
 
-async function openCdpTab(baseUrl: string, fallbackUrl: string): Promise<void> {
+async function openCdpTab(baseUrl: string, fallbackUrl: string): Promise<CdpTab | null> {
   const target = `${baseUrl}/json/new?${encodeURIComponent(fallbackUrl)}`;
   const getResponse = await fetch(target);
   if (getResponse.ok) {
-    return;
+    return readCdpTabResponse(getResponse);
   }
-  await fetch(target, { method: 'PUT' });
+  const putResponse = await fetch(target, { method: 'PUT' });
+  return putResponse.ok ? readCdpTabResponse(putResponse) : null;
+}
+
+async function readCdpTabResponse(response: Response): Promise<CdpTab | null> {
+  const parsed: unknown = await response.json();
+  if (!isRecord(parsed) || typeof parsed.webSocketDebuggerUrl !== 'string') {
+    return null;
+  }
+  return { webSocketDebuggerUrl: parsed.webSocketDebuggerUrl };
 }
 
 function normalizeCdpHttpEndpoint(value: string): string {
@@ -628,19 +649,126 @@ async function fetchJsonArray(url: string): Promise<unknown[]> {
   return items;
 }
 
-async function evaluateString(client: CdpClient, expression: string): Promise<string> {
+async function dispatchNativeClick(client: CdpCommandClient, selector: string): Promise<CdpSelectorPoint | null> {
+  const point = await resolveSelectorPoint(client, selector);
+  if (!point) {
+    return null;
+  }
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: point.x,
+    y: point.y,
+    button: 'none'
+  });
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    clickCount: 1
+  });
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    clickCount: 1
+  });
+  return point;
+}
+
+async function resolveSelectorPoint(client: CdpCommandClient, selector: string): Promise<CdpSelectorPoint | null> {
+  const response = await client.send('Runtime.evaluate', {
+    expression: selectorPointExpression(selector),
+    returnByValue: true,
+    awaitPromise: true
+  });
+  return readSelectorPoint(response);
+}
+
+async function focusAndSelectSelector(client: CdpCommandClient, selector: string): Promise<boolean> {
+  return evaluateBoolean(client, focusAndSelectSelectorExpression(selector));
+}
+
+function selectorPointExpression(selector: string): string {
+  return `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return null;
+    if (typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+    }
+    const rect = el.getBoundingClientRect();
+    if (!Number.isFinite(rect.left) || !Number.isFinite(rect.top) || rect.width <= 0 || rect.height <= 0) return null;
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden') return null;
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+      width: rect.width,
+      height: rect.height
+    };
+  })()`;
+}
+
+function focusAndSelectSelectorExpression(selector: string): string {
+  return `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return false;
+    if (typeof el.focus === 'function') {
+      el.focus({ preventScroll: true });
+    }
+    if (typeof el.select === 'function') {
+      el.select();
+      return true;
+    }
+    const doc = el.ownerDocument || document;
+    const selection = doc.getSelection ? doc.getSelection() : window.getSelection();
+    if (selection && doc.createRange) {
+      const range = doc.createRange();
+      range.selectNodeContents(el);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    return true;
+  })()`;
+}
+
+function readSelectorPoint(response: unknown): CdpSelectorPoint | null {
+  const value = readRemoteObject(response);
+  if (!value) {
+    return null;
+  }
+  const x = readFiniteNumberField(value, 'x');
+  const y = readFiniteNumberField(value, 'y');
+  const width = readFiniteNumberField(value, 'width');
+  const height = readFiniteNumberField(value, 'height');
+  if (x === null || y === null || width === null || height === null) {
+    return null;
+  }
+  return { x, y, width, height };
+}
+
+async function evaluateString(client: CdpCommandClient, expression: string): Promise<string> {
   const response = await client.send('Runtime.evaluate', { expression, returnByValue: true });
   return readRemoteValue(response);
 }
 
-async function evaluateBoolean(client: CdpClient, expression: string): Promise<boolean> {
+async function evaluateBoolean(client: CdpCommandClient, expression: string): Promise<boolean> {
   const response = await client.send('Runtime.evaluate', { expression, returnByValue: true });
   return readRemoteValue(response) === 'true';
 }
 
-async function readCurrentUrl(client: CdpClient): Promise<string | null> {
+async function readCurrentUrl(client: CdpCommandClient): Promise<string | null> {
   const url = await evaluateString(client, 'window.location.href');
   return url.trim() || null;
+}
+
+function readRemoteObject(response: unknown): Record<string, unknown> | null {
+  if (!isRecord(response) || !isRecord(response.result)) {
+    return null;
+  }
+  const value = response.result.value;
+  return isRecord(value) ? value : null;
 }
 
 function readRemoteValue(response: unknown): string {
@@ -656,6 +784,11 @@ function readRemoteValue(response: unknown): string {
 
 function readStringField(value: unknown, key: string): string {
   return isRecord(value) && typeof value[key] === 'string' ? value[key] : '';
+}
+
+function readFiniteNumberField(value: Record<string, unknown>, key: string): number | null {
+  const field = value[key];
+  return typeof field === 'number' && Number.isFinite(field) ? field : null;
 }
 
 function requireSelector(action: BrowserInteractiveActionInput): string {
