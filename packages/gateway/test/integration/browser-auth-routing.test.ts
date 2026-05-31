@@ -8,11 +8,33 @@ import {
   installFakeOpenCommand
 } from './browser-local-profile-fixtures.js';
 import { createGatewayTestHarness, type GatewayTestHarness } from './test-harness.js';
+import type { BrowserInteractiveProvider } from '../../src/browser-interactive-service.js';
 
 interface TelegramIngressBody {
   status: string;
   sessionId?: string;
   runId?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function expectRecord(value: unknown, label: string): Record<string, unknown> {
+  expect(isRecord(value), `${label} should be an object`).toBe(true);
+  if (isRecord(value)) {
+    return value;
+  }
+  return {};
+}
+
+function recordsField(record: Record<string, unknown>, key: string): Array<Record<string, unknown>> {
+  const value = record[key];
+  expect(Array.isArray(value), `${key} should be an array`).toBe(true);
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry, index) => expectRecord(entry, `${key}[${index}]`));
 }
 
 const createTelegramPayload = (input: {
@@ -533,6 +555,169 @@ describe('browser auth routing integration', () => {
       expect(testBody.run?.error).toBe('dynamic_render_required');
       expect(testBody.test?.blockedReason).toBe('dynamic_render_required');
       expect(testBody.test?.artifacts?.[0]?.previewText).toContain('JavaScript is not available');
+    },
+    20_000
+  );
+
+  it(
+    'falls back from Scrapling to interactive rendered reads for Telegram dynamic browser requests',
+    async () => {
+      process.env.GOOGLE_API_KEY = 'integration-google-key';
+      const telegramSends: string[] = [];
+      stubTelegramFetch(telegramSends);
+
+      const interactiveProvider = {
+        run: vi.fn(async (input) => ({
+          schema: 'ops.browser-interactive-run.v1',
+          provider: 'test',
+          ok: true,
+          startedUrl: input.url,
+          finalUrl: input.url,
+          actions: input.actions.map((action, index) => ({
+            index,
+            type: action.type,
+            ok: true,
+            summary: `rendered:${action.type}`,
+            selector: action.selector ?? null,
+            url: action.url ?? null,
+            textPreview: 'Rendered X home page is reachable.',
+            error: null
+          })),
+          artifacts: [
+            {
+              id: 'interactive_artifact:0:read',
+              actionIndex: 0,
+              kind: 'read',
+              mimeType: 'text/plain',
+              sizeBytes: 86,
+              contentPreview: 'Rendered X home page\nLogged in account shell visible\nFollowers: 21K\nLatest follower: Example User',
+              contentBase64: Buffer.from(
+                'Rendered X home page\nLogged in account shell visible\nFollowers: 21K\nLatest follower: Example User',
+                'utf8'
+              ).toString('base64')
+            }
+          ],
+          error: null
+        }))
+      } satisfies BrowserInteractiveProvider;
+
+      const harness = await createGatewayTestHarness(
+        'browser-auth-routing-interactive-fallback',
+        (config) => {
+          config.channel.telegram.botToken = '123456:ABCDEFGHIJKLMNOPQRSTUVWXyz_123456789';
+          config.browser.enabled = true;
+          config.browser.transport = 'stdio';
+          config.browser.executable = installFakeScraplingExecutable(config.runtime.workspaceRoot);
+          config.browser.allowedAgents = ['ceo-default'];
+          config.browser.policy.allowStealth = true;
+          config.browser.policy.requireApprovalForStealth = false;
+          config.runtime.adapters.process = {
+            command: 'node',
+            args: ['-e', 'process.stdin.resume(); process.stdin.on("end", () => process.stdout.write("model should not run"));']
+          };
+        },
+        {
+          buildOptions: {
+            interactiveBrowserProvider: interactiveProvider
+          }
+        }
+      );
+      harnesses.push(harness);
+      await applyCeoBaseline(harness);
+
+      const runtimeResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/ingress/telegram',
+        payload: createTelegramPayload({
+          updateId: 82200,
+          senderId: 8220,
+          text: '/runtime process',
+          username: 'browserfallback'
+        })
+      });
+      expect(runtimeResponse.statusCode).toBe(200);
+
+      const telegramSessionId = await findTelegramSessionId(harness);
+      const cookieResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/browser/cookie-jars/import',
+        payload: {
+          sessionId: telegramSessionId,
+          label: 'X interactive fallback cookies',
+          domains: ['x.com'],
+          sourceKind: 'raw_cookie_header',
+          raw: 'auth_token=x-live-token; ct0=x-csrf'
+        }
+      });
+      expect(cookieResponse.statusCode).toBe(200);
+      const cookieBody = expectRecord(cookieResponse.json(), 'cookie response');
+      const cookieJar = expectRecord(cookieBody.cookieJar, 'cookie jar');
+      const cookieJarId = typeof cookieJar.id === 'string' ? cookieJar.id : '';
+      expect(cookieJarId).toBeTruthy();
+
+      const profileResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/browser/session-profiles/upsert',
+        payload: {
+          sessionId: telegramSessionId,
+          label: 'X rendered personal login',
+          domains: ['x.com'],
+          cookieJarId,
+          siteKey: 'x',
+          browserKind: 'chrome',
+          cdpEndpoint: 'http://127.0.0.1:9339',
+          enabled: true,
+          lastVerifiedAt: '2026-05-31T09:00:00.000Z',
+          lastVerificationStatus: 'connected'
+        }
+      });
+      expect(profileResponse.statusCode).toBe(200);
+      const profileBody = expectRecord(profileResponse.json(), 'profile response');
+      const sessionProfile = expectRecord(profileBody.sessionProfile, 'session profile');
+      const sessionProfileId = typeof sessionProfile.id === 'string' ? sessionProfile.id : '';
+      expect(sessionProfileId).toBeTruthy();
+
+      const queuedResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/ingress/telegram',
+        payload: createTelegramPayload({
+          updateId: 82201,
+          senderId: 8220,
+          text: 'Go to X and tell me whether my logged-in home page is reachable.',
+          username: 'browserfallback'
+        })
+      });
+      expect(queuedResponse.statusCode).toBe(200);
+      const queuedBody = expectRecord(queuedResponse.json(), 'queued response');
+      const runId = typeof queuedBody.runId === 'string' ? queuedBody.runId : '';
+      expect(runId).toBeTruthy();
+
+      const runStatus = await harness.waitForTerminalRun(runId, 20_000);
+      expect(runStatus.status).toBe('completed');
+      expect(runStatus.error).toBeNull();
+
+      expect(interactiveProvider.run).toHaveBeenCalledTimes(1);
+      const firstInteractiveCall = interactiveProvider.run.mock.calls[0];
+      expect(firstInteractiveCall).toBeDefined();
+      const interactiveInput = firstInteractiveCall?.[0];
+      expect(interactiveInput?.url).toBe('https://x.com/home');
+      expect(interactiveInput?.actions).toEqual([{ type: 'wait', timeoutMs: 2500 }, { type: 'read' }]);
+      expect(interactiveInput?.cookies.some((cookie) => cookie.name === 'auth_token' && cookie.value === 'x-live-token')).toBe(true);
+      expect(interactiveInput?.browserProfile?.cdpEndpoint).toBe('http://127.0.0.1:9339');
+
+      const timelineResponse = await harness.inject({
+        method: 'GET',
+        url: `/api/runs/${encodeURIComponent(runId)}/timeline`
+      });
+      expect(timelineResponse.statusCode).toBe(200);
+      const timelineBody = expectRecord(timelineResponse.json(), 'timeline response');
+      const timeline = recordsField(timelineBody, 'timeline');
+      const fallbackEvent = timeline.find((entry) => entry.type === 'browser.interactive_fallback.result');
+      expect(fallbackEvent).toBeDefined();
+      const fallbackPayload = expectRecord(JSON.parse(String(fallbackEvent?.payloadJson ?? '{}')), 'fallback payload');
+      expect(fallbackPayload.ok).toBe(true);
+      expect(fallbackPayload.sessionProfileId).toBe(sessionProfileId);
+      expect(telegramSends.join('\n')).toContain('Verified browser capture for @home: Followers 21K.');
     },
     20_000
   );

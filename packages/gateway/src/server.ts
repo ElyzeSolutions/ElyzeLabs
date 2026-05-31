@@ -33932,12 +33932,97 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
               structuredBrowserSummary = null;
             }
           }
+          let interactiveFallbackOutput: string | null = null;
+          let interactiveFallbackOk = false;
+          if (!browserResult.ok && browserResult.blockedReason === 'dynamic_render_required') {
+            try {
+              const interactiveSessionState = browserSessionVault.resolveForRequest({
+                url: browserInputUrl,
+                sessionProfileId: authProfileResolution.profile?.id ?? null
+              });
+              const interactiveProfile = interactiveSessionState.sessionProfile;
+              const interactiveStorageState = interactiveSessionState.storageState
+                ? parseJsonSafe<Record<string, unknown>>(interactiveSessionState.storageState.storageStateJson, {})
+                : null;
+              const interactiveControl = await browserInteractiveService.run({
+                url: browserInputUrl,
+                actions: [{ type: 'wait', timeoutMs: 2_500 }, { type: 'read' }],
+                previewChars: 1_400,
+                cookies: interactiveSessionState.cookies,
+                storageState: interactiveStorageState,
+                browserProfile: interactiveProfile
+                  ? {
+                      browserKind: interactiveProfile.browserKind,
+                      browserProfileName: interactiveProfile.browserProfileName,
+                      browserProfilePath: interactiveProfile.browserProfilePath,
+                      cdpEndpoint: interactiveProfile.cdpEndpoint,
+                      useRealChrome: interactiveProfile.useRealChrome
+                    }
+                  : null
+              });
+              const readArtifact = interactiveControl.artifacts.find((artifact) => artifact.kind === 'read') ?? null;
+              const readAction = interactiveControl.actions.find((action) => action.type === 'read') ?? null;
+              const interactivePreview = (readArtifact?.contentPreview ?? readAction?.textPreview ?? '').trim();
+              interactiveFallbackOk = interactiveControl.ok && interactivePreview.length > 0;
+              if (interactiveFallbackOk) {
+                structuredBrowserSummary = sanitizeBrowserVerificationSummary(
+                  formatStructuredBrowserSummary(interactivePreview, {
+                    url: interactiveControl.finalUrl ?? browserInputUrl
+                  })
+                );
+              }
+              interactiveFallbackOutput = [
+                `Interactive fallback provider: ${interactiveControl.provider}`,
+                `Interactive fallback: ${interactiveFallbackOk ? 'completed' : 'failed'}`,
+                interactiveControl.error ? `Interactive error: ${interactiveControl.error}` : null,
+                interactivePreview ? `Interactive preview: ${interactivePreview}` : null
+              ]
+                .filter((entry): entry is string => Boolean(entry))
+                .join('\n');
+              database.appendRunEvent({
+                runId: run.id,
+                sessionId: session.id,
+                type: 'browser.interactive_fallback.result',
+                details: interactiveFallbackOk
+                  ? 'Interactive browser fallback completed after JavaScript-required Scrapling capture.'
+                  : 'Interactive browser fallback failed after JavaScript-required Scrapling capture.',
+                payload: {
+                  provider: interactiveControl.provider,
+                  source: 'dynamic_render_required',
+                  targetUrl: browserInputUrl,
+                  ok: interactiveFallbackOk,
+                  actionCount: interactiveControl.actions.length,
+                  artifactCount: interactiveControl.artifacts.length,
+                  error: interactiveControl.error,
+                  sessionProfileId: interactiveProfile?.id ?? null
+                }
+              });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              interactiveFallbackOutput = `Interactive fallback failed: ${message}`;
+              database.appendRunEvent({
+                runId: run.id,
+                sessionId: session.id,
+                type: 'browser.interactive_fallback.result',
+                details: 'Interactive browser fallback failed after JavaScript-required Scrapling capture.',
+                payload: {
+                  source: 'dynamic_render_required',
+                  targetUrl: browserInputUrl,
+                  ok: false,
+                  error: message,
+                  sessionProfileId: authProfileResolution.profile?.id ?? null
+                }
+              });
+            }
+          }
+          const effectiveBrowserOk = browserResult.ok || interactiveFallbackOk;
           const browserOutput = [
             `Browser provider: ${browserResult.provider}/${browserResult.transport}`,
             `Selected tool: ${browserResult.selectedTool ?? 'none'}`,
             browserResult.fallbackReason ? `Fallback: ${browserResult.fallbackReason}` : null,
             browserResult.blockedReason ? `Blocked: ${browserResult.blockedReason}` : null,
             browserResult.error ? `Error: ${browserResult.error}` : null,
+            interactiveFallbackOutput,
             browserResult.promptInjectionDetected ? 'Prompt injection detected and treated as untrusted content.' : null,
             browserResult.requiresApproval ? 'Operator approval required before risky follow-up browser actions.' : null,
             structuredBrowserSummary ? `Structured result: ${structuredBrowserSummary}` : null,
@@ -33945,27 +34030,28 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
           ]
             .filter((entry): entry is string => Boolean(entry))
             .join('\n');
-          const browserAttemptError = browserResult.ok
+          const browserAttemptError = effectiveBrowserOk
             ? null
             : browserResult.blockedReason ?? browserResult.error ?? 'Browser execution failed';
 
           appendTerminalChunk(
             `[skill] ${BROWSER_CAPABILITY_SKILL} invoked\n${browserOutput}\n`,
-            browserResult.ok ? 'stdout' : 'stderr',
+            effectiveBrowserOk ? 'stdout' : 'stderr',
             {
               suppressTelegramLive: true
             }
           );
           if (input.sourceMode === 'native_tool_session') {
             appendRuntimeToolSessionEvent({
-              type: browserResult.ok ? 'tool_result' : browserResult.blockedReason ? 'tool_policy_blocked' : 'tool_error',
+              type: effectiveBrowserOk ? 'tool_result' : browserResult.blockedReason ? 'tool_policy_blocked' : 'tool_error',
               toolName: 'skill_call',
               payload: {
                 skill: BROWSER_CAPABILITY_SKILL,
                 browser: {
                   selectedTool: browserResult.selectedTool,
                   blockedReason: browserResult.blockedReason,
-                  fallbackReason: browserResult.fallbackReason
+                  fallbackReason: browserResult.fallbackReason,
+                  interactiveFallback: interactiveFallbackOk
                 }
               },
               summary: summarizeCommandOutputSnippet(browserOutput, 240) ?? 'Browser skill execution completed.',
@@ -33974,22 +34060,23 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
             });
           }
           emitEvent({
-            kind: browserResult.ok ? 'skill.called' : 'skill.denied',
+            kind: effectiveBrowserOk ? 'skill.called' : 'skill.denied',
             lane: item.lane,
             sessionId: session.id,
             runId: run.id,
-            level: browserResult.ok ? 'info' : 'warn',
-            message: `Browser capability ${browserResult.ok ? 'invoked' : 'blocked'} (${BROWSER_CAPABILITY_SKILL})`,
+            level: effectiveBrowserOk ? 'info' : 'warn',
+            message: `Browser capability ${effectiveBrowserOk ? 'invoked' : 'blocked'} (${BROWSER_CAPABILITY_SKILL})`,
             data: {
               reason: input.reason,
               sourceMode: input.sourceMode,
-              browserResult
+              browserResult,
+              interactiveFallback: interactiveFallbackOk
             }
           });
           return {
             attempt: {
               skillName: BROWSER_CAPABILITY_SKILL,
-              status: browserResult.ok ? 'ok' : 'error',
+              status: effectiveBrowserOk ? 'ok' : 'error',
               reason: input.reason,
               output: browserOutput || null,
               error: browserAttemptError
