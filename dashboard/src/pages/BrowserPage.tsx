@@ -117,6 +117,11 @@ const CONNECT_METHOD_OPTIONS: Array<{
     id: 'cookie_import',
     label: 'Paste cookies',
     detail: 'Fallback for other browsers, exported cookies.txt files, or service accounts.'
+  },
+  {
+    id: 'mobile_session_import',
+    label: 'Mobile handoff',
+    detail: 'Guided import for cookies or exported session data captured from a phone browser.'
   }
 ];
 const CONNECT_SITE_OPTIONS: Array<{
@@ -276,6 +281,7 @@ type BrowserFormState = {
     proxyProfileId: string;
     storageStateId: string;
     playwrightCaptureId: string;
+    cdpEndpoint: string;
   };
   connectBusy: boolean;
   loginCaptureBusy: boolean;
@@ -599,7 +605,8 @@ function useBrowserPageModel() {
         headersProfileId: '',
         proxyProfileId: '',
         storageStateId: '',
-        playwrightCaptureId: ''
+        playwrightCaptureId: '',
+        cdpEndpoint: ''
       },
       connectBusy: false,
       loginCaptureBusy: false,
@@ -820,8 +827,14 @@ function useBrowserPageModel() {
               allowedSessionIds: connectForm.allowedSessionId ? [connectForm.allowedSessionId] : [],
               domains: parseLineList(connectForm.domains),
               verifyUrl: connectForm.verifyUrl.trim() || null,
-              sourceKind: connectForm.method === 'cookie_import' ? connectForm.sourceKind : undefined,
-              raw: connectForm.method === 'cookie_import' ? connectForm.raw : undefined,
+              sourceKind:
+                connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import'
+                  ? connectForm.sourceKind
+                  : undefined,
+              raw:
+                connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import'
+                  ? connectForm.raw
+                  : undefined,
               headersProfileId: connectForm.headersProfileId || null,
               proxyProfileId: connectForm.proxyProfileId || null,
               storageStateId: connectForm.storageStateId || null,
@@ -847,7 +860,7 @@ function useBrowserPageModel() {
         timezoneId: result.sessionProfile.timezoneId ?? '',
         notes: result.sessionProfile.notes ?? ''
       }));
-      if (connectForm.method === 'cookie_import') {
+      if (connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import') {
         setConnectForm((current) => ({ ...current, raw: '' }));
       }
       if (connectForm.method === 'playwright_storage_state') {
@@ -1034,6 +1047,7 @@ function useBrowserPageModel() {
         headersProfileId: connectForm.headersProfileId || null,
         proxyProfileId: connectForm.proxyProfileId || null,
         storageStateId: connectForm.storageStateId || undefined,
+        cdpEndpoint: connectForm.cdpEndpoint.trim() || null,
         locale: connectForm.locale.trim() || null,
         countryCode: connectForm.countryCode.trim() || null,
         timezoneId: connectForm.timezoneId.trim() || null,
@@ -1072,6 +1086,7 @@ function useBrowserPageModel() {
     connectForm.allowedSessionId,
     connectForm.browserKind,
     connectForm.countryCode,
+    connectForm.cdpEndpoint,
     connectForm.domains,
     connectForm.headersProfileId,
     connectForm.label,
@@ -2244,14 +2259,14 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
           </div>
         </header>
 
-        <nav className="flex items-center gap-1 border-b border-white/5 pb-px">
+        <nav className="flex items-center gap-1 overflow-x-auto border-b border-white/5 pb-px">
           {TAB_META.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
               className={[
-                'relative px-4 py-2 text-sm font-medium transition-colors outline-none',
+                'relative shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors outline-none',
                 activeTab === tab.id ? 'text-white' : 'text-[var(--shell-muted)] hover:text-white'
               ].join(' ')}
             >
@@ -2673,6 +2688,15 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                                   : 'Opens a dedicated login browser and saves storage state into Scrapling auth.'}
                               </span>
                             </div>
+                            <label className="mt-3 block space-y-1.5">
+                              <span className="text-[0.65rem] font-bold uppercase tracking-wider text-violet-100/80">Live CDP Endpoint</span>
+                              <input
+                                value={connectForm.cdpEndpoint}
+                                onChange={(e) => setConnectForm((c) => ({ ...c, cdpEndpoint: e.target.value }))}
+                                placeholder="http://127.0.0.1:9339"
+                                className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                              />
+                            </label>
                           </div>
                         </div>
                       </div>
@@ -2737,7 +2761,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                       </div>
                     ) : null}
 
-                    {connectForm.method === 'cookie_import' ? (
+                    {connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import' ? (
                       <div className="space-y-4 rounded-xl border border-white/8 bg-white/[0.02] p-4">
                         <label className="space-y-1.5">
                           <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Cookie Source</span>
@@ -2795,7 +2819,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                           connectBusy ||
                           !connectForm.label.trim() ||
                           (connectForm.method === 'browser_profile_import' && !connectForm.browserProfileId) ||
-                          (connectForm.method === 'cookie_import' && !connectForm.raw.trim())
+                          ((connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import') && !connectForm.raw.trim())
                         }
                         className="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-white/90 disabled:opacity-50"
                       >

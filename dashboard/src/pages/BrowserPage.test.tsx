@@ -104,6 +104,7 @@ describe('BrowserPage', () => {
       browserKind: 'chrome',
       browserProfileName: null,
       browserProfilePath: null,
+      cdpEndpoint: null,
       locale: null,
       countryCode: null,
       timezoneId: null,
@@ -184,6 +185,9 @@ describe('BrowserPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Sessions' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Instagram' }));
+    fireEvent.change(await screen.findByLabelText('Live CDP Endpoint'), {
+      target: { value: 'http://127.0.0.1:9339' }
+    });
     fireEvent.click(await screen.findByRole('button', { name: 'Save current login' }));
 
     await waitFor(() =>
@@ -194,7 +198,8 @@ describe('BrowserPage', () => {
           browserKind: 'chrome',
           label: 'Instagram personal login',
           domains: ['www.instagram.com', 'instagram.com'],
-          verifyUrl: 'https://www.instagram.com/'
+          verifyUrl: 'https://www.instagram.com/',
+          cdpEndpoint: 'http://127.0.0.1:9339'
         })
       )
     );
@@ -220,7 +225,7 @@ describe('BrowserPage', () => {
       proxyProfileId: null,
       storageStateId: null,
       useRealChrome: true,
-      profileClass: 'real_chrome',
+      profileClass: 'local_profile',
       isManaged: false,
       isIsolated: false,
       isolationSummary: 'Uses imported cookies from Personal Chrome.',
@@ -231,6 +236,7 @@ describe('BrowserPage', () => {
       browserKind: 'chrome',
       browserProfileName: 'Default',
       browserProfilePath: chromeProfile.profilePath,
+      cdpEndpoint: null,
       locale: null,
       countryCode: null,
       timezoneId: null,
@@ -351,5 +357,113 @@ describe('BrowserPage', () => {
       )
     );
     expect(await screen.findByText('Verified Instagram login.')).toBeInTheDocument();
+  });
+
+  it('connects a mobile handoff session through the cookie vault path', async () => {
+    const connectedProfile = {
+      id: 'browser_session_profile:tiktok-mobile',
+      label: 'TikTok personal login',
+      domains: ['www.tiktok.com', 'tiktok.com'],
+      cookieJarId: 'browser_cookie_jar:tiktok-mobile',
+      headersProfileId: null,
+      proxyProfileId: null,
+      storageStateId: null,
+      useRealChrome: false,
+      profileClass: 'auth_state',
+      isManaged: false,
+      isIsolated: true,
+      isolationSummary: 'Uses a saved mobile cookie copy.',
+      ownerLabel: null,
+      visibility: 'shared',
+      allowedSessionIds: [],
+      siteKey: 'tiktok',
+      browserKind: null,
+      browserProfileName: null,
+      browserProfilePath: null,
+      cdpEndpoint: null,
+      locale: null,
+      countryCode: null,
+      timezoneId: null,
+      notes: null,
+      enabled: true,
+      lastVerifiedAt: '2026-05-31T10:00:00.000Z',
+      lastVerificationStatus: 'connected',
+      lastVerificationSummary: 'Verified TikTok login.',
+      health: {
+        state: 'healthy',
+        summary: 'Verified TikTok login.',
+        needsReconnect: false
+      },
+      createdAt: '2026-05-31T10:00:00.000Z',
+      updatedAt: '2026-05-31T10:00:00.000Z'
+    };
+    const vault = {
+      cookieJars: [],
+      headerProfiles: [],
+      proxyProfiles: [],
+      storageStates: [],
+      sessionProfiles: [],
+      localProfiles: []
+    };
+    apiMocks.fetchBrowserSessionVault.mockResolvedValue(vault);
+    apiMocks.connectBrowserAccount.mockResolvedValue({
+      vault: {
+        ...vault,
+        sessionProfiles: [connectedProfile]
+      },
+      sessionProfile: connectedProfile,
+      cookieJar: null,
+      storageState: null,
+      verification: {
+        run: {
+          id: 'run-browser-verify',
+          sessionId: 'session-browser-verify',
+          agentId: 'ceo-elyzelabs',
+          runtime: 'process',
+          prompt: 'Verify TikTok login',
+          status: 'completed',
+          output: 'Verified',
+          error: null,
+          startedAt: '2026-05-31T10:00:00.000Z',
+          finishedAt: '2026-05-31T10:00:01.000Z',
+          costUsd: 0,
+          metadata: {}
+        },
+        trace: null,
+        summary: 'Verified TikTok login.',
+        method: 'mobile_session_import',
+        site: {
+          siteKey: 'tiktok',
+          label: 'TikTok',
+          domains: ['www.tiktok.com', 'tiktok.com'],
+          verifyUrl: 'https://www.tiktok.com/foryou',
+          extractorId: 'tiktok_profile',
+          intent: 'structured_extract',
+          dynamicLikely: true,
+          requiresStealth: true,
+          mainContentOnly: false
+        }
+      }
+    });
+
+    renderDashboardPage(<BrowserPage />, { path: '/browser' });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sessions' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Mobile handoff/ }));
+    fireEvent.change(await screen.findByLabelText('Cookie Payload'), {
+      target: { value: 'sid=tiktok-mobile' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect & Verify' }));
+
+    await waitFor(() =>
+      expect(apiMocks.connectBrowserAccount).toHaveBeenCalledWith(
+        'token-123',
+        expect.objectContaining({
+          method: 'mobile_session_import',
+          sourceKind: 'netscape_cookies_txt',
+          raw: 'sid=tiktok-mobile'
+        })
+      )
+    );
   });
 });

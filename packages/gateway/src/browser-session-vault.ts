@@ -157,6 +157,7 @@ export class BrowserSessionVault {
     browserKind?: BrowserSessionProfileRecord['browserKind'];
     browserProfileName?: string | null;
     browserProfilePath?: string | null;
+    cdpEndpoint?: string | null;
     locale?: string | null;
     countryCode?: string | null;
     timezoneId?: string | null;
@@ -182,6 +183,7 @@ export class BrowserSessionVault {
       browserKind: input.browserKind ?? null,
       browserProfileName: input.browserProfileName ?? null,
       browserProfilePath: input.browserProfilePath ?? null,
+      cdpEndpoint: input.cdpEndpoint ?? null,
       locale: input.locale ?? null,
       countryCode: input.countryCode ?? null,
       timezoneId: input.timezoneId ?? null,

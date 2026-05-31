@@ -6167,7 +6167,7 @@ export async function buildGatewayApp(
     const isLocalProfileImport = !hasStorageAuthState && Boolean(record.browserKind || record.browserProfileName || record.browserProfilePath);
     const hasSavedAuthState = Boolean(record.cookieJarId || record.storageStateId);
     const isManaged = !record.useRealChrome && !isLocalProfileImport && !hasSavedAuthState;
-    const profileClass = isManaged ? 'managed' : hasStorageAuthState ? 'auth_state' : isLocalProfileImport ? 'local_profile' : 'real_chrome';
+    const profileClass = isManaged ? 'managed' : isLocalProfileImport ? 'local_profile' : hasSavedAuthState ? 'auth_state' : 'real_chrome';
     const localBrowserLabel =
       record.browserKind === 'firefox'
         ? 'Firefox/Zen'
@@ -6187,13 +6187,13 @@ export async function buildGatewayApp(
       useRealChrome: record.useRealChrome,
       profileClass,
       isManaged,
-      isIsolated: isManaged || isLocalProfileImport || hasStorageAuthState,
+      isIsolated: isManaged || isLocalProfileImport || hasSavedAuthState,
       isolationSummary: isManaged
         ? 'Agent-only managed browser profile isolated from personal Chrome data.'
-        : hasStorageAuthState
-          ? 'Uses a saved authenticated cookie/storage-state copy for governed Scrapling capture; no live personal browser profile is controlled by default.'
-          : isLocalProfileImport
-            ? `Imported from ${record.browserProfileName ? `${localBrowserLabel} profile ${record.browserProfileName}` : `a ${localBrowserLabel} profile`}; Elyze uses a saved cookie copy and does not control that personal browser profile live.`
+        : isLocalProfileImport
+          ? `Imported from ${record.browserProfileName ? `${localBrowserLabel} profile ${record.browserProfileName}` : `a ${localBrowserLabel} profile`}; Elyze uses a saved cookie copy and does not control that personal browser profile live.`
+          : hasSavedAuthState
+            ? 'Uses a saved authenticated cookie/storage-state copy for governed Scrapling capture; no live personal browser profile is controlled by default.'
             : `Attached to ${record.browserProfileName ?? 'a local Chrome profile'}; personal profile isolation depends on the selected source.`,
       ownerLabel: record.ownerLabel,
       visibility: record.visibility,
@@ -6202,6 +6202,7 @@ export async function buildGatewayApp(
       browserKind: record.browserKind,
       browserProfileName: record.browserProfileName,
       browserProfilePath: record.browserProfilePath,
+      cdpEndpoint: record.cdpEndpoint,
       locale: record.locale,
       countryCode: record.countryCode,
       timezoneId: record.timezoneId,
@@ -6322,7 +6323,12 @@ export async function buildGatewayApp(
   });
   type BrowserConnectSiteKey = 'tiktok' | 'instagram' | 'reddit' | 'x' | 'pinterest' | 'facebook' | 'generic';
   type BrowserNamedSiteKey = Exclude<BrowserConnectSiteKey, 'generic'>;
-  type BrowserConnectMethod = 'real_chrome' | 'cookie_import' | 'browser_profile_import' | 'playwright_storage_state';
+  type BrowserConnectMethod =
+    | 'real_chrome'
+    | 'cookie_import'
+    | 'browser_profile_import'
+    | 'playwright_storage_state'
+    | 'mobile_session_import';
   type BrowserPlaywrightSessionMetadata = {
     browserKind: BrowserLocalProfileKind | null;
     browserProfilePath: string | null;
@@ -6689,6 +6695,7 @@ export async function buildGatewayApp(
     domains: string[];
     browserKind: BrowserLocalProfileKind | null;
     browserProfilePath: string | null;
+    cdpEndpoint?: string | null;
     notes: string | null;
     storageStateId?: string | null;
     sessionProfileId?: string | null;
@@ -6732,6 +6739,7 @@ export async function buildGatewayApp(
       siteKey: input.siteKey,
       browserKind: input.browserKind,
       browserProfilePath: input.browserProfilePath,
+      cdpEndpoint: input.cdpEndpoint ?? null,
       notes: input.notes ?? 'Default path is governed Scrapling capture with saved Playwright auth state.',
       enabled: true
     });
@@ -52464,6 +52472,10 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         typeof body.browserProfilePath === 'string' && body.browserProfilePath.trim().length > 0
           ? body.browserProfilePath.trim()
           : null,
+      cdpEndpoint:
+        typeof body.cdpEndpoint === 'string' && body.cdpEndpoint.trim().length > 0
+          ? body.cdpEndpoint.trim()
+          : null,
       locale: typeof body.locale === 'string' && body.locale.trim().length > 0 ? body.locale.trim() : null,
       countryCode:
         typeof body.countryCode === 'string' && body.countryCode.trim().length > 0
@@ -52810,6 +52822,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
           typeof body.browserProfilePath === 'string' && body.browserProfilePath.trim().length > 0
             ? body.browserProfilePath.trim()
             : importedPlaywrightSession?.browserProfilePath ?? null,
+        cdpEndpoint,
         notes:
           typeof body.notes === 'string' && body.notes.trim().length > 0
             ? body.notes.trim()
@@ -52896,7 +52909,10 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
     }
     const body = (request.body ?? {}) as Record<string, unknown>;
     const method: BrowserConnectMethod =
-      body.method === 'cookie_import' || body.method === 'browser_profile_import' || body.method === 'playwright_storage_state'
+      body.method === 'cookie_import' ||
+      body.method === 'mobile_session_import' ||
+      body.method === 'browser_profile_import' ||
+      body.method === 'playwright_storage_state'
         ? body.method
         : 'real_chrome';
     const siteKeyRaw = typeof body.siteKey === 'string' ? body.siteKey.trim().toLowerCase() : 'generic';
@@ -52924,11 +52940,12 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
     let importedStorageState: ReturnType<BrowserSessionVault['upsertStorageState']> | null = null;
     let importedBrowserProfile: LocalBrowserProfileRow | null = null;
     let importedPlaywrightSession: BrowserPlaywrightSessionMetadata | null = null;
-    if (method === 'cookie_import') {
+    let resolvedPlaywrightCdpEndpoint: string | null = null;
+    if (method === 'cookie_import' || method === 'mobile_session_import') {
       const raw = typeof body.raw === 'string' ? body.raw.trim() : '';
       const sourceKind = parseBrowserCookieSourceKind(body.sourceKind);
       if (!raw) {
-        return jsonError(reply, 'raw is required for cookie_import', 400);
+        return jsonError(reply, method === 'mobile_session_import' ? 'raw is required for mobile_session_import' : 'raw is required for cookie_import', 400);
       }
       if (!sourceKind) {
         return jsonError(reply, 'sourceKind must be raw_cookie_header|netscape_cookies_txt|manual|json_cookie_export|browser_profile_import', 400);
@@ -52942,7 +52959,12 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         domains,
         sourceKind,
         raw,
-        notes: typeof body.notes === 'string' && body.notes.trim().length > 0 ? body.notes.trim() : null
+        notes:
+          typeof body.notes === 'string' && body.notes.trim().length > 0
+            ? body.notes.trim()
+            : method === 'mobile_session_import'
+              ? 'Imported through mobile handoff; Scrapling uses the saved cookie copy by default.'
+              : null
       });
     } else if (method === 'browser_profile_import') {
       const browserKind = parseLocalBrowserKind(body.browserKind);
@@ -53024,6 +53046,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         }
       }
       const resolvedCdpEndpoint = cdpEndpoint ?? importedPlaywrightSession?.cdpEndpoint ?? null;
+      resolvedPlaywrightCdpEndpoint = resolvedCdpEndpoint;
       if (!storageState && resolvedCdpEndpoint) {
         const root = path.join(
           path.dirname(path.resolve(config.persistence.sqlitePath)),
@@ -53117,6 +53140,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         importedBrowserProfile?.profilePath ??
         importedPlaywrightSession?.browserProfilePath ??
         (typeof body.browserProfilePath === 'string' && body.browserProfilePath.trim().length > 0 ? body.browserProfilePath.trim() : null),
+      cdpEndpoint: resolvedPlaywrightCdpEndpoint,
       locale: typeof body.locale === 'string' && body.locale.trim().length > 0 ? body.locale.trim() : null,
       countryCode:
         typeof body.countryCode === 'string' && body.countryCode.trim().length > 0 ? body.countryCode.trim().toUpperCase() : null,
@@ -53412,6 +53436,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
           browserKind: sessionProfile.browserKind,
           browserProfileName: sessionProfile.browserProfileName,
           browserProfilePath: sessionProfile.browserProfilePath,
+          cdpEndpoint: sessionProfile.cdpEndpoint,
           useRealChrome: sessionProfile.useRealChrome
         }
       : null;
@@ -53448,6 +53473,13 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
     const actions = parseBrowserInteractiveActions(body.actions);
     if (actions.length === 0) {
       return jsonError(reply, 'actions must include at least one interactive browser action', 400);
+    }
+    const requestedCdpEndpoint =
+      typeof body.cdpEndpoint === 'string' && body.cdpEndpoint.trim().length > 0 ? body.cdpEndpoint.trim() : null;
+    if (requestedCdpEndpoint && resolveRequestRole(request, config.server.apiToken) !== 'admin') {
+      return jsonError(reply, 'Admin access is required to attach interactive control to an explicit local CDP endpoint.', 403, {
+        reason: 'browser_interactive_cdp_endpoint_requires_admin'
+      });
     }
 
     const requestedSessionId = typeof body.sessionId === 'string' && body.sessionId.trim().length > 0 ? body.sessionId.trim() : null;
@@ -53531,6 +53563,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         previewChars: Number.isFinite(Number(body.previewChars)) ? Math.max(80, Math.min(8_000, Number(body.previewChars))) : 1_000,
         cookies: resolvedSessionState.cookies,
         storageState: browserInteractiveStorageStatePayload(resolvedSessionState.storageState),
+        cdpEndpoint: requestedCdpEndpoint,
         browserProfile: browserInteractiveProfilePayload(resolvedSessionState.sessionProfile)
       });
       database.appendRunEvent({

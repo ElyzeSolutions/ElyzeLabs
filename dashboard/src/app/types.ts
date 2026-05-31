@@ -1004,6 +1004,7 @@ export interface BrowserSessionProfileSummaryRow {
   browserKind: BrowserLocalProfileKind | null;
   browserProfileName: string | null;
   browserProfilePath: string | null;
+  cdpEndpoint: string | null;
   locale: string | null;
   countryCode: string | null;
   timezoneId: string | null;
@@ -1057,7 +1058,12 @@ export interface BrowserTestRequestRow {
 }
 
 export type BrowserConnectSiteKey = 'tiktok' | 'instagram' | 'reddit' | 'x' | 'pinterest' | 'facebook' | 'generic';
-export type BrowserConnectMethod = 'real_chrome' | 'cookie_import' | 'browser_profile_import' | 'playwright_storage_state';
+export type BrowserConnectMethod =
+  | 'real_chrome'
+  | 'cookie_import'
+  | 'browser_profile_import'
+  | 'playwright_storage_state'
+  | 'mobile_session_import';
 
 export interface BrowserConnectSitePresetRow {
   siteKey: BrowserConnectSiteKey;

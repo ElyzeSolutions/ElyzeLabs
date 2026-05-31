@@ -1345,5 +1345,11 @@ ALTER TABLE browser_session_profiles ADD COLUMN browser_kind TEXT;
 ALTER TABLE browser_session_profiles ADD COLUMN browser_profile_name TEXT;
 ALTER TABLE browser_session_profiles ADD COLUMN browser_profile_path TEXT;
 `
+  },
+  {
+    id: '026_browser_session_profile_live_cdp_endpoint',
+    sql: `
+ALTER TABLE browser_session_profiles ADD COLUMN cdp_endpoint TEXT;
+`
   }
 ];

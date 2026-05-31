@@ -7,6 +7,7 @@ import type {
   ApiEnvelope,
   BinaryAvailabilityRow,
   BacklogBoardColumns,
+  BacklogDeliveryRow,
   BacklogDeliveryDetailRow,
   BacklogContractsState,
   BacklogDecisionStreamRow,
@@ -2272,6 +2273,34 @@ export async function fetchBacklogContracts(token?: string): Promise<BacklogCont
   return response.contracts;
 }
 
+export async function createBacklogItem(
+  token: string,
+  payload: {
+    title: string;
+    description?: string;
+    state?: BacklogItemRow['state'];
+    priority?: number;
+    labels?: string[];
+    projectId?: string | null;
+    repoRoot?: string | null;
+    source?: string;
+  }
+): Promise<BacklogItemRow> {
+  const response = await apiRequest<ApiEnvelope & { item: BacklogItemRow }>(
+    '/api/backlog/items',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        ...payload,
+        actor: 'dashboard',
+        source: payload.source ?? 'dashboard'
+      })
+    },
+    { token }
+  );
+  return response.item;
+}
+
 export async function cleanupBacklog(
   token: string,
   payload: {
@@ -2391,6 +2420,44 @@ export async function updateBacklogDelivery(
     { token }
   );
   return response.item;
+}
+
+export async function syncBacklogIssue(
+  token: string,
+  itemId: string
+): Promise<{
+  itemId: string;
+  issue: {
+    number: number | null;
+    url: string | null;
+    state: string | null;
+    labels: string[];
+    assignee: string | null;
+  };
+  delivery: BacklogDeliveryRow;
+}> {
+  return apiRequest<
+    ApiEnvelope & {
+      itemId: string;
+      issue: {
+        number: number | null;
+        url: string | null;
+        state: string | null;
+        labels: string[];
+        assignee: string | null;
+      };
+      delivery: BacklogDeliveryRow;
+    }
+  >(
+    `/api/backlog/items/${encodeURIComponent(itemId)}/issues/sync`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actor: 'dashboard'
+      })
+    },
+    { token }
+  );
 }
 
 export async function fetchBacklogDeliveryDetail(

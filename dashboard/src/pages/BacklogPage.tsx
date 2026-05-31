@@ -26,8 +26,10 @@ import { toast } from 'sonner';
 
 import {
   cleanupBacklog,
+  createBacklogItem,
   deleteBacklogItem,
   overrideBacklogItem,
+  syncBacklogIssue,
   tickBacklogOrchestration,
   transitionBacklogItem
 } from '../app/api';
@@ -206,6 +208,43 @@ function resolveEvidenceChip(item: BacklogItemRow): { label: string; tone: strin
     return { label: 'Evidence Missing', tone: 'text-rose-300 border-rose-500/30 bg-rose-500/10' };
   }
   return null;
+}
+
+function resolveDeliveryChip(item: BacklogItemRow): { label: string; tone: string } | null {
+  const delivery = item.delivery;
+  if (!delivery) {
+    return null;
+  }
+  const githubState = delivery.githubState?.replace(/_/g, ' ') ?? null;
+  if (githubState) {
+    const critical = delivery.githubState === 'checks_failed' || delivery.githubState === 'blocked';
+    const ready = delivery.githubState === 'ready_to_merge' || delivery.githubState === 'merged';
+    return {
+      label: githubState,
+      tone: critical
+        ? 'text-rose-200 border-rose-500/30 bg-rose-500/10'
+        : ready
+          ? 'text-emerald-200 border-emerald-500/30 bg-emerald-500/10'
+          : 'text-sky-200 border-sky-500/30 bg-sky-500/10'
+    };
+  }
+  return {
+    label: delivery.status.replace(/_/g, ' '),
+    tone: 'text-slate-200 border-white/10 bg-white/[0.04]'
+  };
+}
+
+function readGithubIssueMetadata(item: BacklogItemRow): { number: number | null; url: string | null; state: string | null } | null {
+  const issue = item.delivery?.metadata?.githubIssue;
+  if (!isRecord(issue)) {
+    return null;
+  }
+  const numberValue = Number(issue.number);
+  return {
+    number: Number.isFinite(numberValue) ? Math.floor(numberValue) : null,
+    url: typeof issue.url === 'string' ? issue.url : null,
+    state: typeof issue.state === 'string' ? issue.state : null
+  };
 }
 
 type BacklogOrchestrationState = {
@@ -856,6 +895,13 @@ export function BacklogPage() {
           onToggleStateFilter={toggleStateFilter}
         />
 
+        <CreateBacklogTaskPanel
+          token={token}
+          scope={scope}
+          currentScopeLabel={currentScopeLabel}
+          onCreated={load}
+        />
+
         <section className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[1fr_320px]">
           <div className="min-h-0 overflow-visible pb-4 md:overflow-x-auto">
             <div className="flex min-h-full flex-col items-stretch gap-4 md:inline-flex md:flex-row md:items-start md:pr-4">
@@ -898,6 +944,117 @@ export function BacklogPage() {
         />
       </div>
     </LazyMotion>
+  );
+}
+
+function CreateBacklogTaskPanel({
+  token,
+  scope,
+  currentScopeLabel,
+  onCreated
+}: {
+  token: string;
+  scope: BacklogProjectScopeRow;
+  currentScopeLabel: string;
+  onCreated: () => Promise<void>;
+}) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [labels, setLabels] = useState('');
+  const [priority, setPriority] = useState('70');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const createTask = useCallback(async (): Promise<void> => {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setError('Title is required.');
+      return;
+    }
+    if (!token) {
+      setError('Save API token in Settings first.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await createBacklogItem(token, {
+        title: trimmedTitle,
+        description: description.trim() || trimmedTitle,
+        state: 'planned',
+        priority: Number.isFinite(Number(priority)) ? Number(priority) : 70,
+        labels: labels
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0),
+        projectId: scope.unscopedOnly ? null : scope.projectId,
+        repoRoot: scope.unscopedOnly ? null : scope.repoRoot,
+        source: 'dashboard'
+      });
+      setTitle('');
+      setDescription('');
+      setLabels('');
+      await onCreated();
+      toast.success('Backlog task created.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to create backlog task.');
+    } finally {
+      setBusy(false);
+    }
+  }, [description, labels, onCreated, priority, scope.projectId, scope.repoRoot, scope.unscopedOnly, title, token]);
+
+  return (
+    <section className="shell-panel-soft rounded-3xl p-4">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_120px_auto]">
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">New Task</span>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={`Add to ${currentScopeLabel}`}
+            className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
+          />
+        </label>
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Description</span>
+          <input
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Acceptance notes or source context"
+            className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
+          />
+        </label>
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Priority</span>
+          <input
+            value={priority}
+            onChange={(event) => setPriority(event.target.value)}
+            inputMode="numeric"
+            className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
+          />
+        </label>
+        <div className="flex items-end">
+          <button
+            type="button"
+            onClick={() => void createTask()}
+            disabled={busy}
+            className="shell-button-accent w-full rounded-2xl px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.14em] disabled:opacity-60 lg:w-auto"
+          >
+            {busy ? 'Creating' : 'Create'}
+          </button>
+        </div>
+      </div>
+      <label className="mt-3 block space-y-1.5">
+        <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Labels</span>
+        <input
+          value={labels}
+          onChange={(event) => setLabels(event.target.value)}
+          placeholder="browser, github, telegram"
+          className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
+        />
+      </label>
+      {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
+    </section>
   );
 }
 
@@ -1381,6 +1538,7 @@ function TaskCard({
   onTransition: (item: BacklogTransitionItem, toState: BacklogState, reason: string) => Promise<void>;
 }) {
   const evidence = resolveEvidenceChip(item);
+  const delivery = resolveDeliveryChip(item);
   const unresolvedDeps = item.unresolvedDependencies?.length ?? 0;
   const projectLabel = prettifyProjectLabel(item.projectId);
   const repoLabel = resolveRepoLabel(item.repoRoot, item.metadata);
@@ -1448,6 +1606,14 @@ function TaskCard({
         )}
         {evidence && (
           <span className={`rounded-full border px-2 py-0.5 text-[10px] ${evidence.tone}`}>{evidence.label}</span>
+        )}
+        {delivery && (
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] capitalize ${delivery.tone}`}>{delivery.label}</span>
+        )}
+        {item.originChannel === 'telegram' && (
+          <span className="rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-100">
+            Telegram
+          </span>
         )}
         {item.execution?.runStatus === 'running' && (
           <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-200">
@@ -1590,6 +1756,11 @@ function TaskDetailPanel({
   const [overrideBusy, setOverrideBusy] = useState(false);
   const [overrideError, setOverrideError] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [issueBusy, setIssueBusy] = useState(false);
+  const [issueError, setIssueError] = useState<string | null>(null);
+  const [issueResult, setIssueResult] = useState<{ number: number | null; url: string | null; state: string | null } | null>(null);
+  const githubIssue = issueResult ?? readGithubIssueMetadata(task);
+  const hasGithubIssueSyncTarget = Boolean(task.delivery?.repoConnectionId || isRecord(task.metadata.githubRepoHint));
 
   const runOverride = useCallback(
     async (action: 'block' | 'requeue' | 'close' | 'force_delegate') => {
@@ -1630,6 +1801,28 @@ function TaskDetailPanel({
     },
     [onRefresh, task.assignedAgentId, task.id, token]
   );
+
+  const runIssueSync = useCallback(async (): Promise<void> => {
+    if (issueBusy) {
+      return;
+    }
+    setIssueBusy(true);
+    setIssueError(null);
+    try {
+      const result = await syncBacklogIssue(token, task.id);
+      setIssueResult({
+        number: result.issue.number,
+        url: result.issue.url,
+        state: result.issue.state
+      });
+      await onRefresh();
+      toast.success(result.issue.number ? `GitHub issue #${result.issue.number} synced.` : 'GitHub issue synced.');
+    } catch (error) {
+      setIssueError(error instanceof Error ? error.message : 'GitHub issue sync failed.');
+    } finally {
+      setIssueBusy(false);
+    }
+  }, [issueBusy, onRefresh, task.id, token]);
 
   const runDelete = useCallback(async (): Promise<void> => {
     if (deleteBusy) {
@@ -1685,6 +1878,33 @@ function TaskDetailPanel({
             token={token}
             onRefresh={onRefresh}
           />
+        )}
+
+        {hasGithubIssueSyncTarget && (
+          <section className="shell-panel-soft rounded-2xl p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h4 className="text-xs uppercase tracking-[0.16em] text-slate-500">GitHub Issue</h4>
+                <p className="mt-1 text-sm text-slate-300">
+                  {githubIssue?.number ? `#${githubIssue.number} ${githubIssue.state ?? ''}` : 'No linked issue yet.'}
+                </p>
+                {githubIssue?.url ? (
+                  <a href={githubIssue.url} target="_blank" rel="noreferrer" className="mt-1 block break-all text-xs text-[var(--shell-accent)]">
+                    {githubIssue.url}
+                  </a>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                disabled={issueBusy}
+                onClick={() => void runIssueSync()}
+                className="shell-button-ghost rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 hover:border-[color:var(--shell-accent-border)] disabled:opacity-60"
+              >
+                {issueBusy ? 'Syncing' : 'Sync Issue'}
+              </button>
+            </div>
+            {issueError ? <p className="mt-3 text-xs text-rose-300">{issueError}</p> : null}
+          </section>
         )}
 
         <section className="shell-panel-soft rounded-2xl p-4">

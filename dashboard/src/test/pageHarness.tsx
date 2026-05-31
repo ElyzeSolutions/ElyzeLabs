@@ -25,6 +25,7 @@ const { apiMocks, storeState, toastMocks, useAppStoreMock, routeHeaderContextMoc
     checkOnboardingProviderKeys: vi.fn(),
     cleanupBacklog: vi.fn(),
     connectBrowserAccount: vi.fn(),
+    createBacklogItem: vi.fn(),
     createSchedule: vi.fn(),
     deleteSchedule: vi.fn(),
     deleteBacklogItem: vi.fn(),
@@ -113,6 +114,7 @@ const { apiMocks, storeState, toastMocks, useAppStoreMock, routeHeaderContextMoc
     setSessionBrowserAuthProfile: vi.fn(),
     startBrowserLoginCapture: vi.fn(),
     startPlaywrightAuthCapture: vi.fn(),
+    syncBacklogIssue: vi.fn(),
     testOnboardingProviderConnections: vi.fn(),
     tickBacklogOrchestration: vi.fn(),
     transitionBacklogItem: vi.fn(),
@@ -514,6 +516,7 @@ function configurePageApiMocks(): void {
       browserKind: null,
       browserProfileName: null,
       browserProfilePath: null,
+      cdpEndpoint: null,
       locale: null,
       countryCode: null,
       timezoneId: null,
@@ -571,6 +574,54 @@ function configurePageApiMocks(): void {
     deliveryEvidence: null
   });
   apiMocks.fetchBacklogDecisionStream.mockResolvedValue([]);
+  apiMocks.createBacklogItem.mockResolvedValue({
+    id: 'backlog-created',
+    title: 'Created backlog item',
+    description: 'Created backlog item',
+    state: 'planned',
+    priority: 70,
+    labelsJson: '[]',
+    source: 'dashboard',
+    sourceRef: null,
+    createdBy: 'dashboard',
+    projectId: null,
+    repoRoot: null,
+    assignedAgentId: null,
+    linkedSessionId: null,
+    linkedRunId: null,
+    deliveryGroupId: null,
+    blockedReason: null,
+    originSessionId: null,
+    originMessageId: null,
+    originChannel: null,
+    originChatId: null,
+    originTopicId: null,
+    metadataJson: '{}',
+    createdAt: '2026-05-31T10:00:00.000Z',
+    updatedAt: '2026-05-31T10:00:00.000Z',
+    labels: [],
+    metadata: {},
+    dependencies: [],
+    dependencyStates: [],
+    unresolvedDependencies: [],
+    dispatchReady: true,
+    dispatch: null,
+    transitions: [],
+    execution: null,
+    delivery: null,
+    deliveryGroup: null
+  });
+  apiMocks.syncBacklogIssue.mockResolvedValue({
+    itemId: 'backlog-created',
+    issue: {
+      number: 42,
+      url: 'https://github.com/example/repo/issues/42',
+      state: 'open',
+      labels: ['backlog:planned'],
+      assignee: null
+    },
+    delivery: null
+  });
   apiMocks.fetchBoard.mockResolvedValue({
     queued: [],
     running: [],

@@ -21,6 +21,7 @@ export interface BrowserInteractiveRunInput {
   previewChars: number;
   cookies?: BrowserInteractiveCookie[];
   storageState?: Record<string, unknown> | null;
+  cdpEndpoint?: string | null;
   browserProfile?: BrowserInteractiveBrowserProfile | null;
 }
 
@@ -40,6 +41,7 @@ export interface BrowserInteractiveBrowserProfile {
   browserKind: 'chrome' | 'edge' | 'firefox' | null;
   browserProfileName?: string | null;
   browserProfilePath?: string | null;
+  cdpEndpoint?: string | null;
   useRealChrome?: boolean | null;
 }
 
@@ -89,7 +91,7 @@ export class BrowserInteractiveService {
 
 class CdpChromeInteractiveProvider implements BrowserInteractiveProvider {
   async run(input: BrowserInteractiveRunInput): Promise<BrowserInteractiveRunResult> {
-    const launchPlan = resolveCdpLaunchPlan(input.browserProfile ?? null);
+    const launchPlan = resolveCdpLaunchPlan(input.browserProfile ?? null, input.cdpEndpoint ?? null);
     if (launchPlan.error) {
       return {
         schema: 'ops.browser-interactive-run.v1',
@@ -103,28 +105,31 @@ class CdpChromeInteractiveProvider implements BrowserInteractiveProvider {
       };
     }
 
-    const port = await reservePort();
-    const tempUserDataDir = launchPlan.userDataDir ? null : await fs.mkdtemp(path.join(os.tmpdir(), 'ops-interactive-browser-'));
+    const port = launchPlan.cdpEndpoint ? null : await reservePort();
+    const tempUserDataDir = launchPlan.cdpEndpoint || launchPlan.userDataDir ? null : await fs.mkdtemp(path.join(os.tmpdir(), 'ops-interactive-browser-'));
     const userDataDir = launchPlan.userDataDir ?? tempUserDataDir ?? '';
-    const browserArgs = [
-      `--remote-debugging-port=${String(port)}`,
-      `--user-data-dir=${userDataDir}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--new-window',
-      'about:blank'
-    ];
-    if (launchPlan.profileDirectory) {
+    const browserArgs =
+      port === null
+        ? []
+        : [
+            `--remote-debugging-port=${String(port)}`,
+            `--user-data-dir=${userDataDir}`,
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--new-window',
+            'about:blank'
+          ];
+    if (port !== null && launchPlan.profileDirectory) {
       browserArgs.splice(2, 0, `--profile-directory=${launchPlan.profileDirectory}`);
     }
-    if (!launchPlan.userDataDir) {
+    if (port !== null && !launchPlan.userDataDir) {
       browserArgs.splice(4, 0, '--disable-background-networking', '--disable-sync');
     }
-    const chrome = spawn(launchPlan.executable, browserArgs);
+    const chrome = port === null ? null : spawn(launchPlan.executable, browserArgs);
 
     let client: CdpClient | null = null;
     try {
-      const tab = await waitForCdpTab(port, input.url);
+      const tab = launchPlan.cdpEndpoint ? await waitForCdpEndpointTab(launchPlan.cdpEndpoint, input.url) : await waitForCdpTab(port ?? 0, input.url);
       client = await CdpClient.connect(tab.webSocketDebuggerUrl);
       await client.send('Page.enable');
       await client.send('Runtime.enable');
@@ -197,6 +202,7 @@ interface CdpLaunchPlan {
   executable: string;
   userDataDir: string | null;
   profileDirectory: string | null;
+  cdpEndpoint: string | null;
   error: string | null;
 }
 
@@ -539,6 +545,76 @@ async function waitForCdpTab(port: number, fallbackUrl: string): Promise<CdpTab>
   throw new Error('Timed out waiting for Chrome DevTools tab.');
 }
 
+async function waitForCdpEndpointTab(endpoint: string, fallbackUrl: string): Promise<CdpTab> {
+  const normalized = endpoint.trim();
+  if (normalized.startsWith('ws://') || normalized.startsWith('wss://')) {
+    const httpEndpoint = cdpBrowserWebSocketToHttpEndpoint(normalized);
+    if (httpEndpoint) {
+      return waitForCdpHttpEndpointTab(httpEndpoint, fallbackUrl);
+    }
+    return { webSocketDebuggerUrl: normalized };
+  }
+  return waitForCdpHttpEndpointTab(normalized, fallbackUrl);
+}
+
+async function waitForCdpHttpEndpointTab(endpoint: string, fallbackUrl: string): Promise<CdpTab> {
+  const baseUrl = normalizeCdpHttpEndpoint(endpoint);
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    try {
+      const tabs = await fetchJsonArray(`${baseUrl}/json`);
+      const pageTab = tabs.find(
+        (entry) =>
+          isRecord(entry) &&
+          typeof entry.webSocketDebuggerUrl === 'string' &&
+          (entry.type === undefined || entry.type === 'page')
+      );
+      if (isRecord(pageTab) && typeof pageTab.webSocketDebuggerUrl === 'string') {
+        return { webSocketDebuggerUrl: pageTab.webSocketDebuggerUrl };
+      }
+      await openCdpTab(baseUrl, fallbackUrl);
+    } catch {
+      await delay(150);
+    }
+  }
+  throw new Error(`Timed out waiting for Chrome DevTools tab at ${baseUrl}.`);
+}
+
+function cdpBrowserWebSocketToHttpEndpoint(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (!url.pathname.startsWith('/devtools/browser/')) {
+      return null;
+    }
+    const protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+    return `${protocol}//${url.host}`;
+  } catch {
+    return null;
+  }
+}
+
+async function openCdpTab(baseUrl: string, fallbackUrl: string): Promise<void> {
+  const target = `${baseUrl}/json/new?${encodeURIComponent(fallbackUrl)}`;
+  const getResponse = await fetch(target);
+  if (getResponse.ok) {
+    return;
+  }
+  await fetch(target, { method: 'PUT' });
+}
+
+function normalizeCdpHttpEndpoint(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/u, '');
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return trimmed;
+    }
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return trimmed;
+  }
+}
+
 async function fetchJsonArray(url: string): Promise<unknown[]> {
   const response = await fetch(url);
   const parsed: unknown = await response.json();
@@ -603,12 +679,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function resolveCdpLaunchPlan(profile: BrowserInteractiveBrowserProfile | null): CdpLaunchPlan {
+function resolveCdpLaunchPlan(profile: BrowserInteractiveBrowserProfile | null, requestedCdpEndpoint: string | null): CdpLaunchPlan {
+  const cdpEndpoint = requestedCdpEndpoint?.trim() || profile?.cdpEndpoint?.trim() || null;
+  if (cdpEndpoint) {
+    return {
+      executable: '',
+      userDataDir: null,
+      profileDirectory: null,
+      cdpEndpoint,
+      error: null
+    };
+  }
+
   if (profile?.browserKind === 'firefox') {
     return {
       executable: '',
       userDataDir: null,
       profileDirectory: null,
+      cdpEndpoint: null,
       error:
         'Interactive live control currently supports Chromium profile paths only. Firefox/Zen profiles can still be used through imported cookies for governed capture.'
     };
@@ -620,6 +708,7 @@ function resolveCdpLaunchPlan(profile: BrowserInteractiveBrowserProfile | null):
       executable: '',
       userDataDir: null,
       profileDirectory: null,
+      cdpEndpoint: null,
       error: profile?.browserKind === 'edge' ? 'Microsoft Edge executable was not found on this host.' : 'Chrome executable was not found on this host.'
     };
   }
@@ -630,6 +719,7 @@ function resolveCdpLaunchPlan(profile: BrowserInteractiveBrowserProfile | null):
       executable,
       userDataDir: null,
       profileDirectory: null,
+      cdpEndpoint: null,
       error: `Chromium user data directory was not found: ${userDataDir}`
     };
   }
@@ -638,6 +728,7 @@ function resolveCdpLaunchPlan(profile: BrowserInteractiveBrowserProfile | null):
     executable,
     userDataDir,
     profileDirectory: resolveChromiumProfileDirectory(profile),
+    cdpEndpoint: null,
     error: null
   };
 }
@@ -718,8 +809,8 @@ async function reservePort(): Promise<number> {
   });
 }
 
-function terminateChrome(chrome: ChildProcessWithoutNullStreams): void {
-  if (!chrome.killed) {
+function terminateChrome(chrome: ChildProcessWithoutNullStreams | null): void {
+  if (chrome && !chrome.killed) {
     chrome.kill('SIGTERM');
   }
 }

@@ -561,6 +561,7 @@ describe('gateway browser api integration', () => {
         browserKind: 'chrome',
         browserProfileName: 'Profile 7',
         browserProfilePath: path.join(harness.root, 'Chrome', 'Profile 7'),
+        cdpEndpoint: 'http://127.0.0.1:9444',
         useRealChrome: true,
         enabled: true,
         lastVerificationStatus: 'connected',
@@ -624,6 +625,7 @@ describe('gateway browser api integration', () => {
         browserProfile: expect.objectContaining({
           browserKind: 'chrome',
           browserProfileName: 'Profile 7',
+          cdpEndpoint: 'http://127.0.0.1:9444',
           useRealChrome: true
         })
       })
@@ -1412,6 +1414,59 @@ describe('gateway browser api integration', () => {
     expect(saveBody.verification?.trace?.selectedTool).toBe('fetch');
   });
 
+  it('imports a mobile handoff cookie payload into a verified Scrapling session profile', async () => {
+    const harness = await createHarness('browser-mobile-session-handoff', (config) => {
+      const root = path.dirname(config.persistence.sqlitePath);
+      config.browser.enabled = true;
+      config.browser.transport = 'stdio';
+      config.browser.executable = installFakeScraplingExecutable(root);
+      config.browser.policy.allowStealth = true;
+      config.browser.policy.requireApprovalForStealth = false;
+    });
+
+    const onboardingResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/onboarding/ceo-baseline',
+      payload: {
+        actor: 'browser-mobile-handoff-test'
+      }
+    });
+    expect(onboardingResponse.statusCode).toBe(200);
+    const localAdminHeaders = {
+      Authorization: `Bearer ${harness.config.server.apiToken}`,
+      host: '127.0.0.1:8788',
+      'x-ops-role': 'admin'
+    };
+
+    const connectResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/connect-account',
+      headers: localAdminHeaders,
+      payload: {
+        siteKey: 'tiktok',
+        method: 'mobile_session_import',
+        label: 'TikTok mobile handoff',
+        ownerLabel: 'operator-phone',
+        domains: ['www.tiktok.com', 'tiktok.com'],
+        verifyUrl: 'https://www.tiktok.com/session-profile-proof',
+        sourceKind: 'raw_cookie_header',
+        raw: 'sessionid=mobile-tiktok-session'
+      }
+    });
+    expect(connectResponse.statusCode).toBe(200);
+    const connectBody = connectResponse.json();
+    expect(connectBody.cookieJar?.sourceKind).toBe('raw_cookie_header');
+    expect(connectBody.sessionProfile).toMatchObject({
+      label: 'TikTok mobile handoff',
+      siteKey: 'tiktok',
+      ownerLabel: 'operator-phone',
+      profileClass: 'auth_state',
+      lastVerificationStatus: 'connected'
+    });
+    expect(connectBody.verification?.trace?.artifacts[0]?.previewText).toContain('CookieKeys: sessionid');
+    expect(connectBody.verification?.trace?.artifacts[0]?.previewText).toContain('SessionCookie: mobile-tiktok-session');
+  });
+
   it('saves a live CDP browser session metadata file as filtered Scrapling auth state', async () => {
     const harness = await createHarness('browser-playwright-cdp-auth', (config) => {
       const root = path.dirname(config.persistence.sqlitePath);
@@ -1476,6 +1531,7 @@ describe('gateway browser api integration', () => {
       profileClass: 'auth_state',
       browserKind: 'chrome',
       browserProfilePath: profileDir,
+      cdpEndpoint: 'http://127.0.0.1:9339',
       lastVerificationStatus: 'connected'
     });
     expect(saveBody.verification?.source).toBe('cdp');

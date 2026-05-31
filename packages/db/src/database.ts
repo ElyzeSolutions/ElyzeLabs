@@ -666,6 +666,7 @@ interface BrowserSessionProfileUpsertInput {
   browserKind?: BrowserSessionProfileRecord['browserKind'];
   browserProfileName?: string | null;
   browserProfilePath?: string | null;
+  cdpEndpoint?: string | null;
   locale?: string | null;
   countryCode?: string | null;
   timezoneId?: string | null;
@@ -5854,10 +5855,10 @@ export class ControlPlaneDatabase {
         `INSERT INTO browser_session_profiles (
           id, label, domains_json, cookie_jar_id, headers_profile_id, proxy_profile_id, storage_state_id,
           use_real_chrome, owner_label, visibility, allowed_session_ids_json, site_key,
-          browser_kind, browser_profile_name, browser_profile_path,
+          browser_kind, browser_profile_name, browser_profile_path, cdp_endpoint,
           locale, country_code, timezone_id, notes, enabled,
           last_verified_at, last_verification_status, last_verification_summary, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           label = excluded.label,
           domains_json = excluded.domains_json,
@@ -5873,6 +5874,7 @@ export class ControlPlaneDatabase {
           browser_kind = excluded.browser_kind,
           browser_profile_name = excluded.browser_profile_name,
           browser_profile_path = excluded.browser_profile_path,
+          cdp_endpoint = excluded.cdp_endpoint,
           locale = excluded.locale,
           country_code = excluded.country_code,
           timezone_id = excluded.timezone_id,
@@ -5899,6 +5901,7 @@ export class ControlPlaneDatabase {
         input.browserKind ?? null,
         input.browserProfileName ?? null,
         input.browserProfilePath ?? null,
+        input.cdpEndpoint ?? null,
         input.locale ?? null,
         input.countryCode ?? null,
         input.timezoneId ?? null,
@@ -7892,6 +7895,7 @@ export class ControlPlaneDatabase {
         row.browser_profile_name === null || row.browser_profile_name === undefined ? null : String(row.browser_profile_name),
       browserProfilePath:
         row.browser_profile_path === null || row.browser_profile_path === undefined ? null : String(row.browser_profile_path),
+      cdpEndpoint: row.cdp_endpoint === null || row.cdp_endpoint === undefined ? null : String(row.cdp_endpoint),
       locale: row.locale === null || row.locale === undefined ? null : String(row.locale),
       countryCode: row.country_code === null || row.country_code === undefined ? null : String(row.country_code),
       timezoneId: row.timezone_id === null || row.timezone_id === undefined ? null : String(row.timezone_id),
