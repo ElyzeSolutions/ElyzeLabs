@@ -3,6 +3,7 @@ import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
+import { randomUUID } from 'node:crypto';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 export type BrowserInteractiveActionType = 'open' | 'read' | 'click' | 'type' | 'wait' | 'screenshot' | 'pdf';
@@ -77,8 +78,49 @@ export interface BrowserInteractiveRunResult {
   error: string | null;
 }
 
+export interface BrowserInteractiveSessionRecord {
+  schema: 'ops.browser-interactive-session.v1';
+  provider: 'cdp_chrome' | 'test';
+  sessionId: string;
+  startedUrl: string;
+  currentUrl: string | null;
+  startedAt: string;
+  lastActivityAt: string;
+  expiresAt: string | null;
+}
+
+export interface BrowserInteractiveSessionStartResult {
+  schema: 'ops.browser-interactive-session-start.v1';
+  session: BrowserInteractiveSessionRecord;
+  control: BrowserInteractiveRunResult;
+}
+
+export interface BrowserInteractiveSessionActionInput {
+  sessionId: string;
+  actions: BrowserInteractiveActionInput[];
+  previewChars: number;
+}
+
+export interface BrowserInteractiveSessionActionResult {
+  schema: 'ops.browser-interactive-session-action.v1';
+  session: BrowserInteractiveSessionRecord;
+  control: BrowserInteractiveRunResult;
+}
+
+export interface BrowserInteractiveSessionCloseResult {
+  schema: 'ops.browser-interactive-session-close.v1';
+  provider: 'cdp_chrome' | 'test';
+  sessionId: string;
+  closed: boolean;
+  finalUrl: string | null;
+  error: string | null;
+}
+
 export interface BrowserInteractiveProvider {
   run(input: BrowserInteractiveRunInput): Promise<BrowserInteractiveRunResult>;
+  startSession?(input: BrowserInteractiveRunInput): Promise<BrowserInteractiveSessionStartResult>;
+  runSessionActions?(input: BrowserInteractiveSessionActionInput): Promise<BrowserInteractiveSessionActionResult>;
+  closeSession?(sessionId: string): Promise<BrowserInteractiveSessionCloseResult>;
 }
 
 export class BrowserInteractiveService {
@@ -87,114 +129,178 @@ export class BrowserInteractiveService {
   async run(input: BrowserInteractiveRunInput): Promise<BrowserInteractiveRunResult> {
     return this.provider.run(input);
   }
+
+  async startSession(input: BrowserInteractiveRunInput): Promise<BrowserInteractiveSessionStartResult> {
+    if (!this.provider.startSession) {
+      throw new Error('Interactive browser provider does not support persistent live sessions.');
+    }
+    return this.provider.startSession(input);
+  }
+
+  async runSessionActions(input: BrowserInteractiveSessionActionInput): Promise<BrowserInteractiveSessionActionResult> {
+    if (!this.provider.runSessionActions) {
+      throw new Error('Interactive browser provider does not support persistent live sessions.');
+    }
+    return this.provider.runSessionActions(input);
+  }
+
+  async closeSession(sessionId: string): Promise<BrowserInteractiveSessionCloseResult> {
+    if (!this.provider.closeSession) {
+      throw new Error('Interactive browser provider does not support persistent live sessions.');
+    }
+    return this.provider.closeSession(sessionId);
+  }
 }
 
 class CdpChromeInteractiveProvider implements BrowserInteractiveProvider {
+  private readonly liveSessions = new Map<string, CdpLiveSession>();
+
   async run(input: BrowserInteractiveRunInput): Promise<BrowserInteractiveRunResult> {
-    const launchPlan = resolveCdpLaunchPlan(input.browserProfile ?? null, input.cdpEndpoint ?? null);
-    if (launchPlan.error) {
-      return {
-        schema: 'ops.browser-interactive-run.v1',
-        provider: 'cdp_chrome',
-        ok: false,
-        startedUrl: input.url,
-        finalUrl: null,
-        actions: [],
-        artifacts: [],
-        error: launchPlan.error
-      };
+    const opened = await openCdpConnection(input);
+    if (opened.error || !opened.connection) {
+      return failedInteractiveRun(input.url, opened.error ?? 'Failed to open Chrome DevTools session.');
     }
-
-    const port = launchPlan.cdpEndpoint ? null : await reservePort();
-    const tempUserDataDir = launchPlan.cdpEndpoint || launchPlan.userDataDir ? null : await fs.mkdtemp(path.join(os.tmpdir(), 'ops-interactive-browser-'));
-    const userDataDir = launchPlan.userDataDir ?? tempUserDataDir ?? '';
-    const browserArgs =
-      port === null
-        ? []
-        : [
-            `--remote-debugging-port=${String(port)}`,
-            `--user-data-dir=${userDataDir}`,
-            '--no-first-run',
-            '--no-default-browser-check',
-            '--new-window',
-            'about:blank'
-          ];
-    if (port !== null && launchPlan.profileDirectory) {
-      browserArgs.splice(2, 0, `--profile-directory=${launchPlan.profileDirectory}`);
-    }
-    if (port !== null && !launchPlan.userDataDir) {
-      browserArgs.splice(4, 0, '--disable-background-networking', '--disable-sync');
-    }
-    const chrome = port === null ? null : spawn(launchPlan.executable, browserArgs);
-
-    let client: CdpClient | null = null;
+    const connection = opened.connection;
     try {
-      const tab = launchPlan.cdpEndpoint ? await waitForCdpEndpointTab(launchPlan.cdpEndpoint, input.url) : await waitForCdpTab(port ?? 0, input.url);
-      client = await CdpClient.connect(tab.webSocketDebuggerUrl);
-      await client.send('Page.enable');
-      await client.send('Runtime.enable');
-      await client.send('Network.enable');
-      const cookies = mergeInteractiveCookies(readStorageStateCookies(input.storageState ?? null), input.cookies ?? []);
-      if (cookies.length > 0) {
-        await client.send('Network.setCookies', {
-          cookies: cookies.map((cookie) => {
-            const expires = normalizeCdpCookieExpires(cookie.expires);
-            return {
-              name: cookie.name,
-              value: cookie.value,
-              domain: cookie.domain ?? undefined,
-              path: cookie.path ?? '/',
-              expires: expires ?? undefined,
-              httpOnly: cookie.httpOnly === true,
-              secure: cookie.secure === true,
-              sameSite: cookie.sameSite ?? undefined,
-              url: cookie.domain ? undefined : cookie.url ?? input.url
-            };
-          })
-        });
-      }
-
-      const actions: BrowserInteractiveActionResult[] = [];
-      const artifacts: BrowserInteractiveArtifact[] = [];
-      const actionPlan = normalizeActionPlan(input);
-
-      for (let index = 0; index < actionPlan.length; index += 1) {
-        const action = actionPlan[index];
-        if (!action) {
-          continue;
-        }
-        const result = await executeCdpAction({
-          client,
-          action,
-          index,
-          previewChars: input.previewChars,
-          artifacts,
-          storageState: input.storageState ?? null
-        });
-        actions.push(result);
-        if (!result.ok) {
-          break;
-        }
-      }
-
-      const finalUrl = await readCurrentUrl(client);
+      const actionRun = await executeCdpActionPlan({
+        client: connection.client,
+        actions: normalizeActionPlan(input),
+        previewChars: input.previewChars,
+        storageState: input.storageState ?? null
+      });
+      const finalUrl = await readCurrentUrl(connection.client);
       return {
         schema: 'ops.browser-interactive-run.v1',
         provider: 'cdp_chrome',
-        ok: actions.every((action) => action.ok),
+        ok: actionRun.actions.every((action) => action.ok),
         startedUrl: input.url,
         finalUrl,
-        actions,
-        artifacts,
-        error: actions.find((action) => !action.ok)?.error ?? null
+        actions: actionRun.actions,
+        artifacts: actionRun.artifacts,
+        error: actionRun.actions.find((action) => !action.ok)?.error ?? null
       };
     } finally {
-      client?.close();
-      terminateChrome(chrome);
-      if (tempUserDataDir) {
-        await fs.rm(tempUserDataDir, { recursive: true, force: true });
-      }
+      await closeCdpConnection(connection);
     }
+  }
+
+  async startSession(input: BrowserInteractiveRunInput): Promise<BrowserInteractiveSessionStartResult> {
+    const opened = await openCdpConnection(input);
+    if (opened.error || !opened.connection) {
+      throw new Error(opened.error ?? 'Failed to open Chrome DevTools session.');
+    }
+    const connection = opened.connection;
+    const sessionId = randomUUID();
+    const startedAt = new Date().toISOString();
+    const actionRun = await executeCdpActionPlan({
+      client: connection.client,
+      actions: [{ type: 'open', url: input.url }],
+      previewChars: input.previewChars,
+      storageState: input.storageState ?? null
+    });
+    const finalUrl = await readCurrentUrl(connection.client);
+    const control: BrowserInteractiveRunResult = {
+      schema: 'ops.browser-interactive-run.v1',
+      provider: 'cdp_chrome',
+      ok: actionRun.actions.every((action) => action.ok),
+      startedUrl: input.url,
+      finalUrl,
+      actions: actionRun.actions,
+      artifacts: actionRun.artifacts,
+      error: actionRun.actions.find((action) => !action.ok)?.error ?? null
+    };
+    if (!control.ok) {
+      await closeCdpConnection(connection);
+      throw new Error(control.error ?? 'Failed to start live browser session.');
+    }
+    const session: BrowserInteractiveSessionRecord = {
+      schema: 'ops.browser-interactive-session.v1',
+      provider: 'cdp_chrome',
+      sessionId,
+      startedUrl: input.url,
+      currentUrl: finalUrl,
+      startedAt,
+      lastActivityAt: startedAt,
+      expiresAt: null
+    };
+    this.liveSessions.set(sessionId, {
+      connection,
+      session,
+      storageState: input.storageState ?? null
+    });
+    return {
+      schema: 'ops.browser-interactive-session-start.v1',
+      session,
+      control
+    };
+  }
+
+  async runSessionActions(input: BrowserInteractiveSessionActionInput): Promise<BrowserInteractiveSessionActionResult> {
+    const liveSession = this.liveSessions.get(input.sessionId);
+    if (!liveSession) {
+      throw new Error(`Interactive browser live session not found: ${input.sessionId}`);
+    }
+    const actionRun = await executeCdpActionPlan({
+      client: liveSession.connection.client,
+      actions: input.actions,
+      previewChars: input.previewChars,
+      storageState: liveSession.storageState
+    });
+    const finalUrl = await readCurrentUrl(liveSession.connection.client);
+    const lastActivityAt = new Date().toISOString();
+    const session: BrowserInteractiveSessionRecord = {
+      ...liveSession.session,
+      currentUrl: finalUrl,
+      lastActivityAt
+    };
+    liveSession.session = session;
+    const control: BrowserInteractiveRunResult = {
+      schema: 'ops.browser-interactive-run.v1',
+      provider: 'cdp_chrome',
+      ok: actionRun.actions.every((action) => action.ok),
+      startedUrl: session.startedUrl,
+      finalUrl,
+      actions: actionRun.actions,
+      artifacts: actionRun.artifacts,
+      error: actionRun.actions.find((action) => !action.ok)?.error ?? null
+    };
+    return {
+      schema: 'ops.browser-interactive-session-action.v1',
+      session,
+      control
+    };
+  }
+
+  async closeSession(sessionId: string): Promise<BrowserInteractiveSessionCloseResult> {
+    const liveSession = this.liveSessions.get(sessionId);
+    if (!liveSession) {
+      return {
+        schema: 'ops.browser-interactive-session-close.v1',
+        provider: 'cdp_chrome',
+        sessionId,
+        closed: false,
+        finalUrl: null,
+        error: `Interactive browser live session not found: ${sessionId}`
+      };
+    }
+    this.liveSessions.delete(sessionId);
+    let finalUrl: string | null = null;
+    let error: string | null = null;
+    try {
+      finalUrl = await readCurrentUrl(liveSession.connection.client);
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      await closeCdpConnection(liveSession.connection);
+    }
+    return {
+      schema: 'ops.browser-interactive-session-close.v1',
+      provider: 'cdp_chrome',
+      sessionId,
+      closed: true,
+      finalUrl,
+      error
+    };
   }
 }
 
@@ -208,6 +314,7 @@ interface CdpLaunchPlan {
 
 interface CdpTab {
   webSocketDebuggerUrl: string;
+  closeOnRelease: boolean;
 }
 
 interface CdpCommandClient {
@@ -219,6 +326,29 @@ interface CdpSelectorPoint {
   y: number;
   width: number;
   height: number;
+}
+
+interface CdpConnection {
+  client: CdpClient;
+  chrome: ChildProcessWithoutNullStreams | null;
+  tempUserDataDir: string | null;
+  closeTabOnRelease: boolean;
+}
+
+interface CdpConnectionOpenResult {
+  connection: CdpConnection | null;
+  error: string | null;
+}
+
+interface CdpActionPlanRun {
+  actions: BrowserInteractiveActionResult[];
+  artifacts: BrowserInteractiveArtifact[];
+}
+
+interface CdpLiveSession {
+  connection: CdpConnection;
+  session: BrowserInteractiveSessionRecord;
+  storageState: Record<string, unknown> | null;
 }
 
 class CdpClient {
@@ -279,8 +409,145 @@ class CdpClient {
   }
 }
 
+async function openCdpConnection(input: BrowserInteractiveRunInput): Promise<CdpConnectionOpenResult> {
+  const launchPlan = resolveCdpLaunchPlan(input.browserProfile ?? null, input.cdpEndpoint ?? null);
+  if (launchPlan.error) {
+    return {
+      connection: null,
+      error: launchPlan.error
+    };
+  }
+
+  const port = launchPlan.cdpEndpoint ? null : await reservePort();
+  const tempUserDataDir = launchPlan.cdpEndpoint || launchPlan.userDataDir ? null : await fs.mkdtemp(path.join(os.tmpdir(), 'ops-interactive-browser-'));
+  const userDataDir = launchPlan.userDataDir ?? tempUserDataDir ?? '';
+  const browserArgs =
+    port === null
+      ? []
+      : [
+          `--remote-debugging-port=${String(port)}`,
+          `--user-data-dir=${userDataDir}`,
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--new-window',
+          'about:blank'
+        ];
+  if (port !== null && launchPlan.profileDirectory) {
+    browserArgs.splice(2, 0, `--profile-directory=${launchPlan.profileDirectory}`);
+  }
+  if (port !== null && !launchPlan.userDataDir) {
+    browserArgs.splice(4, 0, '--disable-background-networking', '--disable-sync');
+  }
+  const chrome = port === null ? null : spawn(launchPlan.executable, browserArgs);
+
+  try {
+    const tab = launchPlan.cdpEndpoint ? await waitForCdpEndpointTab(launchPlan.cdpEndpoint, input.url) : await waitForCdpTab(port ?? 0, input.url);
+    const client = await CdpClient.connect(tab.webSocketDebuggerUrl);
+    await client.send('Page.enable');
+    await client.send('Runtime.enable');
+    await client.send('Network.enable');
+    const cookies = mergeInteractiveCookies(readStorageStateCookies(input.storageState ?? null), input.cookies ?? []);
+    if (cookies.length > 0) {
+      await client.send('Network.setCookies', {
+        cookies: cookies.map((cookie) => {
+          const expires = normalizeCdpCookieExpires(cookie.expires);
+          return {
+            name: cookie.name,
+            value: cookie.value,
+            domain: cookie.domain ?? undefined,
+            path: cookie.path ?? '/',
+            expires: expires ?? undefined,
+            httpOnly: cookie.httpOnly === true,
+            secure: cookie.secure === true,
+            sameSite: cookie.sameSite ?? undefined,
+            url: cookie.domain ? undefined : cookie.url ?? input.url
+          };
+        })
+      });
+    }
+    return {
+      connection: {
+        client,
+        chrome,
+        tempUserDataDir,
+        closeTabOnRelease: tab.closeOnRelease
+      },
+      error: null
+    };
+  } catch (cause) {
+    terminateChrome(chrome);
+    if (tempUserDataDir) {
+      await fs.rm(tempUserDataDir, { recursive: true, force: true });
+    }
+    return {
+      connection: null,
+      error: cause instanceof Error ? cause.message : String(cause)
+    };
+  }
+}
+
+async function closeCdpConnection(connection: CdpConnection): Promise<void> {
+  if (connection.closeTabOnRelease) {
+    try {
+      await connection.client.send('Page.close');
+    } catch {
+      // Closing the socket/browser below is enough if the page is already gone.
+    }
+  }
+  connection.client.close();
+  terminateChrome(connection.chrome);
+  if (connection.tempUserDataDir) {
+    await fs.rm(connection.tempUserDataDir, { recursive: true, force: true });
+  }
+}
+
+async function executeCdpActionPlan(input: {
+  client: CdpCommandClient;
+  actions: BrowserInteractiveActionInput[];
+  previewChars: number;
+  storageState: Record<string, unknown> | null;
+}): Promise<CdpActionPlanRun> {
+  const actions: BrowserInteractiveActionResult[] = [];
+  const artifacts: BrowserInteractiveArtifact[] = [];
+  for (let index = 0; index < input.actions.length; index += 1) {
+    const action = input.actions[index];
+    if (!action) {
+      continue;
+    }
+    const result = await executeCdpAction({
+      client: input.client,
+      action,
+      index,
+      previewChars: input.previewChars,
+      artifacts,
+      storageState: input.storageState
+    });
+    actions.push(result);
+    if (!result.ok) {
+      break;
+    }
+  }
+  return {
+    actions,
+    artifacts
+  };
+}
+
+function failedInteractiveRun(startedUrl: string, error: string): BrowserInteractiveRunResult {
+  return {
+    schema: 'ops.browser-interactive-run.v1',
+    provider: 'cdp_chrome',
+    ok: false,
+    startedUrl,
+    finalUrl: null,
+    actions: [],
+    artifacts: [],
+    error
+  };
+}
+
 async function executeCdpAction(input: {
-  client: CdpClient;
+  client: CdpCommandClient;
   action: BrowserInteractiveActionInput;
   index: number;
   previewChars: number;
@@ -417,7 +684,7 @@ function readStorageStateCookies(storageState: Record<string, unknown> | null): 
 }
 
 async function applyStorageStateToCurrentOrigin(
-  client: CdpClient,
+  client: CdpCommandClient,
   targetUrl: string,
   storageState: Record<string, unknown> | null
 ): Promise<boolean> {
@@ -544,7 +811,7 @@ async function waitForCdpTab(port: number, fallbackUrl: string): Promise<CdpTab>
       const tabs = await fetchJsonArray(`http://127.0.0.1:${String(port)}/json`);
       const tab = tabs.find((entry) => isRecord(entry) && typeof entry.webSocketDebuggerUrl === 'string');
       if (isRecord(tab) && typeof tab.webSocketDebuggerUrl === 'string') {
-        return { webSocketDebuggerUrl: tab.webSocketDebuggerUrl };
+        return { webSocketDebuggerUrl: tab.webSocketDebuggerUrl, closeOnRelease: true };
       }
       await fetch(`http://127.0.0.1:${String(port)}/json/new?${encodeURIComponent(fallbackUrl)}`);
     } catch {
@@ -561,7 +828,7 @@ async function waitForCdpEndpointTab(endpoint: string, fallbackUrl: string): Pro
     if (httpEndpoint) {
       return waitForCdpHttpEndpointTab(httpEndpoint, fallbackUrl);
     }
-    return { webSocketDebuggerUrl: normalized };
+    return { webSocketDebuggerUrl: normalized, closeOnRelease: false };
   }
   return waitForCdpHttpEndpointTab(normalized, fallbackUrl);
 }
@@ -583,7 +850,7 @@ async function waitForCdpHttpEndpointTab(endpoint: string, fallbackUrl: string):
           (entry.type === undefined || entry.type === 'page')
       );
       if (isRecord(pageTab) && typeof pageTab.webSocketDebuggerUrl === 'string') {
-        return { webSocketDebuggerUrl: pageTab.webSocketDebuggerUrl };
+        return { webSocketDebuggerUrl: pageTab.webSocketDebuggerUrl, closeOnRelease: false };
       }
     } catch {
       await delay(150);
@@ -620,7 +887,7 @@ async function readCdpTabResponse(response: Response): Promise<CdpTab | null> {
   if (!isRecord(parsed) || typeof parsed.webSocketDebuggerUrl !== 'string') {
     return null;
   }
-  return { webSocketDebuggerUrl: parsed.webSocketDebuggerUrl };
+  return { webSocketDebuggerUrl: parsed.webSocketDebuggerUrl, closeOnRelease: true };
 }
 
 function normalizeCdpHttpEndpoint(value: string): string {

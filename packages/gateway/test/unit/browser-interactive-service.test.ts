@@ -57,6 +57,53 @@ describe('browser interactive service', () => {
       await fakeCdp.close();
     }
   });
+
+  it('keeps a persistent CDP live session open across action batches', async () => {
+    const fakeCdp = await startFakeCdpServer();
+    try {
+      const service = new BrowserInteractiveService();
+      const started = await service.startSession({
+        url: 'https://example.test/form',
+        cdpEndpoint: fakeCdp.endpoint,
+        previewChars: 120,
+        actions: []
+      });
+
+      expect(started.session.provider).toBe('cdp_chrome');
+      expect(started.session.sessionId).toMatch(/^[0-9a-f-]{36}$/u);
+      expect(started.control.actions.map((action) => action.type)).toEqual(['open']);
+
+      const acted = await service.runSessionActions({
+        sessionId: started.session.sessionId,
+        previewChars: 120,
+        actions: [
+          { type: 'click', selector: '#continue', timeoutMs: 100 },
+          { type: 'type', selector: '#search', text: 'live session input', timeoutMs: 50 },
+          { type: 'read' }
+        ]
+      });
+
+      expect(acted.session.sessionId).toBe(started.session.sessionId);
+      expect(acted.session.lastActivityAt >= started.session.lastActivityAt).toBe(true);
+      expect(acted.control.ok).toBe(true);
+      expect(acted.control.actions.map((action) => action.type)).toEqual(['click', 'type', 'read']);
+
+      const closed = await service.closeSession(started.session.sessionId);
+      expect(closed.closed).toBe(true);
+      expect(closed.sessionId).toBe(started.session.sessionId);
+      expect(fakeCdp.commands.some((command) => command.method === 'Page.close')).toBe(true);
+
+      await expect(
+        service.runSessionActions({
+          sessionId: started.session.sessionId,
+          previewChars: 120,
+          actions: [{ type: 'read' }]
+        })
+      ).rejects.toThrow(/live session not found/u);
+    } finally {
+      await fakeCdp.close();
+    }
+  });
 });
 
 async function startFakeCdpServer(): Promise<FakeCdpServer> {

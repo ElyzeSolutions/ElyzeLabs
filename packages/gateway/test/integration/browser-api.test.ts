@@ -334,6 +334,7 @@ describe('gateway browser api integration', () => {
   });
 
   it('runs typed interactive browser actions through an injected provider and session profile cookies', async () => {
+    const liveSessionId = 'test-live-session-1';
     const provider: BrowserInteractiveProvider = {
       run: vi.fn(async (input) => ({
         schema: 'ops.browser-interactive-run.v1',
@@ -371,6 +372,90 @@ describe('gateway browser api integration', () => {
             contentBase64: Buffer.from('png', 'utf8').toString('base64')
           }
         ],
+        error: null
+      })),
+      startSession: vi.fn(async (input) => ({
+        schema: 'ops.browser-interactive-session-start.v1',
+        session: {
+          schema: 'ops.browser-interactive-session.v1',
+          provider: 'test',
+          sessionId: liveSessionId,
+          startedUrl: input.url,
+          currentUrl: input.url,
+          startedAt: '2026-05-31T10:00:00.000Z',
+          lastActivityAt: '2026-05-31T10:00:00.000Z',
+          expiresAt: null
+        },
+        control: {
+          schema: 'ops.browser-interactive-run.v1',
+          provider: 'test',
+          ok: true,
+          startedUrl: input.url,
+          finalUrl: input.url,
+          actions: [
+            {
+              index: 0,
+              type: 'open',
+              ok: true,
+              summary: `opened:${input.url}`,
+              selector: null,
+              url: input.url,
+              textPreview: null,
+              error: null
+            }
+          ],
+          artifacts: [],
+          error: null
+        }
+      })),
+      runSessionActions: vi.fn(async (input) => ({
+        schema: 'ops.browser-interactive-session-action.v1',
+        session: {
+          schema: 'ops.browser-interactive-session.v1',
+          provider: 'test',
+          sessionId: input.sessionId,
+          startedUrl: 'https://example.com/app',
+          currentUrl: 'https://example.com/app#after-live-action',
+          startedAt: '2026-05-31T10:00:00.000Z',
+          lastActivityAt: '2026-05-31T10:00:01.000Z',
+          expiresAt: null
+        },
+        control: {
+          schema: 'ops.browser-interactive-run.v1',
+          provider: 'test',
+          ok: true,
+          startedUrl: 'https://example.com/app',
+          finalUrl: 'https://example.com/app#after-live-action',
+          actions: input.actions.map((action, index) => ({
+            index,
+            type: action.type,
+            ok: true,
+            summary: `live:${action.type}`,
+            selector: action.selector ?? null,
+            url: action.url ?? null,
+            textPreview: action.text ?? null,
+            error: null
+          })),
+          artifacts: [
+            {
+              id: 'interactive_artifact:2:read',
+              actionIndex: 2,
+              kind: 'read',
+              mimeType: 'text/plain',
+              sizeBytes: 16,
+              contentPreview: 'live page result',
+              contentBase64: Buffer.from('live page result', 'utf8').toString('base64')
+            }
+          ],
+          error: null
+        }
+      })),
+      closeSession: vi.fn(async (sessionId) => ({
+        schema: 'ops.browser-interactive-session-close.v1',
+        provider: 'test',
+        sessionId,
+        closed: true,
+        finalUrl: 'https://example.com/app#after-live-action',
         error: null
       }))
     };
@@ -491,6 +576,90 @@ describe('gateway browser api integration', () => {
         ])
       })
     );
+
+    const liveStartResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/interactive/sessions',
+      headers: adminHeaders,
+      payload: {
+        agentId: 'interactive-browser-test',
+        url: 'https://example.com/app',
+        sessionProfileId: profileBody.sessionProfile.id
+      }
+    });
+    expect(liveStartResponse.statusCode).toBe(200);
+    const liveStartBody = liveStartResponse.json() as {
+      liveSession: { sessionId: string; currentUrl: string | null };
+      run: { status: string };
+    };
+    expect(liveStartBody.run.status).toBe('completed');
+    expect(liveStartBody.liveSession.sessionId).toBe(liveSessionId);
+    expect(provider.startSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://example.com/app',
+        cookies: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'sid',
+            value: 'interactive-session'
+          })
+        ])
+      })
+    );
+
+    const liveActionResponse = await harness.inject({
+      method: 'POST',
+      url: `/api/browser/interactive/sessions/${encodeURIComponent(liveSessionId)}/actions`,
+      headers: adminHeaders,
+      payload: {
+        actions: [
+          { type: 'click', selector: '#continue' },
+          { type: 'type', selector: '#search', text: 'live instagram reels' },
+          { type: 'read' }
+        ]
+      }
+    });
+    expect(liveActionResponse.statusCode).toBe(200);
+    const liveActionBody = liveActionResponse.json() as {
+      liveSession: { sessionId: string; currentUrl: string | null };
+      control: { ok: boolean; actions: Array<{ type: string }>; artifacts: Array<{ kind: string }> };
+      run: { status: string };
+    };
+    expect(liveActionBody.run.status).toBe('completed');
+    expect(liveActionBody.liveSession.sessionId).toBe(liveSessionId);
+    expect(liveActionBody.control.ok).toBe(true);
+    expect(liveActionBody.control.actions.map((action) => action.type)).toEqual(['click', 'type', 'read']);
+    expect(liveActionBody.control.artifacts.map((artifact) => artifact.kind)).toEqual(['read']);
+    expect(provider.runSessionActions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: liveSessionId,
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'type',
+            selector: '#search',
+            text: 'live instagram reels'
+          })
+        ])
+      })
+    );
+
+    const liveCloseResponse = await harness.inject({
+      method: 'DELETE',
+      url: `/api/browser/interactive/sessions/${encodeURIComponent(liveSessionId)}`,
+      headers: adminHeaders
+    });
+    expect(liveCloseResponse.statusCode).toBe(200);
+    const liveCloseBody = liveCloseResponse.json() as {
+      closed: { closed: boolean; sessionId: string };
+      run: { status: string };
+    };
+    expect(liveCloseBody.run.status).toBe('completed');
+    expect(liveCloseBody.closed).toEqual(
+      expect.objectContaining({
+        closed: true,
+        sessionId: liveSessionId
+      })
+    );
+    expect(provider.closeSession).toHaveBeenCalledWith(liveSessionId);
 
     const storageStateResponse = await harness.inject({
       method: 'POST',

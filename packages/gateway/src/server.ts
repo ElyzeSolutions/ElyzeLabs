@@ -5752,6 +5752,16 @@ export async function buildGatewayApp(
     webFetchService
   });
   const browserInteractiveService = new BrowserInteractiveService(options.interactiveBrowserProvider);
+  const browserInteractiveLiveSessions = new Map<
+    string,
+    {
+      apiSessionId: string;
+      agentId: string;
+      sourceSessionId: string | null;
+      sessionProfileId: string | null;
+      startedAt: string;
+    }
+  >();
   const currentBrowserValidation = (): ConfigValidationResult =>
     configValidationResult ??
     validateControlPlaneConfig(config, {
@@ -53428,6 +53438,9 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       })
       .filter((entry): entry is BrowserInteractiveActionInput => entry !== null);
 
+  const parseBrowserInteractivePreviewChars = (value: unknown): number =>
+    Number.isFinite(Number(value)) ? Math.max(80, Math.min(8_000, Number(value))) : 1_000;
+
   const browserInteractiveProfilePayload = (
     sessionProfile: BrowserSessionProfileRecord | null
   ): BrowserInteractiveBrowserProfile | null =>
@@ -53445,6 +53458,302 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
     storageState: ReturnType<BrowserSessionVault['resolveForRequest']>['storageState']
   ): Record<string, unknown> | null =>
     storageState ? parseJsonSafe<Record<string, unknown>>(storageState.storageStateJson, {}) : null;
+
+  app.post('/api/browser/interactive/sessions', async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const rawUrl = typeof body.url === 'string' ? body.url.trim() : '';
+    const requestedSiteKey = inferBrowserConnectSite({
+      url: rawUrl || null,
+      prompt: typeof body.prompt === 'string' ? body.prompt : null,
+      siteKey: body.siteKey
+    });
+    const url = rawUrl || (requestedSiteKey ? BROWSER_CONNECT_PRESETS[requestedSiteKey].verifyUrl : '');
+    if (!url) {
+      return jsonError(reply, 'url or siteKey is required', 400);
+    }
+
+    const requestedAgentId = typeof body.agentId === 'string' && body.agentId.trim().length > 0 ? body.agentId.trim() : null;
+    const profile = resolveBrowserTestProfile(requestedAgentId);
+    if (!profile) {
+      return jsonError(reply, requestedAgentId ? `Agent profile not found: ${requestedAgentId}` : 'No enabled browser-capable agent is available.', requestedAgentId ? 404 : 409);
+    }
+    if (!browserCapabilityService.canAgentUse(profile.id, profile.tools)) {
+      return jsonError(reply, `Agent profile is not entitled for browser control: ${profile.id}`, 403, {
+        requiredTool: BROWSER_CAPABILITY_TOOL
+      });
+    }
+
+    const requestedCdpEndpoint =
+      typeof body.cdpEndpoint === 'string' && body.cdpEndpoint.trim().length > 0 ? body.cdpEndpoint.trim() : null;
+    if (requestedCdpEndpoint && resolveRequestRole(request, config.server.apiToken) !== 'admin') {
+      return jsonError(reply, 'Admin access is required to attach interactive control to an explicit local CDP endpoint.', 403, {
+        reason: 'browser_interactive_cdp_endpoint_requires_admin'
+      });
+    }
+
+    const requestedSessionId = typeof body.sessionId === 'string' && body.sessionId.trim().length > 0 ? body.sessionId.trim() : null;
+    const sourceSession = requestedSessionId ? database.getSessionById(requestedSessionId) : null;
+    if (requestedSessionId && !sourceSession) {
+      return jsonError(reply, `Session not found: ${requestedSessionId}`, 404);
+    }
+
+    const explicitSessionProfileId =
+      typeof body.sessionProfileId === 'string' && body.sessionProfileId.trim().length > 0 ? body.sessionProfileId.trim() : null;
+    const authProfileResolution = sourceSession
+      ? resolveBrowserAuthProfileForRequest({
+          session: sourceSession,
+          targetUrl: url,
+          requestedSessionProfileId: explicitSessionProfileId,
+          stickySessionProfileId: parseSessionBrowserAuthProfileId(sourceSession),
+          siteKey: requestedSiteKey
+        })
+      : null;
+    const sessionProfileId = authProfileResolution?.profile?.id ?? explicitSessionProfileId;
+    const resolvedSessionState = browserSessionVault.resolveForRequest({
+      url,
+      sessionProfileId,
+      extraCookies: parseOptionalStringMap(body.extraCookies)
+    });
+    if (sessionProfileId && !resolvedSessionState.sessionProfile) {
+      return jsonError(reply, `Browser session profile not found: ${sessionProfileId}`, 404);
+    }
+    if (resolvedSessionState.sessionProfile && !resolvedSessionState.sessionProfile.enabled) {
+      return jsonError(reply, `Browser session profile is disabled: ${resolvedSessionState.sessionProfile.id}`, 409);
+    }
+
+    const session = database.upsertSessionByKey({
+      sessionKey: `api:browser:interactive-live:${profile.id}:${randomUUID().slice(0, 8)}`,
+      channel: 'internal',
+      chatType: 'internal',
+      agentId: profile.id,
+      preferredRuntime: 'process',
+      metadata: {
+        source: 'browser_interactive_live_api',
+        label: 'Live interactive browser control',
+        browserInteractive: true,
+        browserInteractiveLive: true,
+        sourceSessionId: sourceSession?.id ?? null,
+        sessionProfileId,
+        authProfileResolutionSource: authProfileResolution?.source ?? (sessionProfileId ? 'explicit' : 'none')
+      }
+    });
+    const run = database.createRun({
+      sessionId: session.id,
+      runtime: 'process',
+      requestedRuntime: 'process',
+      effectiveRuntime: 'process',
+      triggerSource: 'api',
+      prompt: `Start live interactive browser session for ${url}`,
+      status: 'running'
+    });
+    if (authProfileResolution) {
+      database.appendRunEvent({
+        runId: run.id,
+        sessionId: session.id,
+        type: 'browser.auth_profile.resolved',
+        details: `Browser auth profile resolution: ${authProfileResolution.source}`,
+        payload: {
+          source: authProfileResolution.source,
+          reason: authProfileResolution.reason,
+          siteKey: authProfileResolution.siteKey,
+          targetUrl: url,
+          sourceSessionId: sourceSession?.id ?? null,
+          requestedSessionProfileId: explicitSessionProfileId,
+          selectedSessionProfileId: authProfileResolution.profile?.id ?? null,
+          selectedLabel: authProfileResolution.profile?.label ?? null,
+          ignoredStickySessionProfileId: authProfileResolution.ignoredStickySessionProfileId
+        }
+      });
+    }
+
+    try {
+      const started = await browserInteractiveService.startSession({
+        url,
+        actions: [],
+        previewChars: parseBrowserInteractivePreviewChars(body.previewChars),
+        cookies: resolvedSessionState.cookies,
+        storageState: browserInteractiveStorageStatePayload(resolvedSessionState.storageState),
+        cdpEndpoint: requestedCdpEndpoint,
+        browserProfile: browserInteractiveProfilePayload(resolvedSessionState.sessionProfile)
+      });
+      browserInteractiveLiveSessions.set(started.session.sessionId, {
+        apiSessionId: session.id,
+        agentId: profile.id,
+        sourceSessionId: sourceSession?.id ?? null,
+        sessionProfileId,
+        startedAt: started.session.startedAt
+      });
+      database.appendRunEvent({
+        runId: run.id,
+        sessionId: session.id,
+        type: 'browser.interactive.session.started',
+        details: 'Live interactive browser session started.',
+        payload: {
+          provider: started.session.provider,
+          liveSessionId: started.session.sessionId,
+          currentUrl: started.session.currentUrl,
+          sessionProfileId
+        }
+      });
+      database.updateRunStatus({
+        runId: run.id,
+        status: 'completed',
+        error: null,
+        resultSummary: `Live interactive browser session started: ${started.session.sessionId}`
+      });
+      return jsonOk(reply, {
+        run: database.getRunById(run.id),
+        liveSession: started.session,
+        control: started.control
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      database.updateRunStatus({
+        runId: run.id,
+        status: 'failed',
+        error: message,
+        resultSummary: `Live interactive browser session failed to start: ${message}`
+      });
+      return jsonError(reply, message, 500, {
+        runId: run.id
+      });
+    }
+  });
+
+  app.post('/api/browser/interactive/sessions/:liveSessionId/actions', async (request, reply) => {
+    const params = request.params as { liveSessionId: string };
+    const liveSessionId = params.liveSessionId.trim();
+    const liveSession = browserInteractiveLiveSessions.get(liveSessionId);
+    if (!liveSession) {
+      return jsonError(reply, `Live interactive browser session not found: ${liveSessionId}`, 404);
+    }
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const actions = parseBrowserInteractiveActions(body.actions);
+    if (actions.length === 0) {
+      return jsonError(reply, 'actions must include at least one interactive browser action', 400);
+    }
+    const session = database.getSessionById(liveSession.apiSessionId);
+    if (!session) {
+      browserInteractiveLiveSessions.delete(liveSessionId);
+      return jsonError(reply, `Live interactive browser API session expired: ${liveSession.apiSessionId}`, 410);
+    }
+    const run = database.createRun({
+      sessionId: session.id,
+      runtime: 'process',
+      requestedRuntime: 'process',
+      effectiveRuntime: 'process',
+      triggerSource: 'api',
+      prompt: `Live interactive browser actions for ${liveSessionId}`,
+      status: 'running'
+    });
+
+    try {
+      const result = await browserInteractiveService.runSessionActions({
+        sessionId: liveSessionId,
+        actions,
+        previewChars: parseBrowserInteractivePreviewChars(body.previewChars)
+      });
+      database.appendRunEvent({
+        runId: run.id,
+        sessionId: session.id,
+        type: 'browser.interactive.session.action',
+        details: result.control.ok ? 'Live interactive browser action batch completed.' : 'Live interactive browser action batch failed.',
+        payload: {
+          provider: result.session.provider,
+          liveSessionId,
+          actionCount: result.control.actions.length,
+          artifactCount: result.control.artifacts.length,
+          currentUrl: result.session.currentUrl,
+          error: result.control.error
+        }
+      });
+      database.updateRunStatus({
+        runId: run.id,
+        status: result.control.ok ? 'completed' : 'failed',
+        error: result.control.ok ? null : result.control.error ?? 'browser_interactive_live_action_failed',
+        resultSummary: result.control.ok
+          ? `Live interactive browser action batch completed with ${result.control.actions.length.toString()} actions.`
+          : `Live interactive browser action batch failed: ${result.control.error ?? 'browser_interactive_live_action_failed'}`
+      });
+      return jsonOk(reply, {
+        run: database.getRunById(run.id),
+        liveSession: result.session,
+        control: result.control
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      database.updateRunStatus({
+        runId: run.id,
+        status: 'failed',
+        error: message,
+        resultSummary: `Live interactive browser action batch failed: ${message}`
+      });
+      return jsonError(reply, message, 500, {
+        runId: run.id
+      });
+    }
+  });
+
+  app.delete('/api/browser/interactive/sessions/:liveSessionId', async (request, reply) => {
+    const params = request.params as { liveSessionId: string };
+    const liveSessionId = params.liveSessionId.trim();
+    const liveSession = browserInteractiveLiveSessions.get(liveSessionId);
+    if (!liveSession) {
+      return jsonError(reply, `Live interactive browser session not found: ${liveSessionId}`, 404);
+    }
+    const session = database.getSessionById(liveSession.apiSessionId);
+    if (!session) {
+      browserInteractiveLiveSessions.delete(liveSessionId);
+      return jsonError(reply, `Live interactive browser API session expired: ${liveSession.apiSessionId}`, 410);
+    }
+    const run = database.createRun({
+      sessionId: session.id,
+      runtime: 'process',
+      requestedRuntime: 'process',
+      effectiveRuntime: 'process',
+      triggerSource: 'api',
+      prompt: `Close live interactive browser session ${liveSessionId}`,
+      status: 'running'
+    });
+
+    try {
+      const closed = await browserInteractiveService.closeSession(liveSessionId);
+      browserInteractiveLiveSessions.delete(liveSessionId);
+      database.appendRunEvent({
+        runId: run.id,
+        sessionId: session.id,
+        type: 'browser.interactive.session.closed',
+        details: closed.closed ? 'Live interactive browser session closed.' : 'Live interactive browser session close failed.',
+        payload: {
+          provider: closed.provider,
+          liveSessionId,
+          finalUrl: closed.finalUrl,
+          error: closed.error
+        }
+      });
+      database.updateRunStatus({
+        runId: run.id,
+        status: closed.closed && !closed.error ? 'completed' : 'failed',
+        error: closed.error,
+        resultSummary: closed.closed ? `Live interactive browser session closed: ${liveSessionId}` : `Live interactive browser session close failed: ${closed.error ?? 'unknown'}`
+      });
+      return jsonOk(reply, {
+        run: database.getRunById(run.id),
+        closed
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      database.updateRunStatus({
+        runId: run.id,
+        status: 'failed',
+        error: message,
+        resultSummary: `Live interactive browser session close failed: ${message}`
+      });
+      return jsonError(reply, message, 500, {
+        runId: run.id
+      });
+    }
+  });
 
   app.post('/api/browser/interactive/run', async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
@@ -53560,7 +53869,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       const control = await browserInteractiveService.run({
         url,
         actions,
-        previewChars: Number.isFinite(Number(body.previewChars)) ? Math.max(80, Math.min(8_000, Number(body.previewChars))) : 1_000,
+        previewChars: parseBrowserInteractivePreviewChars(body.previewChars),
         cookies: resolvedSessionState.cookies,
         storageState: browserInteractiveStorageStatePayload(resolvedSessionState.storageState),
         cdpEndpoint: requestedCdpEndpoint,
