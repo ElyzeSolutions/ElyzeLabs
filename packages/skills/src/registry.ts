@@ -119,7 +119,14 @@ export class SkillRegistry {
     for (const entry of catalogEntries) {
       const absoluteSkillPath = this.resolvePath(entry.path);
       loadedPaths.add(path.resolve(absoluteSkillPath));
-      await this.loadSkillFromDirectory(absoluteSkillPath, entry);
+      try {
+        await this.loadSkillFromDirectory(absoluteSkillPath, entry);
+      } catch (error) {
+        if (catalogStrict) {
+          throw error;
+        }
+        continue;
+      }
     }
 
     if (!catalogStrict) {
@@ -1186,11 +1193,74 @@ function parseSkillMarkdown(raw: string): { frontmatter: Record<string, unknown>
       body: raw
     };
   }
-  const parsed = YAML.parse(match[1] ?? '') as unknown;
+  const frontmatterRaw = match[1] ?? '';
+  let parsed: unknown;
+  try {
+    parsed = YAML.parse(frontmatterRaw);
+  } catch {
+    parsed = parseLooseSkillFrontmatter(frontmatterRaw);
+  }
   return {
     frontmatter: isRecord(parsed) ? parsed : {},
     body: match[2] ?? ''
   };
+}
+
+function parseLooseSkillFrontmatter(raw: string): Record<string, unknown> {
+  const frontmatter: Record<string, unknown> = {};
+  let currentListKey: string | null = null;
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue;
+    }
+    const listItem = line.match(/^\s*-\s+(.*)$/);
+    if (currentListKey && listItem) {
+      const existing = frontmatter[currentListKey];
+      const values = Array.isArray(existing) ? existing : [];
+      values.push(parseLooseFrontmatterScalar(listItem[1] ?? ''));
+      frontmatter[currentListKey] = values;
+      continue;
+    }
+    const separator = line.indexOf(':');
+    if (separator <= 0) {
+      currentListKey = null;
+      continue;
+    }
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    if (!key) {
+      currentListKey = null;
+      continue;
+    }
+    frontmatter[key] = value ? parseLooseFrontmatterScalar(value) : [];
+    currentListKey = value ? null : key;
+  }
+  return frontmatter;
+}
+
+function parseLooseFrontmatterScalar(value: string): unknown {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  if (trimmed === 'true') {
+    return true;
+  }
+  if (trimmed === 'false') {
+    return false;
+  }
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    return trimmed
+      .slice(1, -1)
+      .split(',')
+      .map((entry) => String(parseLooseFrontmatterScalar(entry.trim())))
+      .filter(Boolean);
+  }
+  return trimmed;
 }
 
 function markdownSkillToManifest(input: {

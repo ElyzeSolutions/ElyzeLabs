@@ -53,8 +53,27 @@ const OPENROUTER_MODEL_PREFIXES = ['openrouter:', 'openrouter/'];
 const DEFAULT_TIMEOUT_MS = 90_000;
 const DEFAULT_OPENROUTER_MODEL = 'minimax/minimax-m2.5';
 const DEFAULT_GEMINI_MODEL = 'gemini-3.1-pro-preview';
+const OPENROUTER_PROVIDER_API_ENV_KEYS: readonly string[] = ['OPENROUTER_API_KEY', 'OPS_OPENROUTER_API_KEY'];
 const GOOGLE_PROVIDER_API_ENV_KEYS = ['GOOGLE_API_KEY', 'OPS_GOOGLE_API_KEY'] as const;
 const GITHUB_TOKEN_ENV_KEYS = ['OPS_GITHUB_PAT', 'GH_TOKEN', 'GITHUB_TOKEN'] as const;
+const BROKERED_CREDENTIAL_ENV_KEYS: readonly string[] = [
+  'ANTHROPIC_API_KEY',
+  'CLAUDE_API_KEY',
+  'GEMINI_API_KEY',
+  'GOOGLE_API_KEY',
+  'OPENAI_API_KEY',
+  'OPENROUTER_API_KEY',
+  'OPS_ANTHROPIC_API_KEY',
+  'OPS_CLAUDE_API_KEY',
+  'OPS_GEMINI_API_KEY',
+  'OPS_GOOGLE_API_KEY',
+  'OPS_OPENAI_API_KEY',
+  'OPS_OPENROUTER_API_KEY',
+  'OPS_TELEGRAM_BOT_TOKEN',
+  'OPS_VOYAGE_API_KEY',
+  'TELEGRAM_BOT_TOKEN',
+  'VOYAGE_API_KEY'
+];
 const GIT_AUTOMATION_CLEAR_KEYS = [
   'GIT_DIR',
   'GIT_WORK_TREE',
@@ -232,8 +251,16 @@ function resolveGeminiModel(rawModel: unknown, providerHint: unknown): string | 
   return envDefault || DEFAULT_GEMINI_MODEL;
 }
 
-function resolveGithubTokenFromEnv(): string | null {
-  for (const envKey of GITHUB_TOKEN_ENV_KEYS) {
+function resolveProviderCredentialEnvKey(metadata: Record<string, unknown>): string | null {
+  if (typeof metadata.providerCredentialEnvKey !== 'string') {
+    return null;
+  }
+  const envKey = metadata.providerCredentialEnvKey.trim();
+  return /^[A-Z_][A-Z0-9_]*$/.test(envKey) ? envKey : null;
+}
+
+function resolveCredentialFromEnvKeys(envKeys: ReadonlyArray<string>): string | null {
+  for (const envKey of envKeys) {
     const value = process.env[envKey];
     if (typeof value === 'string' && value.trim().length > 0) {
       return value.trim();
@@ -242,8 +269,36 @@ function resolveGithubTokenFromEnv(): string | null {
   return null;
 }
 
-function resolveGeminiApiKeyFromEnv(): string | null {
-  for (const envKey of GOOGLE_PROVIDER_API_ENV_KEYS) {
+function resolveProviderApiKeyFromEnv(
+  metadata: Record<string, unknown>,
+  fallbackEnvKeys: ReadonlyArray<string>
+): string | null {
+  const profileEnvKey = resolveProviderCredentialEnvKey(metadata);
+  const profileCredential = profileEnvKey ? resolveCredentialFromEnvKeys([profileEnvKey]) : null;
+  return profileCredential ?? resolveCredentialFromEnvKeys(fallbackEnvKeys);
+}
+
+function providerAuthTraceMetadata(metadata: Record<string, unknown>): Pick<ProviderApiCallTrace, 'authProfileId' | 'credentialSource'> {
+  const authProfileId =
+    typeof metadata.providerAuthProfileId === 'string' && metadata.providerAuthProfileId.trim().length > 0
+      ? metadata.providerAuthProfileId.trim()
+      : null;
+  const credentialSource =
+    typeof metadata.providerCredentialSource === 'string' && metadata.providerCredentialSource.trim().length > 0
+      ? metadata.providerCredentialSource.trim()
+      : null;
+  const trace: Pick<ProviderApiCallTrace, 'authProfileId' | 'credentialSource'> = {};
+  if (authProfileId) {
+    trace.authProfileId = authProfileId;
+  }
+  if (credentialSource) {
+    trace.credentialSource = credentialSource;
+  }
+  return trace;
+}
+
+function resolveGithubTokenFromEnv(): string | null {
+  for (const envKey of GITHUB_TOKEN_ENV_KEYS) {
     const value = process.env[envKey];
     if (typeof value === 'string' && value.trim().length > 0) {
       return value.trim();
@@ -276,14 +331,27 @@ function buildGitAutomationEnvironment(): Record<string, string> {
   return env;
 }
 
+function isBrokeredCredentialEnvKey(key: string): boolean {
+  return BROKERED_CREDENTIAL_ENV_KEYS.includes(key) || /^OPS_LLM_[A-Z0-9_]*_API_KEY$/.test(key);
+}
+
 function buildRuntimeEnvironment(extraEntries: Record<string, string>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const key of GIT_AUTOMATION_CLEAR_KEYS) {
     delete env[key];
   }
+  const removedCredentialKeys: string[] = [];
+  for (const key of Object.keys(env)) {
+    if (isBrokeredCredentialEnvKey(key)) {
+      delete env[key];
+      removedCredentialKeys.push(key);
+    }
+  }
   return {
     ...env,
     ...buildGitAutomationEnvironment(),
+    OPS_SANDBOX_CREDENTIAL_BOUNDARY: removedCredentialKeys.length > 0 ? 'brokered' : 'none',
+    OPS_SANDBOX_CREDENTIAL_KEYS_REMOVED: removedCredentialKeys.sort().join(','),
     ...extraEntries
   };
 }
@@ -660,7 +728,7 @@ function parseRuntimeToolSessionHandle(value: unknown): RuntimeToolSessionHandle
   return {
     schema: 'ops.native-tool-session-handle.v1',
     id,
-    runtime: runtime as RuntimeKind,
+    runtime,
     provider,
     model: typeof value.model === 'string' ? value.model.trim() || null : null,
     transport,
@@ -967,7 +1035,8 @@ class ProcessBackedAdapter implements RuntimeAdapter {
     prompt: string,
     model: string
   ): Promise<RuntimeAdapterResponse> {
-    const apiKey = resolveGeminiApiKeyFromEnv() ?? '';
+    const metadata = isRecord(context.metadata) ? context.metadata : {};
+    const apiKey = resolveProviderApiKeyFromEnv(metadata, GOOGLE_PROVIDER_API_ENV_KEYS) ?? '';
     if (!apiKey) {
       return {
         status: 'failed',
@@ -979,7 +1048,7 @@ class ProcessBackedAdapter implements RuntimeAdapter {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const startedAt = utcNow();
-    const metadata = isRecord(context.metadata) ? context.metadata : {};
+    const authTrace = providerAuthTraceMetadata(metadata);
     const existingToolSessionHandle = parseRuntimeToolSessionHandle(metadata.nativeToolSessionHandle);
     const shouldResumeNativeToolSession =
       metadata.nativeToolSessionResume === true &&
@@ -1045,6 +1114,7 @@ class ProcessBackedAdapter implements RuntimeAdapter {
           provider: 'google',
           model,
           status: 'failed',
+          ...authTrace,
           error: reason,
           ...(payload ? { raw: JSON.stringify(payload) } : { raw: reason }),
           ...(usage ? { usage } : {})
@@ -1114,6 +1184,7 @@ class ProcessBackedAdapter implements RuntimeAdapter {
         provider: 'google',
         model,
         status: 'completed',
+        ...authTrace,
         ...(payload ? { raw: JSON.stringify(payload) } : {}),
         ...(usage ? { usage } : {})
       });
@@ -1138,6 +1209,7 @@ class ProcessBackedAdapter implements RuntimeAdapter {
         provider: 'google',
         model,
         status: 'failed',
+        ...authTrace,
         error: message,
         raw: message
       };
@@ -1156,7 +1228,8 @@ class ProcessBackedAdapter implements RuntimeAdapter {
     prompt: string,
     model: string
   ): Promise<RuntimeAdapterResponse> {
-    const apiKey = process.env.OPENROUTER_API_KEY?.trim() || process.env.OPS_OPENROUTER_API_KEY?.trim() || '';
+    const metadata = isRecord(context.metadata) ? context.metadata : {};
+    const apiKey = resolveProviderApiKeyFromEnv(metadata, OPENROUTER_PROVIDER_API_ENV_KEYS) ?? '';
     if (!apiKey) {
       return {
         status: 'failed',
@@ -1168,7 +1241,7 @@ class ProcessBackedAdapter implements RuntimeAdapter {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const startedAt = utcNow();
-    const metadata = isRecord(context.metadata) ? context.metadata : {};
+    const authTrace = providerAuthTraceMetadata(metadata);
     const existingToolSessionHandle = parseRuntimeToolSessionHandle(metadata.nativeToolSessionHandle);
     const shouldResumeNativeToolSession =
       metadata.nativeToolSessionResume === true &&
@@ -1238,6 +1311,7 @@ class ProcessBackedAdapter implements RuntimeAdapter {
           provider: 'openrouter',
           model,
           status: response.ok ? 'completed' : 'failed',
+          ...authTrace,
           ...(reason ? { error: reason } : {}),
           ...(payload ? { raw: JSON.stringify(payload) } : reason ? { raw: reason } : {}),
           ...(usage ? { usage } : {})
@@ -1341,6 +1415,7 @@ class ProcessBackedAdapter implements RuntimeAdapter {
         provider: 'openrouter',
         model,
         status: 'failed',
+        ...authTrace,
         error: message,
         raw: message
       };
@@ -1583,7 +1658,6 @@ class ProcessBackedAdapter implements RuntimeAdapter {
       if (exitCode !== null) {
         const finalChunk = await this.readOutputChunk(outputFile, offset);
         if (finalChunk.chunk.length > 0) {
-          offset = finalChunk.nextOffset;
           output += finalChunk.chunk;
           context.onChunk?.(finalChunk.chunk, 'stdout');
         }

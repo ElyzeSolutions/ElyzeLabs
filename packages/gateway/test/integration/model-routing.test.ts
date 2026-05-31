@@ -22,6 +22,23 @@ describe('gateway model routing integration', () => {
     return harness;
   };
 
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+  const expectRecord = (value: unknown): Record<string, unknown> => {
+    if (!isRecord(value)) {
+      throw new Error('Expected object payload');
+    }
+    return value;
+  };
+
+  const expectArray = (value: unknown): unknown[] => {
+    if (!Array.isArray(value)) {
+      throw new Error('Expected array payload');
+    }
+    return value;
+  };
+
   afterEach(async () => {
     while (harnesses.length > 0) {
       await harnesses.pop()!.close();
@@ -139,6 +156,79 @@ describe('gateway model routing integration', () => {
     };
     expect(body.validation.valid).toBe(true);
     expect(body.limits.fallbackByRuntime.process[0]?.model).toBe('gemini-flash-latest');
+  });
+
+  it('persists auth profile cooldowns and excludes cooled profiles from effective routing', async () => {
+    process.env.OPENROUTER_API_KEY = 'test-openrouter';
+    const harness = await createHarness('llm-auth-profile-cooldown');
+
+    const limitsResponse = await harness.inject({
+      method: 'PUT',
+      url: '/api/llm/limits',
+      payload: {
+        limits: {
+          primaryModelByRuntime: {
+            process: 'openrouter/minimax/minimax-m2.5'
+          },
+          fallbackByRuntime: {
+            process: []
+          },
+          strictPrimaryByRuntime: {
+            process: true
+          }
+        }
+      }
+    });
+    expect(limitsResponse.statusCode).toBe(200);
+
+    const profileResponse = await harness.inject({
+      method: 'GET',
+      url: '/api/llm/auth-profiles'
+    });
+    expect(profileResponse.statusCode).toBe(200);
+    const profileBody = expectRecord(profileResponse.json());
+    const profilePayload = expectRecord(profileBody.authProfiles);
+    const profiles = expectArray(profilePayload.profiles).map(expectRecord);
+    const openrouterProfile = profiles.find((profile) => profile.id === 'openrouter:default');
+    expect(openrouterProfile?.configured).toBe(true);
+    expect(openrouterProfile?.eligible).toBe(true);
+
+    const cooldownUntil = '2100-01-01T00:00:00.000Z';
+    const updateResponse = await harness.inject({
+      method: 'PUT',
+      url: '/api/llm/auth-profiles/openrouter:default',
+      payload: {
+        status: 'cooldown',
+        cooldownUntil,
+        actor: 'integration-test'
+      }
+    });
+    expect(updateResponse.statusCode).toBe(200);
+
+    const routingResponse = await harness.inject({
+      method: 'GET',
+      url: '/api/llm/routing/effective?runtime=process&model=openrouter/minimax/minimax-m2.5'
+    });
+    expect(routingResponse.statusCode).toBe(200);
+    const routingBody = expectRecord(routingResponse.json());
+    const routes = expectArray(routingBody.routes).map(expectRecord);
+    const route = expectRecord(routes[0]);
+    expect(route.selected).toBe(null);
+    const checks = expectArray(route.checks).map(expectRecord);
+    const openrouterCheck = checks.find((check) => check.provider === 'openrouter');
+    expect(openrouterCheck?.eligible).toBe(false);
+    expect(openrouterCheck?.reason).toBe('provider_auth_profile_cooldown:openrouter:default');
+
+    const refreshedResponse = await harness.inject({
+      method: 'GET',
+      url: '/api/llm/auth-profiles'
+    });
+    const refreshedBody = expectRecord(refreshedResponse.json());
+    const refreshedPayload = expectRecord(refreshedBody.authProfiles);
+    const refreshedProfiles = expectArray(refreshedPayload.profiles).map(expectRecord);
+    const cooledProfile = refreshedProfiles.find((profile) => profile.id === 'openrouter:default');
+    expect(cooledProfile?.eligible).toBe(false);
+    expect(cooledProfile?.blockReason).toBe('provider_auth_profile_cooldown:openrouter:default');
   });
 
   it('surfaces persisted invalid limits in warn mode without silently rewriting them', async () => {

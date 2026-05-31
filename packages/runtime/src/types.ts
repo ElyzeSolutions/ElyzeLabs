@@ -4,6 +4,8 @@ export interface ProviderApiCallTrace {
   provider: 'openrouter' | 'google';
   model: string;
   status: 'completed' | 'failed';
+  authProfileId?: string;
+  credentialSource?: string;
   error?: string;
   raw?: string;
   usage?: {

@@ -330,6 +330,10 @@ export function loadConfig(options: LoadConfigOptions = {}): ControlPlaneConfig 
         minConfidence: parseNumber(env.OPS_POLICY_AUTO_DELEGATION_MIN_CONFIDENCE),
         timeoutMs: parseNumber(env.OPS_POLICY_AUTO_DELEGATION_TIMEOUT_MS),
         maxTargets: parseNumber(env.OPS_POLICY_AUTO_DELEGATION_MAX_TARGETS)
+      },
+      sandbox: {
+        enabled: parseBoolean(env.OPS_SANDBOX_ENABLED),
+        activeProfile: env.OPS_SANDBOX_PROFILE
       }
     },
     observability: {

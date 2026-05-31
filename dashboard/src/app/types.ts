@@ -621,6 +621,42 @@ export interface SkillRow {
   enabled: boolean;
   requiresApproval: boolean;
   supportsDryRun: boolean;
+  lifecycle?: SkillLifecycleRow | null;
+}
+
+export type SkillLifecycleState = 'candidate' | 'active' | 'pinned' | 'needs_review' | 'deprecated' | 'archived';
+export type SkillLifecycleHealthStatus = 'healthy' | 'warning' | 'blocked';
+
+export interface SkillLifecycleRow {
+  state: SkillLifecycleState;
+  pinned: boolean;
+  provenance: 'manifest' | 'catalog' | 'runtime' | 'operator';
+  health: {
+    status: SkillLifecycleHealthStatus;
+    reasons: string[];
+    missingTools: string[];
+    elevatedWithoutApproval: boolean;
+  };
+  updatedAt: string | null;
+  updatedBy: string | null;
+  note: string | null;
+}
+
+export interface SkillLifecycleStateRow {
+  schema: 'ops.skill-lifecycle.v1';
+  skills: Array<{
+    skillName: string;
+    lifecycle: SkillLifecycleRow;
+  }>;
+  updatedAt: string;
+}
+
+export interface SkillCuratorProposalRow {
+  skillName: string;
+  fromState: SkillLifecycleState;
+  toState: SkillLifecycleState;
+  reason: string;
+  applied: boolean;
 }
 
 export interface OfficePresenceRow {
@@ -691,7 +727,7 @@ export type BrowserCookieSourceKind =
   | 'browser_profile_import';
 
 export type BrowserSessionProfileVisibility = 'shared' | 'session_only';
-export type BrowserLocalProfileKind = 'chrome' | 'firefox';
+export type BrowserLocalProfileKind = 'chrome' | 'edge' | 'firefox';
 
 export interface BrowserCapabilityPolicyRow {
   allowedDomains: string[];
@@ -922,6 +958,7 @@ export interface BrowserStorageStateSummaryRow {
   label: string;
   domains: string[];
   originCount: number;
+  cookieCount: number;
   notes: string | null;
   revokedAt: string | null;
   createdAt: string;
@@ -942,6 +979,9 @@ export interface BrowserLocalProfileRow {
   profilePath: string;
   isDefault: boolean;
   importStrategy: 'cookie_import' | 'cookie_import_and_real_chrome';
+  browserDisplayName?: string;
+  browserAppName?: string;
+  browserBinaryPath?: string;
 }
 
 export interface BrowserSessionProfileSummaryRow {
@@ -953,6 +993,10 @@ export interface BrowserSessionProfileSummaryRow {
   proxyProfileId: string | null;
   storageStateId: string | null;
   useRealChrome: boolean;
+  profileClass: 'managed' | 'local_profile' | 'auth_state' | 'real_chrome';
+  isManaged: boolean;
+  isIsolated: boolean;
+  isolationSummary: string;
   ownerLabel: string | null;
   visibility: BrowserSessionProfileVisibility;
   allowedSessionIds: string[];
@@ -1013,7 +1057,7 @@ export interface BrowserTestRequestRow {
 }
 
 export type BrowserConnectSiteKey = 'tiktok' | 'instagram' | 'reddit' | 'x' | 'pinterest' | 'facebook' | 'generic';
-export type BrowserConnectMethod = 'real_chrome' | 'cookie_import' | 'browser_profile_import';
+export type BrowserConnectMethod = 'real_chrome' | 'cookie_import' | 'browser_profile_import' | 'playwright_storage_state';
 
 export interface BrowserConnectSitePresetRow {
   siteKey: BrowserConnectSiteKey;
@@ -1217,6 +1261,40 @@ export type ScheduleCadenceKind = 'interval' | 'cron';
 export type ScheduleSessionTarget = 'origin_session' | 'dedicated_schedule_session' | 'explicit_session';
 export type ScheduleDeliveryTarget = 'origin_session' | 'dedicated_schedule_session' | 'artifact_only' | 'silent_on_heartbeat';
 export type ScheduleConcurrencyPolicy = 'skip' | 'queue' | 'replace';
+export type ScheduleGuardrailStatus = 'pass' | 'warn' | 'fail';
+
+export interface ScheduleDeliveryAuditRow {
+  target: ScheduleDeliveryTarget;
+  targetSessionId: string | null;
+  recorded: boolean;
+  attemptedExternal: boolean;
+  deliveredExternal: boolean;
+  suppressed: boolean;
+  reason: string;
+  error: string | null;
+  receiptKey: string | null;
+  updatedAt: string;
+}
+
+export interface ScheduleGuardrailCheckRow {
+  id: string;
+  label: string;
+  status: ScheduleGuardrailStatus;
+  summary: string;
+  evidence: Record<string, unknown>;
+  recommendation: string | null;
+}
+
+export interface ScheduleGuardrailRow {
+  scheduleId: string;
+  status: ScheduleGuardrailStatus;
+  checkedAt: string;
+  reviewedAt: string | null;
+  appliedAt: string | null;
+  lastDelivery: ScheduleDeliveryAuditRow | null;
+  checks: ScheduleGuardrailCheckRow[];
+  recommendations: string[];
+}
 
 export interface ScheduleRow {
   id: string;
@@ -1252,6 +1330,7 @@ export interface ScheduleRow {
   lastError: string | null;
   lastResult: Record<string, unknown>;
   metadata: Record<string, unknown>;
+  guardrails: ScheduleGuardrailRow;
   createdAt: string;
   updatedAt: string;
   activeRun: {
@@ -1528,6 +1607,53 @@ export interface ReadinessState {
   tier: 'ready' | 'warning' | 'degraded' | 'blocked';
   checks: ReadinessCheckRow[];
   queue: Record<string, unknown>;
+}
+
+export type DoctorCenterStatus = 'pass' | 'warn' | 'fail';
+export type DoctorRepairActionKind = 'execute' | 'navigate';
+
+export interface DoctorRepairActionRow {
+  id: string;
+  label: string;
+  kind: DoctorRepairActionKind;
+  target: string;
+  requiresApproval: boolean;
+  summary: string;
+}
+
+export interface DoctorCenterCheckRow {
+  id: string;
+  label: string;
+  status: DoctorCenterStatus;
+  summary: string;
+  evidence: Record<string, unknown>;
+  repairActionId?: string;
+}
+
+export interface DoctorCenterAreaRow {
+  id: 'readiness' | 'prompt_governance' | 'memory_governance' | 'sandbox_policy' | 'skills' | 'schedules' | 'browser_profiles';
+  label: string;
+  status: DoctorCenterStatus;
+  summary: string;
+  metrics: Array<{ label: string; value: number | string }>;
+  checks: DoctorCenterCheckRow[];
+  repairActions: DoctorRepairActionRow[];
+}
+
+export interface DoctorCenterState {
+  schema: 'ops.doctor-center.v1';
+  generatedAt: string;
+  overall: DoctorCenterStatus;
+  score: number;
+  areas: DoctorCenterAreaRow[];
+  repairActions: DoctorRepairActionRow[];
+}
+
+export interface DoctorRepairRunResultRow {
+  id: string;
+  status: 'ok' | 'blocked' | 'error';
+  summary: string;
+  result: unknown;
 }
 
 export interface CleanupCandidateRow {

@@ -238,13 +238,17 @@ export class BrowserSessionVault {
           ? this.database.getBrowserStorageStateById(sessionProfile.storageStateId)
           : null;
 
-    const cookies = [
+    const storageStateCookies = storageState
+      ? parseStorageStateCookies(parseJsonSafe<Record<string, unknown>>(storageState.storageStateJson, {}))
+      : [];
+    const cookies = dedupeCookieEntries([
       ...filterCookieEntriesForHost(readCookieEntries(cookieJar), urlHost),
+      ...filterCookieEntriesForHost(storageStateCookies, urlHost),
       ...Object.entries(input.extraCookies ?? {}).map(([name, value]) => ({
         name,
         value
       }))
-    ];
+    ]);
     const headers = {
       ...readHeaderEntries(headerProfile),
       ...normalizeHeaderMap(input.extraHeaders ?? {})
@@ -357,6 +361,18 @@ export function parseCookieJson(raw: string, domainHint: string | null): Browser
   return [];
 }
 
+export function parseStorageStateCookies(storageState: Record<string, unknown>): BrowserCookieEntry[] {
+  const value = Array.isArray(storageState.cookies) ? storageState.cookies : [];
+  const cookies: BrowserCookieEntry[] = [];
+  for (const entry of value) {
+    const normalized = normalizeCookieEntry(entry, null);
+    if (normalized) {
+      cookies.push(normalized);
+    }
+  }
+  return cookies;
+}
+
 export function inferDomainsFromCookies(cookies: BrowserCookieEntry[]): string[] {
   return Array.from(
     new Set(
@@ -394,6 +410,22 @@ function filterCookieEntriesForHost(cookies: BrowserCookieEntry[], host: string)
     const domain = normalizeDomain(entry.domain);
     return !domain || hostMatchesDomain(host, domain);
   });
+}
+
+function dedupeCookieEntries(cookies: BrowserCookieEntry[]): BrowserCookieEntry[] {
+  const byKey = new Map<string, BrowserCookieEntry>();
+  for (const cookie of cookies) {
+    const name = cookie.name.trim();
+    if (!name) {
+      continue;
+    }
+    const key = [name.toLowerCase(), normalizeDomain(cookie.domain) ?? '', cookie.path ?? '/'].join('|');
+    byKey.set(key, {
+      ...cookie,
+      name
+    });
+  }
+  return Array.from(byKey.values());
 }
 
 function readCookieEntries(record: BrowserCookieJarRecord | null): BrowserCookieEntry[] {

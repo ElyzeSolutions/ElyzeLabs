@@ -21,6 +21,7 @@ import {
   deleteBrowserSessionProfile,
   disableBrowserSessionProfile,
   enableBrowserSessionProfile,
+  ensureManagedBrowserProfile,
   importBrowserCookieJar,
   revokeBrowserSessionProfile,
   revokeBrowserCookieJar,
@@ -31,6 +32,9 @@ import {
   runBrowserTest,
   saveBrowserConfig,
   startBrowserLoginCapture,
+  startPlaywrightAuthCapture,
+  savePlaywrightAuthCapture,
+  saveCurrentPlaywrightAuthSession,
   upsertBrowserHeaderProfile,
   upsertBrowserProxyProfile,
   upsertBrowserStorageState,
@@ -95,14 +99,19 @@ const CONNECT_METHOD_OPTIONS: Array<{
   detail: string;
 }> = [
   {
+    id: 'playwright_storage_state',
+    label: 'Guided auth browser',
+    detail: 'Opens a dedicated Playwright browser for login, then saves storage state for low-detection Scrapling captures.'
+  },
+  {
     id: 'browser_profile_import',
     label: 'Import from browser',
-    detail: 'Best full-fidelity path. Elyze reads cookies from a local Chrome or Firefox profile and saves a reusable session.'
+    detail: 'Best full-fidelity path. Elyze reads cookies from a local Chrome, Edge, Firefox, or Zen profile and saves a reusable session.'
   },
   {
     id: 'real_chrome',
-    label: 'Use current Chrome login',
-    detail: 'Easiest path. Stay logged into the site in Chrome on this machine, then Elyze reuses that browser session.'
+    label: 'Managed real Chrome',
+    detail: 'Runs verification through the real Chrome browser provider. Use Import from browser when you want a saved login from your personal Chrome, Edge, Firefox, or Zen profile.'
   },
   {
     id: 'cookie_import',
@@ -125,7 +134,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'tiktok',
     label: 'TikTok',
     hint: 'Profiles, likes, videos, and authenticated views.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'TikTok personal login',
     defaultVerifyUrl: 'https://www.tiktok.com/foryou',
     defaultDomains: 'www.tiktok.com\ntiktok.com',
@@ -136,7 +145,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'instagram',
     label: 'Instagram',
     hint: 'Profiles, reels, saved views, and guarded pages.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'Instagram personal login',
     defaultVerifyUrl: 'https://www.instagram.com/',
     defaultDomains: 'www.instagram.com\ninstagram.com',
@@ -147,7 +156,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'reddit',
     label: 'Reddit',
     hint: 'Logged-in feeds, saved posts, and private communities.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'Reddit personal login',
     defaultVerifyUrl: 'https://www.reddit.com/',
     defaultDomains: 'www.reddit.com\nreddit.com',
@@ -158,7 +167,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'x',
     label: 'X',
     hint: 'Home feed, searches, and account-specific browsing.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'X personal login',
     defaultVerifyUrl: 'https://x.com/home',
     defaultDomains: 'x.com\nwww.x.com\ntwitter.com\nwww.twitter.com',
@@ -169,7 +178,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'pinterest',
     label: 'Pinterest',
     hint: 'Boards, private pins, and account-scoped discovery.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'Pinterest personal login',
     defaultVerifyUrl: 'https://www.pinterest.com/',
     defaultDomains: 'www.pinterest.com\npinterest.com',
@@ -180,7 +189,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'facebook',
     label: 'Facebook',
     hint: 'Feeds, pages, and logged-in web views.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'Facebook personal login',
     defaultVerifyUrl: 'https://www.facebook.com/',
     defaultDomains: 'www.facebook.com\nfacebook.com\nm.facebook.com',
@@ -266,6 +275,7 @@ type BrowserFormState = {
     headersProfileId: string;
     proxyProfileId: string;
     storageStateId: string;
+    playwrightCaptureId: string;
   };
   connectBusy: boolean;
   loginCaptureBusy: boolean;
@@ -308,6 +318,23 @@ type BrowserFormState = {
 
 function connectSiteConfig(siteKey: BrowserConnectSiteKey) {
   return CONNECT_SITE_OPTIONS.find((entry) => entry.siteKey === siteKey) ?? CONNECT_SITE_OPTIONS[CONNECT_SITE_OPTIONS.length - 1];
+}
+
+function normalizeBrowserLocalProfileKind(value: string): BrowserLocalProfileKind {
+  if (value === 'edge') {
+    return 'edge';
+  }
+  return value === 'firefox' ? 'firefox' : 'chrome';
+}
+
+function sessionProfileStatusDotClass(profile: BrowserSessionProfileSummaryRow): string {
+  if (!profile.enabled || profile.lastVerificationStatus === 'failed') {
+    return 'bg-rose-400';
+  }
+  if (profile.lastVerificationStatus === 'connected') {
+    return 'bg-emerald-400';
+  }
+  return 'bg-amber-300';
 }
 
 function cloneBrowserConfig(config: BrowserCapabilityConfigRow): BrowserCapabilityConfigRow {
@@ -392,6 +419,7 @@ function CapabilitySwitch({
         type="checkbox"
         role="switch"
         aria-label={label}
+        aria-checked={enabled}
         checked={enabled}
         disabled={disabled}
         onChange={onChange}
@@ -570,7 +598,8 @@ function useBrowserPageModel() {
         timezoneId: '',
         headersProfileId: '',
         proxyProfileId: '',
-        storageStateId: ''
+        storageStateId: '',
+        playwrightCaptureId: ''
       },
       connectBusy: false,
       loginCaptureBusy: false,
@@ -629,7 +658,7 @@ function useBrowserPageModel() {
     <K extends keyof BrowserOpsState>(key: K, value: BrowserOpsState[K] | ((current: BrowserOpsState[K]) => BrowserOpsState[K])) => {
       setOpsState((current) => ({
         ...current,
-        [key]: typeof value === 'function' ? (value as (current: BrowserOpsState[K]) => BrowserOpsState[K])(current[key]) : value
+        [key]: typeof value === 'function' ? value(current[key]) : value
       }));
     },
     []
@@ -641,7 +670,7 @@ function useBrowserPageModel() {
     ) => {
       setFormState((current) => ({
         ...current,
-        [key]: typeof value === 'function' ? (value as (current: BrowserFormState[K]) => BrowserFormState[K])(current[key]) : value
+        [key]: typeof value === 'function' ? value(current[key]) : value
       }));
     },
     []
@@ -758,27 +787,49 @@ function useBrowserPageModel() {
     setError(null);
     setNotice(null);
     try {
-      const result = await connectBrowserAccount(token, {
-        label: connectForm.label.trim(),
-        ownerLabel: connectForm.ownerLabel.trim() || null,
-        siteKey: connectForm.siteKey,
-        method: connectForm.method,
-        browserKind: connectForm.method === 'browser_profile_import' ? connectForm.browserKind : null,
-        browserProfileId: connectForm.method === 'browser_profile_import' ? connectForm.browserProfileId || null : null,
-        visibility: connectForm.visibility,
-        allowedSessionIds: connectForm.allowedSessionId ? [connectForm.allowedSessionId] : [],
-        domains: parseLineList(connectForm.domains),
-        verifyUrl: connectForm.verifyUrl.trim() || null,
-        sourceKind: connectForm.method === 'cookie_import' ? connectForm.sourceKind : undefined,
-        raw: connectForm.method === 'cookie_import' ? connectForm.raw : undefined,
-        headersProfileId: connectForm.headersProfileId || null,
-        proxyProfileId: connectForm.proxyProfileId || null,
-        storageStateId: connectForm.storageStateId || null,
-        locale: connectForm.locale.trim() || null,
-        countryCode: connectForm.countryCode.trim() || null,
-        timezoneId: connectForm.timezoneId.trim() || null,
-        notes: connectForm.notes.trim() || null
-      });
+      if (connectForm.method === 'playwright_storage_state' && !connectForm.playwrightCaptureId) {
+        setError('Start the guided auth browser first, log in there, then click Connect and test.');
+        return;
+      }
+      const result =
+        connectForm.method === 'playwright_storage_state'
+          ? await savePlaywrightAuthCapture(token, {
+              captureId: connectForm.playwrightCaptureId,
+              label: connectForm.label.trim(),
+              ownerLabel: connectForm.ownerLabel.trim() || null,
+              visibility: connectForm.visibility,
+              allowedSessionIds: connectForm.allowedSessionId ? [connectForm.allowedSessionId] : [],
+              domains: parseLineList(connectForm.domains),
+              verifyUrl: connectForm.verifyUrl.trim() || null,
+              headersProfileId: connectForm.headersProfileId || null,
+              proxyProfileId: connectForm.proxyProfileId || null,
+              storageStateId: connectForm.storageStateId || undefined,
+              locale: connectForm.locale.trim() || null,
+              countryCode: connectForm.countryCode.trim() || null,
+              timezoneId: connectForm.timezoneId.trim() || null,
+              notes: connectForm.notes.trim() || null
+            })
+          : await connectBrowserAccount(token, {
+              label: connectForm.label.trim(),
+              ownerLabel: connectForm.ownerLabel.trim() || null,
+              siteKey: connectForm.siteKey,
+              method: connectForm.method,
+              browserKind: connectForm.method === 'browser_profile_import' ? connectForm.browserKind : null,
+              browserProfileId: connectForm.method === 'browser_profile_import' ? connectForm.browserProfileId || null : null,
+              visibility: connectForm.visibility,
+              allowedSessionIds: connectForm.allowedSessionId ? [connectForm.allowedSessionId] : [],
+              domains: parseLineList(connectForm.domains),
+              verifyUrl: connectForm.verifyUrl.trim() || null,
+              sourceKind: connectForm.method === 'cookie_import' ? connectForm.sourceKind : undefined,
+              raw: connectForm.method === 'cookie_import' ? connectForm.raw : undefined,
+              headersProfileId: connectForm.headersProfileId || null,
+              proxyProfileId: connectForm.proxyProfileId || null,
+              storageStateId: connectForm.storageStateId || null,
+              locale: connectForm.locale.trim() || null,
+              countryCode: connectForm.countryCode.trim() || null,
+              timezoneId: connectForm.timezoneId.trim() || null,
+              notes: connectForm.notes.trim() || null
+            });
       setVault(result.vault);
       setLastConnectVerification(result.verification);
       setNotice(`Connected ${result.sessionProfile.label} and ran a verification capture.`);
@@ -798,6 +849,9 @@ function useBrowserPageModel() {
       }));
       if (connectForm.method === 'cookie_import') {
         setConnectForm((current) => ({ ...current, raw: '' }));
+      }
+      if (connectForm.method === 'playwright_storage_state') {
+        setConnectForm((current) => ({ ...current, playwrightCaptureId: '' }));
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Failed to connect browser account.');
@@ -828,6 +882,25 @@ function useBrowserPageModel() {
     },
     [token, updateTestForm]
   );
+  const handleEnsureManagedProfile = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before creating managed browser profiles.');
+      return;
+    }
+    setVaultBusy('ensure-managed-profile');
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await ensureManagedBrowserProfile(token);
+      setVault(result.vault);
+      updateTestForm('sessionProfileId', result.sessionProfile.id);
+      setNotice(`Managed browser profile ${result.sessionProfile.label} is ready.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to create managed browser profile.');
+    } finally {
+      setVaultBusy(null);
+    }
+  }, [token, updateTestForm]);
   const activeConnectSite = useMemo(() => connectSiteConfig(connectForm.siteKey), [connectForm.siteKey]);
   const localProfiles = useMemo(() => vault?.localProfiles ?? [], [vault?.localProfiles]);
   const filteredLocalProfiles = useMemo(
@@ -909,6 +982,111 @@ function useBrowserPageModel() {
       };
     });
   }, [routeBrowser, routeOwner, routeSessionId, routeSite, routeVisibility]);
+  const handleStartPlaywrightAuthCapture = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before starting a guided auth browser.');
+      return;
+    }
+    setLoginCaptureBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await startPlaywrightAuthCapture(token, {
+        siteKey: connectForm.siteKey,
+        browserKind: connectForm.browserKind === 'edge' ? 'edge' : 'chrome',
+        label: connectForm.label.trim() || activeConnectSite.defaultProfileLabel,
+        domains: parseLineList(connectForm.domains),
+        verifyUrl: connectForm.verifyUrl.trim() || null
+      });
+      setVault(result.vault);
+      setConnectForm((current) => ({
+        ...current,
+        method: 'playwright_storage_state',
+        playwrightCaptureId: result.capture.id,
+        browserKind: result.capture.browserKind,
+        storageStateId: ''
+      }));
+      setNotice(`Opened ${result.capture.label}. Log in there, then click Connect and test to save auth state.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to start guided auth browser.');
+    } finally {
+      setLoginCaptureBusy(false);
+    }
+  }, [activeConnectSite.defaultProfileLabel, connectForm.browserKind, connectForm.domains, connectForm.label, connectForm.siteKey, connectForm.verifyUrl, token]);
+  const handleSaveCurrentPlaywrightAuthSession = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before saving the current Playwright login.');
+      return;
+    }
+    setLoginCaptureBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await saveCurrentPlaywrightAuthSession(token, {
+        siteKey: connectForm.siteKey,
+        browserKind: connectForm.browserKind === 'edge' ? 'edge' : 'chrome',
+        label: connectForm.label.trim() || activeConnectSite.defaultProfileLabel,
+        ownerLabel: connectForm.ownerLabel.trim() || null,
+        visibility: connectForm.visibility,
+        allowedSessionIds: connectForm.allowedSessionId ? [connectForm.allowedSessionId] : [],
+        domains: parseLineList(connectForm.domains),
+        verifyUrl: connectForm.verifyUrl.trim() || null,
+        headersProfileId: connectForm.headersProfileId || null,
+        proxyProfileId: connectForm.proxyProfileId || null,
+        storageStateId: connectForm.storageStateId || undefined,
+        locale: connectForm.locale.trim() || null,
+        countryCode: connectForm.countryCode.trim() || null,
+        timezoneId: connectForm.timezoneId.trim() || null,
+        notes: connectForm.notes.trim() || null
+      });
+      setVault(result.vault);
+      setLastConnectVerification(result.verification);
+      updateTestForm('sessionProfileId', result.sessionProfile.id);
+      setSessionProfileForm((current) => ({
+        ...current,
+        label: result.sessionProfile.label,
+        domains: result.sessionProfile.domains.join('\n'),
+        cookieJarId: result.sessionProfile.cookieJarId ?? current.cookieJarId,
+        headersProfileId: result.sessionProfile.headersProfileId ?? current.headersProfileId,
+        proxyProfileId: result.sessionProfile.proxyProfileId ?? current.proxyProfileId,
+        storageStateId: result.sessionProfile.storageStateId ?? current.storageStateId,
+        locale: result.sessionProfile.locale ?? '',
+        countryCode: result.sessionProfile.countryCode ?? '',
+        timezoneId: result.sessionProfile.timezoneId ?? '',
+        notes: result.sessionProfile.notes ?? ''
+      }));
+      setConnectForm((current) => ({
+        ...current,
+        method: 'playwright_storage_state',
+        playwrightCaptureId: '',
+        browserKind: result.sessionProfile.browserKind ?? current.browserKind
+      }));
+      setNotice(`Saved ${result.sessionProfile.label} from the current Playwright session.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to save the current Playwright login.');
+    } finally {
+      setLoginCaptureBusy(false);
+    }
+  }, [
+    activeConnectSite.defaultProfileLabel,
+    connectForm.allowedSessionId,
+    connectForm.browserKind,
+    connectForm.countryCode,
+    connectForm.domains,
+    connectForm.headersProfileId,
+    connectForm.label,
+    connectForm.locale,
+    connectForm.notes,
+    connectForm.ownerLabel,
+    connectForm.proxyProfileId,
+    connectForm.siteKey,
+    connectForm.storageStateId,
+    connectForm.timezoneId,
+    connectForm.verifyUrl,
+    connectForm.visibility,
+    token,
+    updateTestForm
+  ]);
   const handleStartLoginCapture = useCallback(async () => {
     if (!token) {
       setError('Set API token in Settings before starting a login capture.');
@@ -1926,6 +2104,9 @@ function useBrowserPageModel() {
       applyStealthPreset,
       handleConnectAccount,
       handleVerifySessionProfile,
+      handleEnsureManagedProfile,
+      handleStartPlaywrightAuthCapture,
+      handleSaveCurrentPlaywrightAuthSession,
       handleStartLoginCapture,
       handleSessionProfileAction,
       handleAccessModeChange,
@@ -1974,6 +2155,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
     testRunning,
     configSaving,
     assignmentBusy,
+    vaultBusy,
     error,
     notice,
     selectedRunId
@@ -1981,10 +2163,14 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
   const {
     form,
     connectForm,
-    connectBusy
+    connectBusy,
+    loginCaptureBusy,
+    lastConnectVerification
   } = formState;
   const {
     activeConnectSite,
+    filteredLocalProfiles,
+    connectableSessions,
     allowedAgentOverride,
     configDirty,
     stealthMode,
@@ -1998,7 +2184,11 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
     setDraftValue,
     applyStealthPreset,
     handleConnectAccount,
+    handleStartPlaywrightAuthCapture,
+    handleSaveCurrentPlaywrightAuthSession,
+    handleStartLoginCapture,
     handleVerifySessionProfile,
+    handleEnsureManagedProfile,
     handleSessionProfileAction,
     handleSaveConfig,
     handleTestRun,
@@ -2009,6 +2199,11 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
     loadRun
   } = actions;
   const dockerSupportEntries = toKeyedNonEmptyStrings(status?.dockerSupport ?? [], 'docker-support');
+  const browserSessionProfiles = vault?.sessionProfiles ?? [];
+  const managedProfiles = browserSessionProfiles.filter((profile) => profile.profileClass === 'managed');
+  const localProfileImports = browserSessionProfiles.filter((profile) => profile.profileClass === 'local_profile');
+  const authStateProfiles = browserSessionProfiles.filter((profile) => profile.profileClass === 'auth_state');
+  const reconnectProfileCount = browserSessionProfiles.filter((profile) => profile.health.needsReconnect).length;
 
   if (loading) {
     return <BrowserPageSkeleton />;
@@ -2053,6 +2248,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
           {TAB_META.map((tab) => (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setActiveTab(tab.id)}
               className={[
                 'relative px-4 py-2 text-sm font-medium transition-colors outline-none',
@@ -2204,6 +2400,48 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                 </section>
 
                 <section className={`${PANEL_CLASS} p-6`}>
+                  <div className="mb-5 flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="text-lg font-medium text-white">Managed Profiles</h2>
+                      <p className="mt-1 text-xs text-[var(--shell-muted)]">Agent-only browser state separated from local Chrome profiles.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleEnsureManagedProfile()}
+                      disabled={vaultBusy === 'ensure-managed-profile'}
+                      className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/25 hover:bg-white/[0.09] disabled:opacity-50"
+                    >
+                      {vaultBusy === 'ensure-managed-profile' ? 'Creating...' : 'Create managed profile'}
+                    </button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <InfoRow label="Managed" value={String(managedProfiles.length)} />
+                    <InfoRow label="Auth states" value={String(authStateProfiles.length)} />
+                    <InfoRow label="Local imports" value={String(localProfileImports.length)} />
+                    <InfoRow label="Reconnect" value={String(reconnectProfileCount)} />
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {managedProfiles.length > 0 ? (
+                      managedProfiles.slice(0, 3).map((profile) => (
+                        <div key={profile.id} className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-white">{profile.label}</p>
+                            <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[0.65rem] uppercase tracking-wider text-emerald-100">
+                              isolated
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs leading-5 text-[var(--shell-muted)]">{profile.isolationSummary}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs leading-5 text-amber-100">
+                        No managed profile exists yet. Create one before attaching personal browser profiles.
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className={`${PANEL_CLASS} p-6`}>
                   <h2 className="text-lg font-medium text-white mb-4">Postures</h2>
                   <div className="space-y-4">
                     <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
@@ -2279,6 +2517,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                       return (
                         <button
                           key={site.siteKey}
+                          type="button"
                           onClick={() => applyConnectSite(site.siteKey)}
                           className={[
                             'p-4 rounded-xl border transition-all text-left',
@@ -2301,6 +2540,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                         return (
                           <button
                             key={option.id}
+                            type="button"
                             onClick={() => setConnectForm((c) => ({ ...c, method: option.id }))}
                             className={[
                               'p-4 rounded-xl border transition-all text-left',
@@ -2337,30 +2577,275 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                       </label>
                     </div>
 
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="space-y-1.5">
+                        <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Verify URL</span>
+                        <input
+                          value={connectForm.verifyUrl}
+                          onChange={(e) => setConnectForm((c) => ({ ...c, verifyUrl: e.target.value }))}
+                          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                          placeholder={activeConnectSite.defaultVerifyUrl}
+                        />
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Visibility</span>
+                        <select
+                          value={connectForm.visibility}
+                          onChange={(e) => setConnectForm((c) => ({ ...c, visibility: e.target.value === 'session_only' ? 'session_only' : 'shared' }))}
+                          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        >
+                          <option value="shared">Shared</option>
+                          <option value="session_only">Session only</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    {connectForm.visibility === 'session_only' ? (
+                      <label className="block space-y-1.5">
+                        <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Allowed Session</span>
+                        <select
+                          value={connectForm.allowedSessionId}
+                          onChange={(e) => setConnectForm((c) => ({ ...c, allowedSessionId: e.target.value }))}
+                          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        >
+                          <option value="">Choose an active session</option>
+                          {connectableSessions.map((session) => (
+                            <option key={session.id} value={session.id}>
+                              {session.agentProfile?.name ?? session.sessionKey}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Domains</span>
+                      <textarea
+                        value={connectForm.domains}
+                        onChange={(e) => setConnectForm((c) => ({ ...c, domains: e.target.value }))}
+                        rows={3}
+                        className="w-full resize-y bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                      />
+                    </label>
+
+                    {connectForm.method === 'playwright_storage_state' ? (
+                      <div className="rounded-xl border border-violet-300/15 bg-violet-300/[0.06] p-4">
+                        <div className="grid gap-4 sm:grid-cols-[0.35fr_0.65fr]">
+                          <label className="space-y-1.5">
+                            <span className="text-[0.65rem] font-bold uppercase tracking-wider text-violet-100/80">Browser</span>
+                            <select
+                              value={connectForm.browserKind === 'edge' ? 'edge' : 'chrome'}
+                              onChange={(e) =>
+                                setConnectForm((c) => ({
+                                  ...c,
+                                  browserKind: e.target.value === 'edge' ? 'edge' : 'chrome',
+                                  playwrightCaptureId: ''
+                                }))
+                              }
+                              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                            >
+                              <option value="chrome">Chrome</option>
+                              <option value="edge">Edge</option>
+                            </select>
+                          </label>
+                          <div className="space-y-1.5">
+                            <span className="text-[0.65rem] font-bold uppercase tracking-wider text-violet-100/80">Guided Capture</span>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => void handleStartPlaywrightAuthCapture()}
+                                disabled={loginCaptureBusy}
+                                className="rounded-lg border border-violet-200/20 bg-violet-200/10 px-3 py-2 text-xs font-semibold text-violet-50 transition hover:border-violet-200/35 hover:bg-violet-200/15 disabled:opacity-50"
+                              >
+                                {loginCaptureBusy ? 'Working...' : connectForm.playwrightCaptureId ? 'Restart auth browser' : 'Open auth browser'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveCurrentPlaywrightAuthSession()}
+                                disabled={loginCaptureBusy}
+                                className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-violet-50 transition hover:border-white/20 hover:bg-white/[0.07] disabled:opacity-50"
+                              >
+                                {loginCaptureBusy ? 'Working...' : 'Save current login'}
+                              </button>
+                              <span className="text-xs leading-5 text-violet-50/70">
+                                {connectForm.playwrightCaptureId
+                                  ? 'Login window is ready; click Connect and test after signing in.'
+                                  : 'Opens a dedicated login browser and saves storage state into Scrapling auth.'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {connectForm.method === 'browser_profile_import' ? (
+                      <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
+                        <div className="grid gap-4 sm:grid-cols-[0.42fr_0.58fr]">
+                          <label className="space-y-1.5">
+                            <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Browser</span>
+                            <select
+                              value={connectForm.browserKind}
+                              onChange={(e) =>
+                                setConnectForm((c) => ({
+                                  ...c,
+                                  browserKind: normalizeBrowserLocalProfileKind(e.target.value),
+                                  browserProfileId: ''
+                                }))
+                              }
+                              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                            >
+                              <option value="chrome">Chrome</option>
+                              <option value="edge">Edge</option>
+                              <option value="firefox">Firefox / Zen</option>
+                            </select>
+                          </label>
+                          <label className="space-y-1.5">
+                            <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Local Profile</span>
+                            <select
+                              value={connectForm.browserProfileId}
+                              onChange={(e) => setConnectForm((c) => ({ ...c, browserProfileId: e.target.value }))}
+                              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                            >
+                              <option value="">Choose profile</option>
+                              {filteredLocalProfiles.map((profile) => (
+                                <option key={profile.id} value={profile.id}>
+                                  {profile.label} ({profile.profileName})
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        {filteredLocalProfiles.length === 0 ? (
+                          <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs leading-5 text-amber-100">
+                            No local {connectForm.browserKind} profiles were detected on this machine.
+                          </p>
+                        ) : (
+                          <div className="mt-4 flex flex-wrap items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => void handleStartLoginCapture()}
+                              disabled={loginCaptureBusy || !connectForm.browserProfileId}
+                              className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/25 hover:bg-white/[0.09] disabled:opacity-50"
+                            >
+                              {loginCaptureBusy ? 'Opening...' : 'Open login window'}
+                            </button>
+                            <span className="text-xs leading-5 text-[var(--shell-muted)]">
+                              Log in in the opened browser, return here, then connect and verify.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {connectForm.method === 'cookie_import' ? (
+                      <div className="space-y-4 rounded-xl border border-white/8 bg-white/[0.02] p-4">
+                        <label className="space-y-1.5">
+                          <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Cookie Source</span>
+                          <select
+                            value={connectForm.sourceKind}
+                            onChange={(e) =>
+                              setConnectForm((c) => ({
+                                ...c,
+                                sourceKind:
+                                  e.target.value === 'raw_cookie_header' ||
+                                  e.target.value === 'manual' ||
+                                  e.target.value === 'json_cookie_export' ||
+                                  e.target.value === 'browser_profile_import'
+                                    ? e.target.value
+                                    : 'netscape_cookies_txt'
+                              }))
+                            }
+                            className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                          >
+                            <option value="netscape_cookies_txt">cookies.txt</option>
+                            <option value="raw_cookie_header">Raw Cookie header</option>
+                            <option value="json_cookie_export">JSON export</option>
+                            <option value="manual">Manual</option>
+                          </select>
+                        </label>
+                        <label className="block space-y-1.5">
+                          <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Cookie Payload</span>
+                          <textarea
+                            value={connectForm.raw}
+                            onChange={(e) => setConnectForm((c) => ({ ...c, raw: e.target.value }))}
+                            rows={7}
+                            className="w-full resize-y bg-black/30 border border-white/10 rounded-lg px-3 py-2 font-mono text-xs text-white"
+                            placeholder="Paste exported cookies here"
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Notes</span>
+                      <textarea
+                        value={connectForm.notes}
+                        onChange={(e) => setConnectForm((c) => ({ ...c, notes: e.target.value }))}
+                        rows={2}
+                        className="w-full resize-y bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="Purpose, owner, reconnect hints"
+                      />
+                    </label>
+
                     <div className="flex flex-wrap gap-3 pt-4 border-t border-white/5">
                       <button
+                        type="button"
                         onClick={() => void handleConnectAccount()}
-                        disabled={connectBusy}
+                        disabled={
+                          connectBusy ||
+                          !connectForm.label.trim() ||
+                          (connectForm.method === 'browser_profile_import' && !connectForm.browserProfileId) ||
+                          (connectForm.method === 'cookie_import' && !connectForm.raw.trim())
+                        }
                         className="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-white/90 disabled:opacity-50"
                       >
                         {connectBusy ? 'Connecting...' : 'Connect & Verify'}
                       </button>
                     </div>
+
+                    {lastConnectVerification ? (
+                      <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-4 text-xs leading-5 text-emerald-100">
+                        <p className="font-semibold text-white">Last verification</p>
+                        <p className="mt-1">{lastConnectVerification.summary ?? lastConnectVerification.run.status}</p>
+                      </div>
+                    ) : null}
                   </div>
                 </section>
 
                 <section className={`${PANEL_CLASS} p-6`}>
-                  <h2 className="text-lg font-medium text-white mb-6">Session Profiles</h2>
+                  <div className="mb-6 flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-medium text-white">Session Profiles</h2>
+                    <button
+                      type="button"
+                      onClick={() => void handleEnsureManagedProfile()}
+                      disabled={vaultBusy === 'ensure-managed-profile'}
+                      className="rounded-lg border border-white/10 px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-white/70 hover:text-white disabled:opacity-50"
+                    >
+                      {vaultBusy === 'ensure-managed-profile' ? 'Creating' : 'Create managed'}
+                    </button>
+                  </div>
                   <div className="space-y-3">
                     {(vault?.sessionProfiles ?? []).length > 0 ? (
                       vault?.sessionProfiles.map((p) => (
                         <div key={p.id} className="p-4 rounded-xl border border-white/5 bg-white/[0.02]">
                           <div className="flex items-center justify-between gap-3 mb-3">
-                            <p className="text-sm font-medium text-white">{p.label}</p>
-                            <span className={`h-2 w-2 rounded-full ${p.lastVerificationStatus === 'connected' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                            <div>
+                              <p className="text-sm font-medium text-white">{p.label}</p>
+                              <p className="mt-1 text-[0.65rem] text-[var(--shell-muted)]">{p.isolationSummary}</p>
+                            </div>
+                            <span className={`h-2 w-2 rounded-full ${sessionProfileStatusDotClass(p)}`} />
+                          </div>
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            <span className={`rounded-full border px-2 py-1 text-[0.65rem] uppercase tracking-wider ${p.profileClass === 'managed' ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : p.profileClass === 'local_profile' ? 'border-amber-300/20 bg-amber-300/10 text-amber-100' : p.profileClass === 'auth_state' ? 'border-violet-300/20 bg-violet-300/10 text-violet-100' : 'border-sky-300/20 bg-sky-300/10 text-sky-100'}`}>
+                              {p.profileClass === 'managed' ? 'managed' : p.profileClass === 'local_profile' ? 'local import' : p.profileClass === 'auth_state' ? 'auth state' : 'real chrome'}
+                            </span>
+                            <span className="rounded-full border border-white/10 px-2 py-1 text-[0.65rem] uppercase tracking-wider text-white/55">
+                              {p.enabled ? 'enabled' : 'disabled'}
+                            </span>
                           </div>
                           <div className="flex items-center gap-2">
                             <button
+                              type="button"
                               onClick={() => void handleVerifySessionProfile(p.id)}
                               className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-accent)] hover:brightness-110"
                             >
@@ -2368,6 +2853,15 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                             </button>
                             <span className="text-white/10">|</span>
                             <button
+                              type="button"
+                              onClick={() => void handleSessionProfileAction(p, p.enabled ? 'disable' : 'enable')}
+                              className="text-[0.65rem] font-bold uppercase tracking-wider text-white/55 hover:text-white"
+                            >
+                              {p.enabled ? 'Disable' : 'Enable'}
+                            </button>
+                            <span className="text-white/10">|</span>
+                            <button
+                              type="button"
                               onClick={() => void handleSessionProfileAction(p, 'delete')}
                               className="text-[0.65rem] font-bold uppercase tracking-wider text-rose-400 hover:brightness-110"
                             >
@@ -2394,6 +2888,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                           <p className="text-[0.65rem] text-[var(--shell-muted)]">{jar.cookieCount} cookies</p>
                         </div>
                         <button
+                          type="button"
                           onClick={() => void handleRevokeCookieJar(jar.id)}
                           className="text-[0.65rem] font-bold uppercase tracking-wider text-white/40 hover:text-white"
                         >
@@ -2447,6 +2942,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                     </div>
                     <div className="pt-4 flex items-center gap-3">
                       <button
+                        type="button"
                         onClick={() => void handleTestRun()}
                         disabled={testRunning || !form.url.trim()}
                         className="rounded-lg bg-[var(--shell-accent)] px-4 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50"
@@ -2463,6 +2959,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                     {history?.rows.map((trace) => (
                       <button
                         key={trace.runId}
+                        type="button"
                         onClick={() => void loadRun(trace.runId)}
                         className={[
                           'w-full p-4 rounded-xl border transition-all text-left',
@@ -2501,6 +2998,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                         {selectedArtifact.contentPreview}
                       </pre>
                       <button
+                        type="button"
                         onClick={() => void handleDownloadArtifact()}
                         className="text-xs font-semibold text-[var(--shell-accent)] hover:underline"
                       >

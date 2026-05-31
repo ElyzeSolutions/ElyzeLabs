@@ -123,6 +123,10 @@
       "minConfidence": 0.45,
       "timeoutMs": 20000,
       "maxTargets": 3
+    },
+    "sandbox": {
+      "enabled": true,
+      "activeProfile": "balanced"
     }
   },
   "observability": {

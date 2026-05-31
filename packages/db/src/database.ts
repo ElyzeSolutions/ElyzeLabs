@@ -1745,16 +1745,10 @@ export class ControlPlaneDatabase {
     const transaction = this.db.transaction(() => {
       let llmUsagePrunedBySessionPrune = 0;
       let llmUsagePrunedByRunPrune = 0;
-      let llmUsagePrunedByAge = 0;
       let realtimePrunedBySessionPrune = 0;
       let realtimePrunedByRunPrune = 0;
-      let realtimePrunedByAge = 0;
       let officePresencePrunedBySessionPrune = 0;
-      let officePresencePrunedByAge = 0;
-      let messagesPrunedByAge = 0;
       let runsPrunedByAge = 0;
-      let memoryPrunedByAge = 0;
-      let auditLogsPrunedByAge = 0;
 
       if (staleSessionIds.length > 0) {
         llmUsagePrunedBySessionPrune = this.db
@@ -1821,27 +1815,27 @@ export class ControlPlaneDatabase {
           .run(...expiredTerminalRunFilter.params);
       }
 
-      messagesPrunedByAge = this.db
+      const messagesPrunedByAge = this.db
         .prepare('DELETE FROM messages WHERE created_at < ?')
         .run(input.messageRetentionCutoff).changes;
 
-      realtimePrunedByAge = this.db
+      const realtimePrunedByAge = this.db
         .prepare('DELETE FROM realtime_events WHERE ts < ?')
         .run(input.realtimeRetentionCutoff).changes;
 
-      officePresencePrunedByAge = this.db
+      const officePresencePrunedByAge = this.db
         .prepare('DELETE FROM office_presence WHERE updated_at < ?')
         .run(input.officePresenceRetentionCutoff).changes;
 
-      llmUsagePrunedByAge = this.db
+      const llmUsagePrunedByAge = this.db
         .prepare('DELETE FROM llm_usage_events WHERE day_utc < ?')
         .run(input.llmUsageRetentionDayCutoff).changes;
 
-      memoryPrunedByAge = this.db
+      const memoryPrunedByAge = this.db
         .prepare('DELETE FROM memory_items WHERE created_at < ?')
         .run(input.memoryRetentionCutoff).changes;
 
-      auditLogsPrunedByAge = this.db
+      const auditLogsPrunedByAge = this.db
         .prepare('DELETE FROM audit_logs WHERE ts < ?')
         .run(input.auditRetentionCutoff).changes;
 
@@ -2415,16 +2409,20 @@ export class ControlPlaneDatabase {
     const leaseExpiry = new Date(Date.now() + input.leaseMs).toISOString();
 
     for (const row of rows) {
+      const queueItemId = typeof row.id === 'string' ? row.id : '';
+      if (!queueItemId) {
+        continue;
+      }
       const changed = this.db
         .prepare(
           `UPDATE queue_items
            SET status = 'processing', lease_expires_at = ?, updated_at = ?
            WHERE id = ? AND status = 'queued'`
         )
-        .run(leaseExpiry, now, row.id as string);
+        .run(leaseExpiry, now, queueItemId);
 
       if (changed.changes > 0) {
-        const fresh = this.getQueueItemById(row.id as string);
+        const fresh = this.getQueueItemById(queueItemId);
         if (fresh) {
           reserved.push(fresh);
         }
@@ -7887,7 +7885,7 @@ export class ControlPlaneDatabase {
       allowedSessionIdsJson: String(row.allowed_session_ids_json ?? '[]'),
       siteKey: row.site_key === null || row.site_key === undefined ? null : String(row.site_key),
       browserKind:
-        row.browser_kind === 'chrome' || row.browser_kind === 'firefox'
+        row.browser_kind === 'chrome' || row.browser_kind === 'edge' || row.browser_kind === 'firefox'
           ? row.browser_kind
           : null,
       browserProfileName:

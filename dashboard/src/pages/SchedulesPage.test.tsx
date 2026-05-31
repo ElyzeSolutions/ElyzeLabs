@@ -7,6 +7,28 @@ import { SchedulesPage } from './SchedulesPage';
 
 installPageHarness();
 
+function makeGuardrails(status: 'pass' | 'warn' | 'fail' = 'pass') {
+  return {
+    scheduleId: 'schedule-1',
+    status,
+    checkedAt: '2026-03-17T06:30:00.000Z',
+    reviewedAt: null,
+    appliedAt: null,
+    lastDelivery: null,
+    checks: [
+      {
+        id: 'delivery_target',
+        label: 'Delivery target',
+        status,
+        summary: status === 'pass' ? 'Delivery is routed to an operator-visible session.' : 'Delivery target needs review.',
+        evidence: {},
+        recommendation: status === 'pass' ? null : 'Apply guardrails to route receipts to a visible session.'
+      }
+    ],
+    recommendations: status === 'pass' ? [] : ['Apply guardrails to route receipts to a visible session.']
+  };
+}
+
 function makeSchedule(overrides: Record<string, unknown> = {}) {
   return {
     id: 'schedule-1',
@@ -42,6 +64,7 @@ function makeSchedule(overrides: Record<string, unknown> = {}) {
     lastError: null,
     lastResult: {},
     metadata: {},
+    guardrails: makeGuardrails(),
     createdAt: '2026-03-17T06:00:00.000Z',
     updatedAt: '2026-03-17T06:30:00.000Z',
     activeRun: null,
@@ -103,6 +126,44 @@ describe('SchedulesPage', () => {
       )
     );
     await waitFor(() => expect(apiMocks.fetchSchedules).toHaveBeenCalledWith('token-123', { kind: 'builtin' }));
+  });
+
+  it('surfaces schedule guardrails and applies safe defaults', async () => {
+    const schedule = makeSchedule({
+      id: 'schedule-guarded',
+      label: 'Guarded monitor',
+      deliveryTarget: 'artifact_only',
+      guardrails: makeGuardrails('fail')
+    });
+    const repairedGuardrails = makeGuardrails('pass');
+    const repaired = makeSchedule({
+      id: 'schedule-guarded',
+      label: 'Guarded monitor',
+      deliveryTarget: 'origin_session',
+      approvalProfile: 'operator-review',
+      guardrails: repairedGuardrails
+    });
+
+    apiMocks.fetchSchedules.mockResolvedValue([schedule]);
+    apiMocks.fetchScheduleDetail.mockResolvedValue({
+      schedule,
+      history: []
+    });
+    apiMocks.applyScheduleGuardrails.mockResolvedValue({
+      schedule: repaired,
+      guardrail: repairedGuardrails
+    });
+
+    renderDashboardPage(<SchedulesPage />, { path: '/schedules' });
+
+    expect(await screen.findByText('Guarded monitor')).toBeInTheDocument();
+    expect(await screen.findByText('Schedule guardrails')).toBeInTheDocument();
+    expect(screen.getByText('Delivery target needs review.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply guardrails' }));
+
+    await waitFor(() => expect(apiMocks.applyScheduleGuardrails).toHaveBeenCalledWith('token-123', 'schedule-guarded'));
+    await waitFor(() => expect(apiMocks.fetchSchedules).toHaveBeenCalledWith('token-123', { kind: 'targeted' }));
   });
 
   it('shows single and bulk delete controls for custom schedules', async () => {

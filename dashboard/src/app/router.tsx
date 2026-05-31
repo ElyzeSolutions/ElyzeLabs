@@ -21,6 +21,7 @@ import {
   browserStatusQueryOptions,
   chatsQueryOptions,
   cronStatusQueryOptions,
+  doctorCenterQueryOptions,
   housekeepingQueryOptions,
   improvementLearningsQueryOptions,
   improvementProposalsQueryOptions,
@@ -124,7 +125,7 @@ function localDayString(date = new Date()): string {
 
 type BrowserRouteSearch = {
   site?: 'tiktok' | 'instagram' | 'reddit' | 'x' | 'pinterest' | 'facebook' | 'generic';
-  browser?: 'chrome' | 'firefox';
+  browser?: 'chrome' | 'edge' | 'firefox';
   owner?: string;
   visibility?: 'shared' | 'session_only';
   sessionId?: string;
@@ -150,7 +151,7 @@ function validateBrowserSearch(search: Record<string, unknown>): BrowserRouteSea
       search.site === 'generic'
         ? search.site
         : undefined,
-    browser: search.browser === 'chrome' || search.browser === 'firefox' ? search.browser : undefined,
+    browser: search.browser === 'chrome' || search.browser === 'edge' || search.browser === 'firefox' ? search.browser : undefined,
     owner: typeof search.owner === 'string' && search.owner.trim().length > 0 ? search.owner : undefined,
     visibility: search.visibility === 'session_only' ? 'session_only' : search.visibility === 'shared' ? 'shared' : undefined,
     sessionId: typeof search.sessionId === 'string' && search.sessionId.trim().length > 0 ? search.sessionId : undefined
@@ -400,6 +401,19 @@ const housekeepingRoute = createRoute({
   component: lazyRouteComponent(() => import('../pages/HousekeepingPage'), 'HousekeepingPage')
 });
 
+const doctorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'doctor',
+  loader: async ({ context }) => {
+    const token = getActiveToken();
+    if (!token) {
+      return;
+    }
+    await context.queryClient.ensureQueryData(doctorCenterQueryOptions(token));
+  },
+  component: lazyRouteComponent(() => import('../pages/DoctorCenterPage'), 'DoctorCenterPage')
+});
+
 const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'onboarding',
@@ -455,6 +469,7 @@ const routeTree = rootRoute.addChildren([
   vaultRoute,
   configRoute,
   housekeepingRoute,
+  doctorRoute,
   onboardingRoute,
   settingsRoute,
   sessionsRedirectRoute,

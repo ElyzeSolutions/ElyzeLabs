@@ -51,6 +51,9 @@ function installFakeScraplingExecutable(root: string): string {
       '  if (url.includes("dynamic-session-profile-proof") && normalizedTool === "get") {',
       '    return "Dynamic Page Title";',
       '  }',
+      '  if (url.includes("x.com/home")) {',
+      '    return ["(2) Home / X", "JavaScript is not available.", "Please enable JavaScript or switch to a supported browser to continue using x.com."].join("\\n");',
+      '  }',
       '  return [',
       '    `Tool: ${normalizedTool}`,',
       '    `URL: ${url}`,',
@@ -150,6 +153,40 @@ const findTelegramSessionId = async (harness: GatewayTestHarness): Promise<strin
   return telegramSession!.id;
 };
 
+const stubTelegramFetch = (telegramSends: string[]): void => {
+  const fetchMock = async (input: URL | RequestInfo, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.includes('api.telegram.org')) {
+      const method = url.split('/').pop() ?? '';
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (method === 'getUpdates' || method === 'sendChatAction' || method === 'sendMessageDraft') {
+        return new Response(JSON.stringify({ ok: true, result: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (method === 'sendMessage') {
+        telegramSends.push(String(body.text ?? ''));
+        return new Response(JSON.stringify({ ok: true, result: { message_id: telegramSends.length || 1 } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (method === 'editMessageText' || method === 'deleteMyCommands' || method === 'setMyCommands') {
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+    }
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    });
+  };
+  vi.stubGlobal('fetch', fetchMock);
+};
+
 describe('browser auth routing integration', () => {
   const harnesses: GatewayTestHarness[] = [];
   const originalFetch = globalThis.fetch;
@@ -183,6 +220,322 @@ describe('browser auth routing integration', () => {
       await harnesses.pop()!.close();
     }
   });
+
+  it(
+    'auto-selects a connected site browser profile from Telegram without /browser use',
+    async () => {
+      process.env.GOOGLE_API_KEY = 'integration-google-key';
+      const telegramSends: string[] = [];
+      stubTelegramFetch(telegramSends);
+
+      const harness = await createGatewayTestHarness('browser-auth-routing-auto-site', (config) => {
+        config.channel.telegram.botToken = '123456:ABCDEFGHIJKLMNOPQRSTUVWXyz_123456789';
+        config.browser.enabled = true;
+        config.browser.transport = 'stdio';
+        config.browser.executable = installFakeScraplingExecutable(config.runtime.workspaceRoot);
+        config.browser.allowedAgents = ['ceo-default'];
+      });
+      harnesses.push(harness);
+
+      await applyCeoBaseline(harness);
+
+      const runtimeResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/ingress/telegram',
+        payload: createTelegramPayload({
+          updateId: 82010,
+          senderId: 8201,
+          text: '/runtime process',
+          username: 'browserauto'
+        })
+      });
+      expect(runtimeResponse.statusCode).toBe(200);
+
+      const telegramSessionId = await findTelegramSessionId(harness);
+
+      const instagramCookieResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/browser/cookie-jars/import',
+        payload: {
+          sessionId: telegramSessionId,
+          label: 'Instagram auth cookies',
+          domains: ['instagram.com', 'www.instagram.com'],
+          sourceKind: 'raw_cookie_header',
+          raw: 'sessionid=ig-session; csrftoken=ig-csrf'
+        }
+      });
+      expect(instagramCookieResponse.statusCode).toBe(200);
+      const instagramCookieBody = instagramCookieResponse.json();
+      const instagramCookieJarId =
+        typeof instagramCookieBody.cookieJar?.id === 'string' ? instagramCookieBody.cookieJar.id : '';
+      expect(instagramCookieJarId).toBeTruthy();
+
+      const xCookieResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/browser/cookie-jars/import',
+        payload: {
+          sessionId: telegramSessionId,
+          label: 'X auth cookies',
+          domains: ['x.com'],
+          sourceKind: 'raw_cookie_header',
+          raw: 'sessionid=x-session; ct0=x-csrf'
+        }
+      });
+      expect(xCookieResponse.statusCode).toBe(200);
+      const xCookieBody = xCookieResponse.json();
+      const xCookieJarId = typeof xCookieBody.cookieJar?.id === 'string' ? xCookieBody.cookieJar.id : '';
+      expect(xCookieJarId).toBeTruthy();
+
+      const instagramProfileResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/browser/session-profiles/upsert',
+        payload: {
+          sessionId: telegramSessionId,
+          label: 'Instagram personal login',
+          domains: ['instagram.com', 'www.instagram.com'],
+          cookieJarId: instagramCookieJarId,
+          siteKey: 'instagram',
+          useRealChrome: true,
+          enabled: true,
+          lastVerifiedAt: '2026-05-31T10:00:00.000Z',
+          lastVerificationStatus: 'connected'
+        }
+      });
+      expect(instagramProfileResponse.statusCode).toBe(200);
+      const instagramProfileBody = instagramProfileResponse.json();
+      const instagramProfileId =
+        typeof instagramProfileBody.sessionProfile?.id === 'string' ? instagramProfileBody.sessionProfile.id : '';
+      expect(instagramProfileId).toBeTruthy();
+
+      const expiringInstagramCookieResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/browser/cookie-jars/import',
+        payload: {
+          sessionId: telegramSessionId,
+          label: 'Instagram expiring auth cookies',
+          domains: ['instagram.com', 'www.instagram.com'],
+          sourceKind: 'json_cookie_export',
+          raw: JSON.stringify([
+            {
+              name: 'sessionid',
+              value: 'ig-expiring-session',
+              domain: '.instagram.com',
+              path: '/',
+              expires: Math.floor((Date.now() + 60 * 60 * 1000) / 1000)
+            }
+          ])
+        }
+      });
+      expect(expiringInstagramCookieResponse.statusCode).toBe(200);
+      const expiringInstagramCookieBody = expiringInstagramCookieResponse.json();
+      const expiringInstagramCookieJarId =
+        typeof expiringInstagramCookieBody.cookieJar?.id === 'string' ? expiringInstagramCookieBody.cookieJar.id : '';
+      expect(expiringInstagramCookieJarId).toBeTruthy();
+
+      const expiringInstagramProfileResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/browser/session-profiles/upsert',
+        payload: {
+          sessionId: telegramSessionId,
+          label: 'Instagram expiring login',
+          domains: ['instagram.com', 'www.instagram.com'],
+          cookieJarId: expiringInstagramCookieJarId,
+          siteKey: 'instagram',
+          enabled: true,
+          lastVerifiedAt: '2026-05-31T12:00:00.000Z',
+          lastVerificationStatus: 'connected'
+        }
+      });
+      expect(expiringInstagramProfileResponse.statusCode).toBe(200);
+
+      const xProfileResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/browser/session-profiles/upsert',
+        payload: {
+          sessionId: telegramSessionId,
+          label: 'X sticky login',
+          domains: ['x.com'],
+          cookieJarId: xCookieJarId,
+          siteKey: 'x',
+          enabled: true,
+          lastVerifiedAt: '2026-05-31T09:00:00.000Z',
+          lastVerificationStatus: 'connected'
+        }
+      });
+      expect(xProfileResponse.statusCode).toBe(200);
+
+      const selectXResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/ingress/telegram',
+        payload: createTelegramPayload({
+          updateId: 82011,
+          senderId: 8201,
+          text: '/browser use X sticky login',
+          username: 'browserauto'
+        })
+      });
+      expect(selectXResponse.statusCode).toBe(200);
+      expect(selectXResponse.json().status).toBe('command_applied');
+
+      const queuedResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/ingress/telegram',
+        payload: createTelegramPayload({
+          updateId: 82012,
+          senderId: 8201,
+          text: 'Go to Instagram and say whether the logged-in home page is reachable.',
+          username: 'browserauto'
+        })
+      });
+      expect(queuedResponse.statusCode).toBe(200);
+      const queuedBody = queuedResponse.json();
+      const runId = typeof queuedBody.runId === 'string' ? queuedBody.runId : '';
+      expect(queuedBody.status).toBe('queued');
+      expect(runId).toBeTruthy();
+
+      const runStatus = await harness.waitForTerminalRun(runId, 20_000);
+      expect(runStatus.status).toBe('completed');
+
+      let traceBody = null;
+      await harness.waitForCondition(
+        `auto-selected Instagram browser trace for ${runId}`,
+        async () => {
+          const traceResponse = await harness.inject({
+            method: 'GET',
+            url: `/api/browser/history/${encodeURIComponent(runId)}`
+          });
+          if (traceResponse.statusCode !== 200) {
+            return false;
+          }
+          traceBody = traceResponse.json();
+          return (traceBody?.trace?.artifacts?.length ?? 0) > 0;
+        },
+        15_000
+      );
+      expect(traceBody?.trace?.artifacts?.[0]?.url).toBe('https://www.instagram.com/');
+      expect(traceBody?.trace?.artifacts?.[0]?.previewText).toContain('SessionCookie: ig-session');
+      expect(traceBody?.trace?.artifacts?.[0]?.previewText).not.toContain('ig-expiring-session');
+
+      const timelineResponse = await harness.inject({
+        method: 'GET',
+        url: `/api/runs/${encodeURIComponent(runId)}/timeline`
+      });
+      expect(timelineResponse.statusCode).toBe(200);
+      const timelineBody = timelineResponse.json();
+      const timeline = Array.isArray(timelineBody.timeline) ? timelineBody.timeline : [];
+      const authEvent = timeline.find((entry) => entry.type === 'browser.auth_profile.resolved');
+      expect(authEvent).toBeDefined();
+      const authPayload = JSON.parse(String(authEvent?.payloadJson ?? '{}'));
+      expect(authPayload.source).toBe('auto_site');
+      expect(authPayload.reason).toBe('sticky_profile_mismatched_target_site');
+      expect(authPayload.siteKey).toBe('instagram');
+      expect(authPayload.selectedSessionProfileId).toBe(instagramProfileId);
+      expect(authPayload.targetUrl).toBe('https://www.instagram.com/');
+    },
+    20_000
+  );
+
+  it(
+    'reports X JavaScript interstitial captures as browser fallback requirements',
+    async () => {
+      process.env.GOOGLE_API_KEY = 'integration-google-key';
+      const telegramSends: string[] = [];
+      stubTelegramFetch(telegramSends);
+
+      const harness = await createGatewayTestHarness('browser-auth-routing-x-dynamic-required', (config) => {
+        config.channel.telegram.botToken = '123456:ABCDEFGHIJKLMNOPQRSTUVWXyz_123456789';
+        config.browser.enabled = true;
+        config.browser.transport = 'stdio';
+        config.browser.executable = installFakeScraplingExecutable(config.runtime.workspaceRoot);
+        config.browser.allowedAgents = ['ceo-default'];
+        config.browser.policy.allowStealth = true;
+        config.runtime.adapters.process = {
+          command: 'node',
+          args: ['-e', 'process.stdin.resume(); process.stdin.on("end", () => process.stdout.write("model should not run"));']
+        };
+      });
+      harnesses.push(harness);
+      await applyCeoBaseline(harness);
+
+      const runtimeResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/ingress/telegram',
+        payload: createTelegramPayload({
+          updateId: 82099,
+          senderId: 8210,
+          text: '/runtime process',
+          username: 'browserx'
+        })
+      });
+      expect(runtimeResponse.statusCode).toBe(200);
+
+      const seedResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/ingress/telegram',
+        payload: createTelegramPayload({
+          updateId: 82100,
+          senderId: 8210,
+          text: '/browser clear',
+          username: 'browserx'
+        })
+      });
+      expect(seedResponse.statusCode).toBe(200);
+      const telegramSessionId = await findTelegramSessionId(harness);
+
+      const cookieResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/browser/cookie-jars/import',
+        payload: {
+          label: 'X interstitial login jar',
+          sourceKind: 'manual',
+          raw: 'auth_token=x-token',
+          sessionId: telegramSessionId
+        }
+      });
+      expect(cookieResponse.statusCode).toBe(200);
+      const cookieBody = cookieResponse.json();
+      const cookieJarId = typeof cookieBody.cookieJar?.id === 'string' ? cookieBody.cookieJar.id : '';
+      expect(cookieJarId).toBeTruthy();
+
+      const profileResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/browser/session-profiles/upsert',
+        payload: {
+          sessionId: telegramSessionId,
+          label: 'X personal login',
+          domains: ['x.com'],
+          cookieJarId,
+          siteKey: 'x',
+          enabled: true,
+          lastVerifiedAt: '2026-05-31T09:00:00.000Z',
+          lastVerificationStatus: 'connected'
+        }
+      });
+      expect(profileResponse.statusCode).toBe(200);
+      const profileBody = profileResponse.json();
+      const sessionProfileId = typeof profileBody.sessionProfile?.id === 'string' ? profileBody.sessionProfile.id : '';
+      expect(sessionProfileId).toBeTruthy();
+
+      const testResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/browser/test',
+        payload: {
+          url: 'https://x.com/home',
+          intent: 'monitor',
+          dynamicLikely: true,
+          requiresStealth: true,
+          sessionProfileId
+        }
+      });
+      expect(testResponse.statusCode).toBe(200);
+      const testBody = testResponse.json();
+      expect(testBody.run?.status).toBe('failed');
+      expect(testBody.run?.error).toBe('dynamic_render_required');
+      expect(testBody.test?.blockedReason).toBe('dynamic_render_required');
+      expect(testBody.test?.artifacts?.[0]?.previewText).toContain('JavaScript is not available');
+    },
+    20_000
+  );
 
   it(
     'applies sticky Telegram browser auth profiles to governed Scrapling requests',

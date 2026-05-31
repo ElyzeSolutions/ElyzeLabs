@@ -546,19 +546,32 @@ function inferExtractorId(value: string, url: string | null): BrowserExtractorId
 
 function sanitizeBrowserCookies(cookies: ResolvedBrowserSessionState['cookies']): Array<Record<string, unknown>> | undefined {
   const sanitized = cookies
-    .map((entry) => ({
-      name: entry.name,
-      value: entry.value,
-      ...(typeof entry.domain === 'string' && entry.domain.trim().length > 0 ? { domain: entry.domain.trim() } : {}),
-      ...(typeof entry.path === 'string' && entry.path.trim().length > 0 ? { path: entry.path.trim() } : {}),
-      ...(typeof entry.expires === 'number' && Number.isFinite(entry.expires) ? { expires: entry.expires } : {}),
-      ...(typeof entry.httpOnly === 'boolean' ? { httpOnly: entry.httpOnly } : {}),
-      ...(typeof entry.secure === 'boolean' ? { secure: entry.secure } : {}),
-      ...(entry.sameSite ? { sameSite: entry.sameSite } : {}),
-      ...(typeof entry.url === 'string' && entry.url.trim().length > 0 ? { url: entry.url.trim() } : {})
-    }))
+    .map((entry) => {
+      const expires = normalizeBrowserCookieExpires(entry.expires);
+      return {
+        name: entry.name,
+        value: entry.value,
+        ...(typeof entry.domain === 'string' && entry.domain.trim().length > 0 ? { domain: entry.domain.trim() } : {}),
+        ...(typeof entry.path === 'string' && entry.path.trim().length > 0 ? { path: entry.path.trim() } : {}),
+        ...(expires !== null ? { expires } : {}),
+        ...(typeof entry.httpOnly === 'boolean' ? { httpOnly: entry.httpOnly } : {}),
+        ...(typeof entry.secure === 'boolean' ? { secure: entry.secure } : {}),
+        ...(entry.sameSite ? { sameSite: entry.sameSite } : {}),
+        ...(typeof entry.url === 'string' && entry.url.trim().length > 0 ? { url: entry.url.trim() } : {})
+      };
+    })
     .filter((entry) => entry.name.trim().length > 0 && entry.value.length > 0);
   return sanitized.length > 0 ? sanitized : undefined;
+}
+
+function normalizeBrowserCookieExpires(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+  if (value === -1 || value > 0) {
+    return Math.floor(value > 9_999_999_999 ? value / 1000 : value);
+  }
+  return null;
 }
 
 function inferSubject(value: string, url: string | null): string | null {

@@ -127,7 +127,11 @@ describe('gateway integration', () => {
     policy: {
       requirePairing: false,
       allowElevatedExecution: false,
-      elevatedApprover: 'operator'
+      elevatedApprover: 'operator',
+      sandbox: {
+        enabled: true,
+        activeProfile: 'open'
+      }
     },
     observability: {
       eventBufferSize: 200,
@@ -8969,8 +8973,8 @@ describe('gateway integration', () => {
     });
     expect(promptAssembly.statusCode).toBe(200);
     const promptAssemblyBody = JSON.parse(promptAssembly.body);
-    expect(promptAssemblyBody.snapshot.promptPreview).toContain('CONVERSATIONAL_ASSISTANT_MODE:');
-    expect(promptAssemblyBody.snapshot.promptPreview).toContain('ASSISTANT_TOOL_USE_RULE:');
+    expect(promptAssemblyBody.snapshot.promptPreview).toContain('SOURCE_AUTHORITY:');
+    expect(promptAssemblyBody.snapshot.promptPreview).toContain('For direct factual questions, answer the user directly in sentence 1.');
     expect(promptAssemblyBody.snapshot.promptPreview).not.toContain('INTAKE_DECISION_PROTOCOL:');
     expect(promptAssemblyBody.snapshot.promptPreview).not.toContain('DIRECT_EXECUTION_RULE:');
     expect(promptAssemblyBody.snapshot.promptPreview).not.toContain('DELEGATION_GATE:');
@@ -25841,7 +25845,7 @@ describe('gateway integration', () => {
     }
   });
 
-  it('keeps the default baseline focused on CEO plus software-engineer', async () => {
+  it('keeps the default baseline focused on CEO, engineering, and governed browser operation', async () => {
     const profiles = await inject({
       method: 'GET',
       url: '/api/agents/profiles'
@@ -25852,6 +25856,7 @@ describe('gateway integration', () => {
     };
     const agentIds = profilesBody.agents.map((agent) => agent.id);
     expect(agentIds).toContain('software-engineer');
+    expect(agentIds).toContain('social-browser-operator');
     expect(agentIds).not.toContain('qa-reliability');
     expect(agentIds).not.toContain('marketing-specialist');
   });
@@ -34664,7 +34669,7 @@ describe('gateway integration', () => {
         prompt: 'respond with runtime readiness'
       }
     });
-    expect(smokeFail.statusCode).toBe(200);
+    expect(smokeFail.statusCode, smokeFail.body).toBe(200);
     const smokeFailBody = smokeFail.json() as { smokeRun: { status: string } };
     expect(['failed', 'aborted']).toContain(smokeFailBody.smokeRun.status);
 

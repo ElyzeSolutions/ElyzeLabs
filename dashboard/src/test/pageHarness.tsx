@@ -18,6 +18,7 @@ import { createDashboardQueryClient } from '../app/queryClient';
 const { apiMocks, storeState, toastMocks, useAppStoreMock, routeHeaderContextMock } = vi.hoisted(() => ({
   apiMocks: {
     autodiscoverSkills: vi.fn(),
+    applyScheduleGuardrails: vi.fn(),
     applyOnboardingCeoBaseline: vi.fn(),
     bootstrapOnboardingVault: vi.fn(),
     bootstrapVendorAssets: vi.fn(),
@@ -31,6 +32,8 @@ const { apiMocks, storeState, toastMocks, useAppStoreMock, routeHeaderContextMoc
     disableBrowserSessionProfile: vi.fn(),
     downloadBrowserArtifact: vi.fn(),
     enableBrowserSessionProfile: vi.fn(),
+    ensureManagedBrowserProfile: vi.fn(),
+    fetchDoctorCenter: vi.fn(),
     fetchAgentProfiles: vi.fn(),
     fetchBacklogBoard: vi.fn(),
     fetchBacklogContracts: vi.fn(),
@@ -62,6 +65,7 @@ const { apiMocks, storeState, toastMocks, useAppStoreMock, routeHeaderContextMoc
     fetchRuntimeConfig: vi.fn(),
     fetchScheduleDetail: vi.fn(),
     fetchSchedules: vi.fn(),
+    fetchSkillLifecycle: vi.fn(),
     fetchSessions: vi.fn(),
     fetchTokenStatus: vi.fn(),
     fetchMetrics: vi.fn(),
@@ -90,20 +94,25 @@ const { apiMocks, storeState, toastMocks, useAppStoreMock, routeHeaderContextMoc
     revokeBrowserStorageState: vi.fn(),
     runArtifactCleanupPreview: vi.fn(),
     runBrowserTest: vi.fn(),
+    runDoctorRepair: vi.fn(),
     runDeadLetterPreview: vi.fn(),
     runHousekeepingNow: vi.fn(),
     runImprovementCycle: vi.fn(),
     runLocalSessionsScan: vi.fn(),
     runOnboardingSmoke: vi.fn(),
     runScheduleNow: vi.fn(),
+    runSkillCurator: vi.fn(),
     resyncExternalSkills: vi.fn(),
     saveLlmLimits: vi.fn(),
     saveBrowserConfig: vi.fn(),
+    saveCurrentPlaywrightAuthSession: vi.fn(),
+    savePlaywrightAuthCapture: vi.fn(),
     saveRuntimeConfig: vi.fn(),
     setAgentSelfImprovement: vi.fn(),
     setAgentSelfImprovementEnabled: vi.fn(),
     setSessionBrowserAuthProfile: vi.fn(),
     startBrowserLoginCapture: vi.fn(),
+    startPlaywrightAuthCapture: vi.fn(),
     testOnboardingProviderConnections: vi.fn(),
     tickBacklogOrchestration: vi.fn(),
     transitionBacklogItem: vi.fn(),
@@ -111,6 +120,7 @@ const { apiMocks, storeState, toastMocks, useAppStoreMock, routeHeaderContextMoc
     updateBrowserSessionProfile: vi.fn(),
     updateHousekeepingRetention: vi.fn(),
     updateSchedule: vi.fn(),
+    updateSkillLifecycle: vi.fn(),
     upsertSkillCatalogEntry: vi.fn(),
     upsertBrowserHeaderProfile: vi.fn(),
     upsertBrowserProxyProfile: vi.fn(),
@@ -237,7 +247,21 @@ function makeSkill() {
     },
     enabled: true,
     requiresApproval: false,
-    supportsDryRun: true
+    supportsDryRun: true,
+    lifecycle: {
+      state: 'needs_review',
+      pinned: false,
+      provenance: 'manifest',
+      health: {
+        status: 'warning',
+        reasons: ['Elevated scopes are enabled without approval.'],
+        missingTools: [],
+        elevatedWithoutApproval: true
+      },
+      updatedAt: null,
+      updatedBy: null,
+      note: null
+    }
   };
 }
 
@@ -468,6 +492,45 @@ function configurePageApiMocks(): void {
     }
   });
   apiMocks.fetchBrowserSessionVault.mockResolvedValue(emptyVault);
+  apiMocks.ensureManagedBrowserProfile.mockResolvedValue({
+    vault: emptyVault,
+    sessionProfile: {
+      id: 'browser_session_profile:managed-default',
+      label: 'Elyze managed browser',
+      domains: [],
+      cookieJarId: null,
+      headersProfileId: null,
+      proxyProfileId: null,
+      storageStateId: null,
+      useRealChrome: false,
+      profileClass: 'managed',
+      isManaged: true,
+      isIsolated: true,
+      isolationSummary: 'Agent-only managed browser profile isolated from personal Chrome data.',
+      ownerLabel: 'elyze-agent',
+      visibility: 'shared',
+      allowedSessionIds: [],
+      siteKey: null,
+      browserKind: null,
+      browserProfileName: null,
+      browserProfilePath: null,
+      locale: null,
+      countryCode: null,
+      timezoneId: null,
+      notes: null,
+      enabled: true,
+      lastVerifiedAt: null,
+      lastVerificationStatus: 'unknown',
+      lastVerificationSummary: null,
+      health: {
+        state: 'unverified',
+        summary: 'Not verified yet.',
+        needsReconnect: true
+      },
+      createdAt: '2026-03-17T06:00:00.000Z',
+      updatedAt: '2026-03-17T06:00:00.000Z'
+    }
+  });
   apiMocks.fetchBrowserHistory.mockResolvedValue({
     total: 0,
     limit: 18,
@@ -517,6 +580,7 @@ function configurePageApiMocks(): void {
   });
   apiMocks.fetchSchedules.mockResolvedValue([]);
   apiMocks.fetchScheduleDetail.mockResolvedValue(null);
+  apiMocks.applyScheduleGuardrails.mockResolvedValue(null);
   apiMocks.deleteSchedule.mockResolvedValue(true);
   apiMocks.fetchAgentProfiles.mockResolvedValue([makeAgentProfile()]);
   apiMocks.resetAgentProfileBaseline.mockResolvedValue(makeAgentProfile());
@@ -528,6 +592,16 @@ function configurePageApiMocks(): void {
   apiMocks.fetchRuns.mockResolvedValue([makeRun()]);
   apiMocks.fetchSessions.mockResolvedValue([makeSession()]);
   apiMocks.fetchSkills.mockResolvedValue([makeSkill()]);
+  apiMocks.fetchSkillLifecycle.mockResolvedValue({
+    schema: 'ops.skill-lifecycle.v1',
+    updatedAt: '2026-03-15T12:00:00.000Z',
+    skills: [
+      {
+        skillName: 'browser-use',
+        lifecycle: makeSkill().lifecycle
+      }
+    ]
+  });
   apiMocks.fetchSkillsCatalog.mockResolvedValue({
     catalogBackend: 'sqlite',
     catalogStrict: false,
@@ -609,6 +683,165 @@ function configurePageApiMocks(): void {
     tier: 'ready',
     checks: [],
     queue: {}
+  });
+  apiMocks.fetchDoctorCenter.mockResolvedValue({
+    schema: 'ops.doctor-center.v1',
+    generatedAt: '2026-03-15T12:00:00.000Z',
+    overall: 'warn',
+    score: 78,
+    repairActions: [
+      {
+        id: 'skills_resync',
+        label: 'Resync skills',
+        kind: 'execute',
+        target: '/api/doctor/repairs/skills_resync/run',
+        requiresApproval: true,
+        summary: 'Reload installed skills.'
+      }
+    ],
+    areas: [
+      {
+        id: 'skills',
+        label: 'Skill lifecycle',
+        status: 'warn',
+        summary: '1 installed skill with 1 needing review.',
+        metrics: [
+          { label: 'Installed', value: 1 },
+          { label: 'Needs review', value: 1 }
+        ],
+        repairActions: [
+          {
+            id: 'skills_resync',
+            label: 'Resync skills',
+            kind: 'execute',
+            target: '/api/doctor/repairs/skills_resync/run',
+            requiresApproval: true,
+            summary: 'Reload installed skills.'
+          }
+        ],
+        checks: [
+          {
+            id: 'skill_lifecycle_visibility',
+            label: 'Lifecycle visibility',
+            status: 'warn',
+            summary: '1 skill needs operator review.',
+            evidence: {},
+            repairActionId: 'skills_resync'
+          }
+        ]
+      },
+      {
+        id: 'prompt_governance',
+        label: 'Prompt governance',
+        status: 'pass',
+        summary: '2 recent prompt snapshots with 1 governed threat finding.',
+        metrics: [
+          { label: 'Snapshots', value: 2 },
+          { label: 'Threat findings', value: 1 },
+          { label: 'Cache tiered', value: 2 }
+        ],
+        repairActions: [],
+        checks: [
+          {
+            id: 'context_file_guardrail',
+            label: 'Context-file guardrail',
+            status: 'pass',
+            summary: '2 context files scanned with no suspicious prompt-control text.',
+            evidence: {}
+          },
+          {
+            id: 'prompt_source_authority',
+            label: 'Source authority',
+            status: 'pass',
+            summary: 'Recent prompt snapshots include source authority.',
+            evidence: {}
+          }
+        ]
+      },
+      {
+        id: 'memory_governance',
+        label: 'Memory governance',
+        status: 'pass',
+        summary: '2 accepted durable writes, 0 blocked before persistence.',
+        metrics: [
+          { label: 'Writes', value: 2 },
+          { label: 'Blocked', value: 0 }
+        ],
+        repairActions: [],
+        checks: [
+          {
+            id: 'memory_write_guardrail',
+            label: 'Memory write guardrail',
+            status: 'pass',
+            summary: '2 durable memory writes accepted with write-policy metadata.',
+            evidence: {}
+          }
+        ]
+      },
+      {
+        id: 'sandbox_policy',
+        label: 'Sandbox policy',
+        status: 'pass',
+        summary: 'Active sandbox profile balanced: process=approved_only, network=approval_required, credentials=brokered.',
+        metrics: [
+          { label: 'Profile', value: 'balanced' },
+          { label: 'Risky skills', value: 0 }
+        ],
+        repairActions: [],
+        checks: [
+          {
+            id: 'sandbox_network_boundary',
+            label: 'Network boundary',
+            status: 'pass',
+            summary: 'Active sandbox network policy is approval_required.',
+            evidence: {}
+          }
+        ]
+      },
+      {
+        id: 'schedules',
+        label: 'Schedule guardrails',
+        status: 'pass',
+        summary: '0 enabled schedules across 0 total.',
+        metrics: [{ label: 'Total', value: 0 }],
+        repairActions: [],
+        checks: []
+      },
+      {
+        id: 'browser_profiles',
+        label: 'Browser profiles',
+        status: 'pass',
+        summary: '0 session profiles and 0 local browser profiles detected.',
+        metrics: [{ label: 'Session profiles', value: 0 }],
+        repairActions: [],
+        checks: []
+      },
+      {
+        id: 'readiness',
+        label: 'Control plane readiness',
+        status: 'pass',
+        summary: 'Readiness is ready with score 100.',
+        metrics: [{ label: 'Score', value: 100 }],
+        repairActions: [],
+        checks: []
+      }
+    ]
+  });
+  apiMocks.runDoctorRepair.mockResolvedValue({
+    repair: {
+      id: 'skills_resync',
+      status: 'ok',
+      summary: 'Skill catalog resynced.',
+      result: {}
+    },
+    doctor: {
+      schema: 'ops.doctor-center.v1',
+      generatedAt: '2026-03-15T12:00:01.000Z',
+      overall: 'pass',
+      score: 100,
+      repairActions: [],
+      areas: []
+    }
   });
   apiMocks.fetchCronStatus.mockResolvedValue({
     jobs: [],
@@ -890,6 +1123,31 @@ function configurePageApiMocks(): void {
   apiMocks.invokeSkill.mockResolvedValue({
     output: 'ok',
     structured: null
+  });
+  apiMocks.runSkillCurator.mockResolvedValue({
+    proposals: [
+      {
+        skillName: 'browser-use',
+        fromState: 'active',
+        toState: 'needs_review',
+        reason: 'Elevated scopes are enabled without approval.',
+        applied: true
+      }
+    ],
+    lifecycle: {
+      schema: 'ops.skill-lifecycle.v1',
+      updatedAt: '2026-03-15T12:00:01.000Z',
+      skills: []
+    },
+    skills: [makeSkill()]
+  });
+  apiMocks.updateSkillLifecycle.mockResolvedValue({
+    skill: makeSkill(),
+    lifecycleState: {
+      schema: 'ops.skill-lifecycle.v1',
+      updatedAt: '2026-03-15T12:00:02.000Z',
+      skills: []
+    }
   });
   apiMocks.removeExternalSkill.mockResolvedValue({
     operationId: 'skill-op-2',

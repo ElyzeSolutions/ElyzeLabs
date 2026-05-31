@@ -91,6 +91,14 @@ const FILTER_PRESETS: Array<{ id: string; label: string; states: BacklogState[] 
   { id: 'archived', label: 'Archived', states: ['archived'] }
 ];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isBacklogState(value: string): value is BacklogState {
+  return COLUMN_ORDER.some((state) => state === value);
+}
+
 type ProjectScopeOption = {
   projectId: string;
   label: string;
@@ -98,6 +106,8 @@ type ProjectScopeOption = {
   activeCount: number;
   blockedCount: number;
 };
+
+type BacklogTransitionItem = Pick<BacklogItemRow, 'id' | 'state'>;
 
 function prettifyProjectLabel(value: string | null): string | null {
   if (!value) {
@@ -116,8 +126,8 @@ function resolveRepoLabel(repoRoot: string | null, metadata?: Record<string, unk
     return segments.length > 0 ? segments[segments.length - 1] : repoRoot;
   }
   const repoHint = metadata?.githubRepoHint;
-  if (repoHint && typeof repoHint === 'object') {
-    const repoHintRecord = repoHint as Record<string, unknown>;
+  if (isRecord(repoHint)) {
+    const repoHintRecord = repoHint;
     const owner = typeof repoHintRecord.owner === 'string' ? repoHintRecord.owner : '';
     const repo = typeof repoHintRecord.repo === 'string' ? repoHintRecord.repo : null;
     if (owner && repo) {
@@ -162,16 +172,16 @@ function allowedTransitions(contract: Record<string, unknown> | null, state: Bac
     return [];
   }
   const transitions = contract.transitions;
-  if (!transitions || typeof transitions !== 'object') {
+  if (!isRecord(transitions)) {
     return [];
   }
-  const row = (transitions as Record<string, unknown>)[state];
+  const row = transitions[state];
   if (!Array.isArray(row)) {
     return [];
   }
   return row
     .map((entry) => String(entry).trim())
-    .filter((entry): entry is BacklogState => COLUMN_ORDER.includes(entry as BacklogState));
+    .filter(isBacklogState);
 }
 
 function resolveEvidenceChip(item: BacklogItemRow): { label: string; tone: string } | null {
@@ -623,7 +633,7 @@ function useBacklogPageController(token?: string) {
   );
 
   const performTransition = useCallback(
-    async (item: BacklogItemRow, toState: BacklogState, reason: string): Promise<void> => {
+    async (item: BacklogTransitionItem, toState: BacklogState, reason: string): Promise<void> => {
       if (!token) {
         setErrorBanner({
           itemId: item.id,
@@ -670,7 +680,7 @@ function useBacklogPageController(token?: string) {
   );
 
   const handleDrop = useCallback(
-    async (item: BacklogItemRow, toState: BacklogState): Promise<void> => {
+    async (item: BacklogTransitionItem, toState: BacklogState): Promise<void> => {
       setDragOverState(null);
       if (item.state === toState) {
         return;
@@ -737,6 +747,7 @@ function useBacklogPageController(token?: string) {
 
   return {
     columns,
+    contracts,
     decisions,
     deliveryContract,
     dragOverState,
@@ -778,6 +789,7 @@ export function BacklogPage() {
   const token = useAppStore((state) => state.token);
   const {
     columns,
+    contracts,
     decisions,
     deliveryContract,
     dragOverState,
@@ -852,6 +864,7 @@ export function BacklogPage() {
                   key={state}
                   state={state}
                   items={columns[state] ?? []}
+                  contracts={contracts}
                   dragOverState={dragOverState}
                   loading={loading}
                   onDragOverState={setDragOverState}
@@ -1256,6 +1269,7 @@ function ScopeStatChip({
 const BoardColumn = memo(function BoardColumn({
   state,
   items,
+  contracts,
   dragOverState,
   loading,
   onDragOverState,
@@ -1265,18 +1279,26 @@ const BoardColumn = memo(function BoardColumn({
 }: {
   state: BacklogState;
   items: BacklogItemRow[];
+  contracts: Record<string, unknown> | null;
   dragOverState: BacklogState | null;
   loading: boolean;
   onDragOverState: (state: BacklogState | null) => void;
-  onDrop: (item: BacklogItemRow, toState: BacklogState) => Promise<void>;
+  onDrop: (item: BacklogTransitionItem, toState: BacklogState) => Promise<void>;
   onSelect: (id: string) => void;
-  onTransition: (item: BacklogItemRow, toState: BacklogState, reason: string) => Promise<void>;
+  onTransition: (item: BacklogTransitionItem, toState: BacklogState, reason: string) => Promise<void>;
 }) {
   const meta = COLUMN_META[state];
   const Icon = meta.icon as React.ElementType;
   const parseDraggedItem = (raw: string): { id: string; state: BacklogState } | null => {
     try {
-      return JSON.parse(raw) as { id: string; state: BacklogState };
+      const parsed: unknown = JSON.parse(raw);
+      if (!isRecord(parsed) || typeof parsed.id !== 'string' || typeof parsed.state !== 'string' || !isBacklogState(parsed.state)) {
+        return null;
+      }
+      return {
+        id: parsed.id,
+        state: parsed.state
+      };
     } catch {
       return null;
     }
@@ -1301,7 +1323,7 @@ const BoardColumn = memo(function BoardColumn({
           return;
         }
         const found = items.find((item) => item.id === parsed.id);
-        const sourceItem = found ?? ({ id: parsed.id, state: parsed.state } as BacklogItemRow);
+        const sourceItem = found ?? { id: parsed.id, state: parsed.state };
         if (sourceItem.id && sourceItem.state !== state) {
           void onDrop(sourceItem, state);
         }
@@ -1330,6 +1352,7 @@ const BoardColumn = memo(function BoardColumn({
           <TaskCard
             key={item.id}
             item={item}
+            contracts={contracts}
             onSelect={onSelect}
             onTransition={onTransition}
           />
@@ -1348,17 +1371,23 @@ const BoardColumn = memo(function BoardColumn({
 
 function TaskCard({
   item,
+  contracts,
   onSelect,
   onTransition
 }: {
   item: BacklogItemRow;
+  contracts: Record<string, unknown> | null;
   onSelect: (id: string) => void;
-  onTransition: (item: BacklogItemRow, toState: BacklogState, reason: string) => Promise<void>;
+  onTransition: (item: BacklogTransitionItem, toState: BacklogState, reason: string) => Promise<void>;
 }) {
   const evidence = resolveEvidenceChip(item);
   const unresolvedDeps = item.unresolvedDependencies?.length ?? 0;
   const projectLabel = prettifyProjectLabel(item.projectId);
   const repoLabel = resolveRepoLabel(item.repoRoot, item.metadata);
+  const contractTargets = allowedTransitions(contracts, item.state).filter((target) => target !== item.state);
+  const sequentialTarget = COLUMN_ORDER[COLUMN_ORDER.indexOf(item.state) + 1] ?? null;
+  const primaryTarget = contractTargets[0] ?? sequentialTarget;
+  const visibleTargets = contractTargets.slice(0, 3);
   return (
     <article
       draggable
@@ -1387,13 +1416,13 @@ function TaskCard({
         <button
           onClick={(event) => {
             event.stopPropagation();
-            const index = COLUMN_ORDER.indexOf(item.state);
-            const next = COLUMN_ORDER[Math.min(index + 1, COLUMN_ORDER.length - 1)];
-            if (next && next !== item.state) {
-              void onTransition(item, next, `quick_transition:${item.state}->${next}`);
+            if (primaryTarget && primaryTarget !== item.state) {
+              void onTransition(item, primaryTarget, `quick_transition:${item.state}->${primaryTarget}`);
             }
           }}
+          disabled={!primaryTarget || primaryTarget === item.state}
           className="shell-button-ghost rounded-lg p-1.5 text-slate-300 transition hover:border-[color:var(--shell-accent-border)] hover:text-[var(--shell-accent)]"
+          aria-label={`Move ${item.title} forward`}
         >
           <CaretRight size={12} weight="bold" />
         </button>
@@ -1426,6 +1455,26 @@ function TaskCard({
           </span>
         )}
       </div>
+
+      {visibleTargets.length > 0 && (
+        <div className="mt-3 grid gap-1.5">
+          {visibleTargets.map((target) => (
+            <button
+              key={target}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                void onTransition(item, target, `button_transition:${item.state}->${target}`);
+              }}
+              className="flex items-center justify-between rounded-lg border border-white/8 bg-white/[0.025] px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-300 transition hover:border-[color:var(--shell-accent-border)] hover:text-white"
+              aria-label={`Move ${item.title} to ${COLUMN_META[target].label}`}
+            >
+              <span>{COLUMN_META[target].label}</span>
+              <CaretRight size={11} weight="bold" />
+            </button>
+          ))}
+        </div>
+      )}
     </article>
   );
 }

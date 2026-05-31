@@ -8,11 +8,13 @@ import {
   invokeSkill,
   removeExternalSkill,
   removeSkillCatalogEntry,
+  runSkillCurator,
   resyncExternalSkills,
+  updateSkillLifecycle,
   upsertSkillCatalogEntry
 } from '../app/api';
 import { invalidateSkillReadQueries, skillsCatalogQueryOptions, skillsQueryOptions } from '../app/queryOptions';
-import type { SkillCatalogState, SkillRow, VendorBootstrapResultRow } from '../app/types';
+import type { SkillCatalogState, SkillLifecycleHealthStatus, SkillLifecycleState, SkillRow, VendorBootstrapResultRow } from '../app/types';
 import { useAppStore } from '../app/store';
 import { PageDisclosure, PageIntro } from '../components/ops/PageHeader';
 
@@ -21,6 +23,27 @@ const FIELD_CLASS = 'w-full rounded-lg border border-white/10 bg-white/5 px-4 py
 const PRIMARY_BUTTON_CLASS = 'inline-flex items-center justify-center gap-2 rounded-lg bg-white text-black px-4 py-2 text-sm font-medium transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50';
 const GHOST_BUTTON_CLASS = 'inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50';
 const WARN_BUTTON_CLASS = 'inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500/10 text-amber-500 px-4 py-2 text-sm font-medium transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50 border border-amber-500/20';
+const EMPTY_SKILLS: SkillRow[] = [];
+const QUICK_INSTALL_EXAMPLES = [
+  {
+    label: 'skills.sh page',
+    description: 'Paste a leaderboard page URL and install the exact skill.',
+    source: 'https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices',
+    selectedSkillsInput: ''
+  },
+  {
+    label: 'GitHub repo',
+    description: 'Install every skill published by a repo.',
+    source: 'https://github.com/vercel-labs/agent-skills',
+    selectedSkillsInput: ''
+  },
+  {
+    label: 'Docs command',
+    description: 'Copy the command from docs and paste it here unchanged.',
+    source: 'npx skills add https://github.com/vercel-labs/agent-skills --skill vercel-react-best-practices',
+    selectedSkillsInput: ''
+  }
+];
 
 type SkillsPageState = {
   outputBySkill: Record<string, string>;
@@ -108,6 +131,74 @@ function buildScopeChips(skill: SkillRow): string[] {
   return ['Sandboxed'];
 }
 
+function lifecycleStateLabel(state: SkillLifecycleState): string {
+  switch (state) {
+    case 'candidate':
+      return 'candidate';
+    case 'active':
+      return 'active';
+    case 'pinned':
+      return 'pinned';
+    case 'needs_review':
+      return 'needs review';
+    case 'deprecated':
+      return 'deprecated';
+    case 'archived':
+      return 'archived';
+    default:
+      return 'active';
+  }
+}
+
+function parseLifecycleStateInput(value: string): SkillLifecycleState | null {
+  switch (value) {
+    case 'candidate':
+      return 'candidate';
+    case 'active':
+      return 'active';
+    case 'pinned':
+      return 'pinned';
+    case 'needs_review':
+      return 'needs_review';
+    case 'deprecated':
+      return 'deprecated';
+    case 'archived':
+      return 'archived';
+    default:
+      return null;
+  }
+}
+
+function lifecycleTone(state: SkillLifecycleState): string {
+  switch (state) {
+    case 'active':
+    case 'pinned':
+      return 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100';
+    case 'candidate':
+      return 'border-sky-400/20 bg-sky-400/10 text-sky-100';
+    case 'needs_review':
+      return 'border-amber-400/20 bg-amber-400/10 text-amber-100';
+    case 'deprecated':
+    case 'archived':
+      return 'border-white/10 bg-white/5 text-white/55';
+    default:
+      return 'border-white/10 bg-white/5 text-white/55';
+  }
+}
+
+function healthTone(status: SkillLifecycleHealthStatus): string {
+  switch (status) {
+    case 'healthy':
+      return 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100';
+    case 'warning':
+      return 'border-amber-400/20 bg-amber-400/10 text-amber-100';
+    case 'blocked':
+      return 'border-rose-400/20 bg-rose-400/10 text-rose-100';
+    default:
+      return 'border-white/10 bg-white/5 text-white/55';
+  }
+}
+
 type ParsedSkillInstallDraft = {
   canonicalSource: string;
   installSource: string;
@@ -184,7 +275,13 @@ function parseSkillsDotShUrl(raw: string): ParsedSkillInstallDraft | null {
     return null;
   }
 
-  const segments = url.pathname.split('/').map((segment) => segment.trim()).filter(Boolean);
+  const segments = url.pathname.split('/').reduce<string[]>((accumulator, segment) => {
+    const trimmed = segment.trim();
+    if (trimmed.length > 0) {
+      accumulator.push(trimmed);
+    }
+    return accumulator;
+  }, []);
   if (segments.length < 2) {
     return null;
   }
@@ -375,7 +472,13 @@ function deriveCatalogEntryLabel(pathValue: string, explicitName?: string): stri
   if (explicitName && explicitName.trim().length > 0) {
     return explicitName.trim();
   }
-  const segments = pathValue.split('/').map((segment) => segment.trim()).filter(Boolean);
+  const segments = pathValue.split('/').reduce<string[]>((accumulator, segment) => {
+    const trimmed = segment.trim();
+    if (trimmed.length > 0) {
+      accumulator.push(trimmed);
+    }
+    return accumulator;
+  }, []);
   return segments[segments.length - 1] ?? '(auto name)';
 }
 
@@ -386,6 +489,7 @@ function SkillCard({
   approved,
   output,
   onDryRun,
+  onLifecycleState,
   onRemove
 }: {
   skill: SkillRow;
@@ -394,9 +498,12 @@ function SkillCard({
   approved: boolean;
   output?: string;
   onDryRun: (skill: SkillRow) => void;
+  onLifecycleState: (skill: SkillRow, state: SkillLifecycleState) => void;
   onRemove: (skill: SkillRow, approved: boolean) => void;
 }) {
   const scopeChips = buildScopeChips(skill);
+  const lifecycle = skill.lifecycle ?? null;
+  const lifecycleState = lifecycle?.state ?? (skill.enabled ? 'active' : 'archived');
 
   return (
     <article className={`${PANEL_CLASS} rounded-[1.45rem]`}>
@@ -415,6 +522,14 @@ function SkillCard({
                 disabled
               </span>
             ) : null}
+            <span className={`rounded-full border px-2.5 py-1 text-[0.68rem] font-medium ${lifecycleTone(lifecycleState)}`}>
+              {lifecycleStateLabel(lifecycleState)}
+            </span>
+            {lifecycle ? (
+              <span className={`rounded-full border px-2.5 py-1 text-[0.68rem] font-medium ${healthTone(lifecycle.health.status)}`}>
+                {lifecycle.health.status}
+              </span>
+            ) : null}
           </div>
           <p className="mt-2 max-w-[72ch] line-clamp-4 text-sm leading-6 text-white/60 sm:line-clamp-3">{summarizeSkill(skill.description, 130)}</p>
 
@@ -431,7 +546,7 @@ function SkillCard({
               <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-white/65">
                 Runtime details
               </summary>
-              <div className="space-y-2 border-t border-white/8 px-3 py-3 text-xs text-white/45">
+              <div className="space-y-2 border-t border-white/8 p-3 text-xs text-white/45">
                 {skill.allowedCommands && skill.allowedCommands.length > 0 ? (
                   <p>Allowed commands: {skill.allowedCommands.join(', ')}</p>
                 ) : null}
@@ -441,8 +556,43 @@ function SkillCard({
               </div>
             </details>
           ) : null}
+          {lifecycle ? (
+            <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-3 text-xs text-white/50">
+              <p>
+                Provenance: <span className="text-white/70">{lifecycle.provenance}</span>
+                {lifecycle.updatedBy ? <span> · updated by {lifecycle.updatedBy}</span> : null}
+              </p>
+              {lifecycle.health.reasons.length > 0 ? (
+                <p className="mt-2 text-amber-100/80">{lifecycle.health.reasons.join(' ')}</p>
+              ) : (
+                <p className="mt-2 text-emerald-100/70">Curator health is clear.</p>
+              )}
+              {lifecycle.note ? <p className="mt-2 text-white/45">Note: {lifecycle.note}</p> : null}
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-[0.16em] text-white/35">
+            Lifecycle
+            <select
+              value={lifecycleState}
+              disabled={!token || busy === `lifecycle:${skill.name}`}
+              onChange={(event) => {
+                const nextState = parseLifecycleStateInput(event.currentTarget.value);
+                if (nextState) {
+                  onLifecycleState(skill, nextState);
+                }
+              }}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium normal-case tracking-normal text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="candidate">candidate</option>
+              <option value="active">active</option>
+              <option value="pinned">pinned</option>
+              <option value="needs_review">needs review</option>
+              <option value="deprecated">deprecated</option>
+              <option value="archived">archived</option>
+            </select>
+          </label>
           <button
             type="button"
             disabled={!token || busy === skill.name}
@@ -601,34 +751,13 @@ function QuickSkillInstallPanel({
   onInstall: () => void;
   onUseExample: (value: string, selectedSkillsInput: string) => void;
 }) {
-  const examples = [
-    {
-      label: 'skills.sh page',
-      description: 'Paste a leaderboard page URL and install the exact skill.',
-      source: 'https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices',
-      selectedSkillsInput: ''
-    },
-    {
-      label: 'GitHub repo',
-      description: 'Install every skill published by a repo.',
-      source: 'https://github.com/vercel-labs/agent-skills',
-      selectedSkillsInput: ''
-    },
-    {
-      label: 'Docs command',
-      description: 'Copy the command from docs and paste it here unchanged.',
-      source: 'npx skills add https://github.com/vercel-labs/agent-skills --skill vercel-react-best-practices',
-      selectedSkillsInput: ''
-    }
-  ];
-
   const previewCommand = draft ? `npx skills add ${draft.installSource}${serializeSkillArgs(draft.selectedSkills)}` : null;
   const installLabel = buildInstallLabel(draft);
   const selectedSkillPreview =
     draft && draft.selectedSkills.length > 0 ? draft.selectedSkills.join(', ') : 'Whole repo';
 
   return (
-    <article className="relative overflow-hidden rounded-[1.8rem] border border-white/8 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.12),_transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] px-6 py-6 shadow-[0_30px_80px_rgba(0,0,0,0.25)]">
+    <article className="relative overflow-hidden rounded-[1.8rem] border border-white/8 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.12),_transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.25)]">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),transparent_45%,rgba(255,255,255,0.03))]" />
       <div className="relative grid gap-6 xl:grid-cols-[1.05fr_1.3fr]">
         <div className="flex flex-col justify-between">
@@ -645,7 +774,7 @@ function QuickSkillInstallPanel({
           </div>
 
           <div className="mt-6 grid gap-3 md:grid-cols-3 xl:grid-cols-1">
-            {examples.map((example) => (
+            {QUICK_INSTALL_EXAMPLES.map((example) => (
               <button
                 key={example.label}
                 type="button"
@@ -890,6 +1019,7 @@ function SkillRegistryPanel({
         <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-white">Discovery and catalog paths</summary>
         <div className="space-y-4 border-t border-white/8 px-4 py-4">
           <input
+            aria-label="Autodiscover scan root"
             value={autodiscoverRoot}
             onChange={(event) => onAutodiscoverRootChange(event.target.value)}
             placeholder="Optional scan root (default: runtime workspace root)"
@@ -897,12 +1027,14 @@ function SkillRegistryPanel({
           />
           <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] rounded-xl border border-white/5 bg-white/[0.02] p-4">
             <input
+              aria-label="Catalog path"
               value={catalogPath}
               onChange={(event) => onCatalogPathChange(event.target.value)}
               placeholder="Catalog path (e.g. /abs/repo/skills/my-skill)"
               className={FIELD_CLASS}
             />
             <input
+              aria-label="Catalog name override"
               value={catalogName}
               onChange={(event) => onCatalogNameChange(event.target.value)}
               placeholder="Optional name override"
@@ -928,7 +1060,7 @@ export function SkillsPage() {
   const queryClient = useQueryClient();
   const skillsQuery = useQuery(skillsQueryOptions(token));
   const catalogQuery = useQuery(skillsCatalogQueryOptions(token));
-  const skills = skillsQuery.data ?? [];
+  const skills = skillsQuery.data ?? EMPTY_SKILLS;
   const catalog = catalogQuery.data ?? null;
   const [pageState, dispatchPageState] = useReducer(skillsPageReducer, INITIAL_SKILLS_PAGE_STATE);
   const {
@@ -1025,10 +1157,13 @@ export function SkillsPage() {
       selectedSkills: installDraft.selectedSkills
     })
       .then(async (result) => {
-        const installedNames =
-          result.installation?.installedSkills
-            ?.map((skill) => skill.name.trim())
-            .filter((name) => name.length > 0) ?? [];
+        const installedNames = result.installation?.installedSkills.reduce<string[]>((accumulator, skill) => {
+          const name = skill.name.trim();
+          if (name.length > 0) {
+            accumulator.push(name);
+          }
+          return accumulator;
+        }, []) ?? [];
         patchPageState({
           source: '',
           selectedSkillsInput: '',
@@ -1099,6 +1234,43 @@ export function SkillsPage() {
       });
   }, [patchPageState, recordSkillOutput, token]);
 
+  const handleLifecycleState = useCallback((skill: SkillRow, state: SkillLifecycleState) => {
+    if (!token) {
+      return;
+    }
+    patchPageState({ busy: `lifecycle:${skill.name}`, error: null, notice: null });
+    void updateSkillLifecycle(token, skill.name, {
+      state,
+      note: `Marked ${lifecycleStateLabel(state)} from Skills page.`
+    })
+      .then(async () => {
+        patchPageState({ notice: `${skill.name} moved to ${lifecycleStateLabel(state)}.` });
+        await invalidateSkillReads();
+      })
+      .catch((cause: unknown) => {
+        patchPageState({ error: cause instanceof Error ? cause.message : 'Lifecycle update failed' });
+      })
+      .finally(() => patchPageState({ busy: null }));
+  }, [invalidateSkillReads, patchPageState, token]);
+
+  const handleRunCurator = useCallback(() => {
+    if (!token) {
+      return;
+    }
+    patchPageState({ busy: 'curator', error: null, notice: null });
+    void runSkillCurator(token, { apply: true })
+      .then(async (result) => {
+        patchPageState({
+          notice: `Curator applied ${result.proposals.length} lifecycle proposal${result.proposals.length === 1 ? '' : 's'}.`
+        });
+        await invalidateSkillReads();
+      })
+      .catch((cause: unknown) => {
+        patchPageState({ error: cause instanceof Error ? cause.message : 'Skill curator failed' });
+      })
+      .finally(() => patchPageState({ busy: null }));
+  }, [invalidateSkillReads, patchPageState, token]);
+
   const handleRemoveSkill = useCallback((skill: SkillRow, approvedMode: boolean) => {
     if (!token) {
       return;
@@ -1136,15 +1308,25 @@ export function SkillsPage() {
         title="Installed skills"
         description="Paste a skills.sh link or docs command to install fast, then run checks or remove skills below."
         actions={
-          <button
-            type="button"
-            onClick={() => {
-              void refreshSkillReads();
-            }}
-            className={GHOST_BUTTON_CLASS}
-          >
-            Reload
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!token || busy === 'curator'}
+              onClick={handleRunCurator}
+              className={WARN_BUTTON_CLASS}
+            >
+              {busy === 'curator' ? 'Curating...' : 'Run curator'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void refreshSkillReads();
+              }}
+              className={GHOST_BUTTON_CLASS}
+            >
+              Reload
+            </button>
+          </div>
         }
       />
 
@@ -1180,6 +1362,7 @@ export function SkillsPage() {
               approved={approved}
               output={outputBySkill[skill.name]}
               onDryRun={handleDryRun}
+              onLifecycleState={handleLifecycleState}
               onRemove={handleRemoveSkill}
             />
           ))}
@@ -1227,7 +1410,7 @@ export function SkillsPage() {
 
       <details className="overflow-hidden rounded-[1.55rem] border border-white/8 bg-[color:var(--shell-surface)]/90">
         <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-white">Catalog entries</summary>
-        <div className="border-t border-white/8 px-5 py-5">
+        <div className="border-t border-white/8 p-5">
           <SkillCatalogEntries
             catalog={catalog}
             token={token}
@@ -1240,7 +1423,7 @@ export function SkillsPage() {
 
       <details className="overflow-hidden rounded-[1.55rem] border border-white/8 bg-[color:var(--shell-surface)]/90">
         <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-white">Install history</summary>
-        <div className="border-t border-white/8 px-5 py-5">
+        <div className="border-t border-white/8 p-5">
           <SkillOperationHistory catalog={catalog} />
         </div>
       </details>

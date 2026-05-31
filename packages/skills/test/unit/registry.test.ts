@@ -342,6 +342,41 @@ describe('skill registry', () => {
     db.close();
   });
 
+  it('loads markdown skills with legacy unquoted colon descriptions', async () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-skill-loose-frontmatter-'));
+    const markdownSkillDir = path.join(temp, 'skills', 'verify-this');
+    fs.mkdirSync(markdownSkillDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(markdownSkillDir, 'SKILL.md'),
+      [
+        '---',
+        'name: verify-this',
+        'description: Verify a claim with fresh local evidence: restate it falsifiably, capture artifacts, and return a verdict.',
+        '---',
+        '# Verify This',
+        '',
+        'Verification is not a recap.'
+      ].join('\n')
+    );
+
+    const db = new ControlPlaneDatabase(path.join(temp, 'state.db'));
+    db.migrate();
+
+    const registry = new SkillRegistry(db, {
+      directories: ['skills'],
+      sandboxDefault: true,
+      workingDirectory: temp
+    });
+
+    const loaded = await registry.load();
+    const skill = loaded.find((entry) => entry.name === 'verify-this');
+    expect(skill?.description).toBe(
+      'Verify a claim with fresh local evidence: restate it falsifiably, capture artifacts, and return a verdict.'
+    );
+
+    db.close();
+  });
+
   it('discovers externally installed SKILL.md nodes during install/resync/remove flows', async () => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-skill-installer-markdown-'));
     fs.mkdirSync(path.join(temp, 'skills'), { recursive: true });
