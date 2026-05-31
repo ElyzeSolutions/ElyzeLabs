@@ -124,6 +124,12 @@ const CONNECT_METHOD_OPTIONS: Array<{
     detail: 'Guided import for cookies or exported session data captured from a phone browser.'
   }
 ];
+
+const sourceKindForConnectMethod = (
+  method: BrowserConnectMethod,
+  currentSourceKind: BrowserCookieSourceKind
+): BrowserCookieSourceKind => (method === 'mobile_session_import' ? 'raw_cookie_header' : currentSourceKind);
+
 const CONNECT_SITE_OPTIONS: Array<{
   siteKey: BrowserConnectSiteKey;
   label: string;
@@ -958,7 +964,8 @@ function useBrowserPageModel() {
     setConnectForm((current) => {
       const preset = connectSiteConfig(routeSite ?? current.siteKey);
       const nextSiteKey = routeSite ?? current.siteKey;
-      const nextMethod = current.method === 'cookie_import' ? current.method : preset.recommendedMethod;
+      const nextMethod =
+        current.method === 'cookie_import' || current.method === 'mobile_session_import' ? current.method : preset.recommendedMethod;
       const nextBrowserKind = routeBrowser ?? current.browserKind;
       const nextLabel = current.label.trim().length > 0 ? current.label : preset.defaultProfileLabel;
       const nextOwnerLabel = routeOwner ?? current.ownerLabel;
@@ -966,10 +973,12 @@ function useBrowserPageModel() {
       const nextAllowedSessionId = routeSessionId ?? current.allowedSessionId;
       const nextVerifyUrl = routeSite ? preset.defaultVerifyUrl : current.verifyUrl;
       const nextDomains = routeSite ? preset.defaultDomains : current.domains;
+      const nextSourceKind = sourceKindForConnectMethod(nextMethod, current.sourceKind);
 
       if (
         current.siteKey === nextSiteKey &&
         current.method === nextMethod &&
+        current.sourceKind === nextSourceKind &&
         current.browserKind === nextBrowserKind &&
         current.label === nextLabel &&
         current.ownerLabel === nextOwnerLabel &&
@@ -985,6 +994,7 @@ function useBrowserPageModel() {
         ...current,
         siteKey: nextSiteKey,
         method: nextMethod,
+        sourceKind: nextSourceKind,
         browserKind: nextBrowserKind,
         label: nextLabel,
         ownerLabel: nextOwnerLabel,
@@ -2556,7 +2566,13 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                           <button
                             key={option.id}
                             type="button"
-                            onClick={() => setConnectForm((c) => ({ ...c, method: option.id }))}
+                            onClick={() =>
+                              setConnectForm((c) => ({
+                                ...c,
+                                method: option.id,
+                                sourceKind: sourceKindForConnectMethod(option.id, c.sourceKind)
+                              }))
+                            }
                             className={[
                               'p-4 rounded-xl border transition-all text-left',
                               active
@@ -2786,6 +2802,11 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                             <option value="json_cookie_export">JSON export</option>
                             <option value="manual">Manual</option>
                           </select>
+                          {connectForm.method === 'mobile_session_import' ? (
+                            <span className="text-xs leading-5 text-[var(--shell-muted)]">
+                              Paste a copied Cookie header from the phone browser or a mobile cookie-export shortcut.
+                            </span>
+                          ) : null}
                         </label>
                         <label className="block space-y-1.5">
                           <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Cookie Payload</span>

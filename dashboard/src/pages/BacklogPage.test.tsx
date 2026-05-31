@@ -106,6 +106,103 @@ describe('BacklogPage', () => {
     );
   });
 
+  it('moves Kanban tasks by drag and drop', async () => {
+    const backlogItem = {
+      id: 'backlog-item-1',
+      title: 'Wire Instagram session capture',
+      description: 'Save and verify authenticated Instagram browser sessions.',
+      state: 'planned',
+      priority: 2,
+      labelsJson: '[]',
+      source: 'dashboard',
+      sourceRef: null,
+      createdBy: 'operator',
+      projectId: 'browser-ops',
+      repoRoot: '/workspace/elyzelabs',
+      assignedAgentId: 'social-browser-operator',
+      linkedSessionId: null,
+      linkedRunId: null,
+      deliveryGroupId: null,
+      blockedReason: null,
+      originSessionId: null,
+      originMessageId: null,
+      originChannel: null,
+      originChatId: null,
+      originTopicId: null,
+      metadataJson: '{}',
+      createdAt: '2026-05-31T10:00:00.000Z',
+      updatedAt: '2026-05-31T10:00:00.000Z',
+      labels: ['browser'],
+      metadata: {},
+      dependencies: [],
+      dependencyStates: [],
+      unresolvedDependencies: [],
+      dispatchReady: true,
+      dispatch: {
+        whyAgent: 'browser specialist',
+        whyRuntime: 'process browser capture',
+        dependencyState: {
+          ready: true,
+          unresolved: []
+        },
+        parallelismSlot: 1,
+        modelRouteChain: []
+      },
+      transitions: [],
+      execution: null,
+      delivery: null,
+      deliveryGroup: null
+    };
+    const dragStore = new Map<string, string>();
+    const dataTransfer = {
+      clearData: (type?: string) => {
+        if (type) {
+          dragStore.delete(type);
+          return;
+        }
+        dragStore.clear();
+      },
+      getData: (type: string) => dragStore.get(type) ?? '',
+      setData: (type: string, value: string) => {
+        dragStore.set(type, value);
+      }
+    };
+
+    apiMocks.fetchBacklogBoard.mockResolvedValue({
+      columns: {
+        idea: [],
+        triage: [],
+        planned: [backlogItem],
+        in_progress: [],
+        review: [],
+        blocked: [],
+        done: [],
+        archived: []
+      },
+      availableScopes: []
+    });
+    apiMocks.transitionBacklogItem.mockResolvedValue({
+      item: {
+        ...backlogItem,
+        state: 'review'
+      }
+    });
+
+    renderDashboardPage(<BacklogPage />, { path: '/backlog' });
+
+    const card = await screen.findByTestId('backlog-card-backlog-item-1');
+    fireEvent.dragStart(card, { dataTransfer });
+    fireEvent.dragOver(screen.getByTestId('backlog-column-review'), { dataTransfer });
+    fireEvent.drop(screen.getByTestId('backlog-column-review'), { dataTransfer });
+
+    await waitFor(() =>
+      expect(apiMocks.transitionBacklogItem).toHaveBeenCalledWith('token-123', 'backlog-item-1', {
+        toState: 'review',
+        reason: 'drag_transition:planned->review'
+      })
+    );
+  });
+
   it('creates operator tasks directly from the Kanban board', async () => {
     renderDashboardPage(<BacklogPage />, { path: '/backlog' });
 

@@ -460,7 +460,7 @@ describe('BrowserPage', () => {
         'token-123',
         expect.objectContaining({
           method: 'mobile_session_import',
-          sourceKind: 'netscape_cookies_txt',
+          sourceKind: 'raw_cookie_header',
           raw: 'sid=tiktok-mobile'
         })
       )

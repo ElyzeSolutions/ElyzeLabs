@@ -1463,6 +1463,7 @@ const BoardColumn = memo(function BoardColumn({
 
   return (
     <div
+      data-testid={`backlog-column-${state}`}
       onDragOver={(event: DragEvent<HTMLDivElement>) => {
         event.preventDefault();
         onDragOverState(state);
@@ -1548,6 +1549,7 @@ function TaskCard({
   const visibleTargets = contractTargets.slice(0, 3);
   return (
     <article
+      data-testid={`backlog-card-${item.id}`}
       draggable
       onDragStart={(event: DragEvent<HTMLElement>) => {
         event.dataTransfer.setData('application/x-backlog-item', JSON.stringify({ id: item.id, state: item.state }));
