@@ -11,6 +11,7 @@ export type BrowserInteractiveActionType =
   | 'read'
   | 'click'
   | 'type'
+  | 'upload'
   | 'scroll'
   | 'keypress'
   | 'wait'
@@ -22,6 +23,8 @@ export interface BrowserInteractiveActionInput {
   url?: string;
   selector?: string;
   text?: string;
+  filePath?: string;
+  filePaths?: string[];
   key?: string;
   deltaX?: number;
   deltaY?: number;
@@ -465,6 +468,7 @@ async function openCdpConnection(input: BrowserInteractiveRunInput): Promise<Cdp
     await client.send('Page.enable');
     await client.send('Runtime.enable');
     await client.send('Network.enable');
+    await client.send('DOM.enable');
     const cookies = mergeInteractiveCookies(readStorageStateCookies(input.storageState ?? null), input.cookies ?? []);
     if (cookies.length > 0) {
       await client.send('Network.setCookies', {
@@ -625,6 +629,24 @@ async function executeCdpAction(input: {
       await client.send('Input.insertText', { text });
       await delay(Math.min(Math.max(action.timeoutMs ?? 250, 50), 5_000));
       return actionResult(index, action, true, `Typed into ${selector}`, text.slice(0, previewChars));
+    }
+
+    if (action.type === 'upload') {
+      const selector = requireSelector(action);
+      const filePaths = await normalizeUploadFilePaths(action);
+      const uploaded = await setFileInputFiles(client, selector, filePaths);
+      if (!uploaded) {
+        throw new Error(`File input selector not found: ${selector}`);
+      }
+      await delay(Math.min(Math.max(action.timeoutMs ?? 250, 50), 5_000));
+      const names = filePaths.map((filePath) => path.basename(filePath));
+      return actionResult(
+        index,
+        action,
+        true,
+        `Uploaded ${String(filePaths.length)} file${filePaths.length === 1 ? '' : 's'} into ${selector}`,
+        names.join(', ').slice(0, previewChars)
+      );
     }
 
     if (action.type === 'scroll') {
@@ -808,6 +830,42 @@ function readStorageStateLocalStorage(
     return entries;
   }
   return [];
+}
+
+async function normalizeUploadFilePaths(action: BrowserInteractiveActionInput): Promise<string[]> {
+  const rawPaths: string[] = [];
+  if (typeof action.filePath === 'string') {
+    rawPaths.push(action.filePath);
+  }
+  if (Array.isArray(action.filePaths)) {
+    for (const filePath of action.filePaths) {
+      if (typeof filePath === 'string') {
+        rawPaths.push(filePath);
+      }
+    }
+  }
+  const uniquePaths = new Set<string>();
+  const normalizedPaths: string[] = [];
+  for (const rawPath of rawPaths) {
+    const trimmed = rawPath.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const absolutePath = path.isAbsolute(trimmed) ? trimmed : path.resolve(trimmed);
+    if (uniquePaths.has(absolutePath)) {
+      continue;
+    }
+    const stats = await fs.stat(absolutePath);
+    if (!stats.isFile()) {
+      throw new Error(`Upload path is not a file: ${absolutePath}`);
+    }
+    uniquePaths.add(absolutePath);
+    normalizedPaths.push(absolutePath);
+  }
+  if (normalizedPaths.length === 0) {
+    throw new Error('upload action requires filePath or filePaths.');
+  }
+  return normalizedPaths;
 }
 
 function readSameSite(value: unknown): BrowserInteractiveCookie['sameSite'] {
@@ -1043,6 +1101,27 @@ async function resolveViewportCenterPoint(client: CdpCommandClient): Promise<Cdp
   return readSelectorPoint(response);
 }
 
+async function setFileInputFiles(client: CdpCommandClient, selector: string, filePaths: string[]): Promise<boolean> {
+  const documentResponse = await client.send('DOM.getDocument', { depth: -1, pierce: true });
+  const rootNodeId = readDocumentRootNodeId(documentResponse);
+  if (rootNodeId === null) {
+    return false;
+  }
+  const queryResponse = await client.send('DOM.querySelector', {
+    nodeId: rootNodeId,
+    selector
+  });
+  const nodeId = readNodeId(queryResponse);
+  if (nodeId === null || nodeId === 0) {
+    return false;
+  }
+  await client.send('DOM.setFileInputFiles', {
+    nodeId,
+    files: filePaths
+  });
+  return true;
+}
+
 async function focusAndSelectSelector(client: CdpCommandClient, selector: string): Promise<boolean> {
   return evaluateBoolean(client, focusAndSelectSelectorExpression(selector));
 }
@@ -1117,6 +1196,21 @@ function readSelectorPoint(response: unknown): CdpSelectorPoint | null {
     return null;
   }
   return { x, y, width, height };
+}
+
+function readDocumentRootNodeId(response: unknown): number | null {
+  if (!isRecord(response) || !isRecord(response.root)) {
+    return null;
+  }
+  return readNodeId(response.root);
+}
+
+function readNodeId(response: unknown): number | null {
+  if (!isRecord(response)) {
+    return null;
+  }
+  const nodeId = response.nodeId;
+  return typeof nodeId === 'number' && Number.isInteger(nodeId) ? nodeId : null;
 }
 
 function normalizeScrollDelta(value: number | null | undefined, fallback: number): number {

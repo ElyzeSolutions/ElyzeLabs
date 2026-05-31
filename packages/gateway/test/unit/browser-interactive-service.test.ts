@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import type { Duplex } from 'node:stream';
 
 import { describe, expect, it } from 'vitest';
@@ -19,8 +22,11 @@ interface FakeCdpServer {
 }
 
 describe('browser interactive service', () => {
-  it('uses native CDP input events for click, type, scroll, and keypress actions', async () => {
+  it('uses native CDP events for click, type, upload, scroll, and keypress actions', async () => {
     const fakeCdp = await startFakeCdpServer();
+    const uploadRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ops-browser-upload-test-'));
+    const uploadPath = path.join(uploadRoot, 'fixture.txt');
+    await fs.writeFile(uploadPath, 'upload fixture', 'utf8');
     try {
       const service = new BrowserInteractiveService();
       const result = await service.run({
@@ -31,6 +37,7 @@ describe('browser interactive service', () => {
           { type: 'open', url: 'https://example.test/form', timeoutMs: 250 },
           { type: 'click', selector: '#continue', timeoutMs: 100 },
           { type: 'type', selector: '#search', text: 'hello native input', timeoutMs: 50 },
+          { type: 'upload', selector: '#avatar', filePath: uploadPath, timeoutMs: 50 },
           { type: 'scroll', selector: '#feed', deltaY: 720, timeoutMs: 50 },
           { type: 'keypress', key: 'Enter', timeoutMs: 50 },
           { type: 'read' }
@@ -43,6 +50,7 @@ describe('browser interactive service', () => {
         'open',
         'click',
         'type',
+        'upload',
         'scroll',
         'keypress',
         'read'
@@ -70,6 +78,9 @@ describe('browser interactive service', () => {
       const insertedTextCommand = fakeCdp.commands.find((command) => command.method === 'Input.insertText');
       expect(insertedTextCommand ? readStringField(insertedTextCommand.params, 'text') : '').toBe('hello native input');
 
+      const uploadCommand = fakeCdp.commands.find((command) => command.method === 'DOM.setFileInputFiles');
+      expect(uploadCommand ? readStringArrayField(uploadCommand.params, 'files') : []).toEqual([uploadPath]);
+
       const keyEventTypes = fakeCdp.commands
         .filter((command) => command.method === 'Input.dispatchKeyEvent')
         .map((command) => readStringField(command.params, 'type'));
@@ -87,12 +98,16 @@ describe('browser interactive service', () => {
       expect(mutationExpressions).toEqual([]);
       expect(fakeCdp.requests.some((requestPath) => requestPath.startsWith('/json/new'))).toBe(true);
     } finally {
+      await fs.rm(uploadRoot, { recursive: true, force: true });
       await fakeCdp.close();
     }
   });
 
   it('keeps a persistent CDP live session open across action batches', async () => {
     const fakeCdp = await startFakeCdpServer();
+    const uploadRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ops-browser-live-upload-test-'));
+    const uploadPath = path.join(uploadRoot, 'live-fixture.txt');
+    await fs.writeFile(uploadPath, 'live upload fixture', 'utf8');
     try {
       const service = new BrowserInteractiveService();
       const started = await service.startSession({
@@ -112,6 +127,7 @@ describe('browser interactive service', () => {
         actions: [
           { type: 'click', selector: '#continue', timeoutMs: 100 },
           { type: 'type', selector: '#search', text: 'live session input', timeoutMs: 50 },
+          { type: 'upload', selector: '#avatar', filePaths: [uploadPath], timeoutMs: 50 },
           { type: 'scroll', selector: '#feed', deltaY: 500, timeoutMs: 50 },
           { type: 'keypress', key: 'Escape', timeoutMs: 50 },
           { type: 'read' }
@@ -124,6 +140,7 @@ describe('browser interactive service', () => {
       expect(acted.control.actions.map((action) => action.type)).toEqual([
         'click',
         'type',
+        'upload',
         'scroll',
         'keypress',
         'read'
@@ -142,6 +159,7 @@ describe('browser interactive service', () => {
         })
       ).rejects.toThrow(/live session not found/u);
     } finally {
+      await fs.rm(uploadRoot, { recursive: true, force: true });
       await fakeCdp.close();
     }
   });
@@ -251,6 +269,12 @@ function handleCdpMessage(socket: { write: (chunk: Buffer | string) => unknown }
 function cdpResultFor(method: string, params: Record<string, unknown>): Record<string, unknown> {
   if (method === 'Runtime.evaluate') {
     return runtimeEvaluateResult(readStringField(params, 'expression'));
+  }
+  if (method === 'DOM.getDocument') {
+    return { root: { nodeId: 1 } };
+  }
+  if (method === 'DOM.querySelector') {
+    return { nodeId: readStringField(params, 'selector') === '#missing' ? 0 : 7 };
   }
   if (method === 'Page.captureScreenshot') {
     return { data: Buffer.from('png', 'utf8').toString('base64') };
@@ -376,6 +400,14 @@ function readRecordField(value: Record<string, unknown>, key: string): Record<st
 function readStringField(value: Record<string, unknown>, key: string): string {
   const field = value[key];
   return typeof field === 'string' ? field : '';
+}
+
+function readStringArrayField(value: Record<string, unknown>, key: string): string[] {
+  const field = value[key];
+  if (!Array.isArray(field)) {
+    return [];
+  }
+  return field.filter((entry): entry is string => typeof entry === 'string');
 }
 
 function readNumberField(value: Record<string, unknown>, key: string): number | null {

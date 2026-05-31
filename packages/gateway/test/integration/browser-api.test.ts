@@ -545,6 +545,7 @@ describe('gateway browser api integration', () => {
           { type: 'read' },
           { type: 'click', selector: '#continue' },
           { type: 'type', selector: '#search', text: 'instagram reels' },
+          { type: 'upload', selector: '#avatar', filePath: '/tmp/ops-avatar.png' },
           { type: 'scroll', selector: '#feed', deltaY: 640 },
           { type: 'keypress', key: 'Enter' },
           { type: 'screenshot' },
@@ -569,6 +570,7 @@ describe('gateway browser api integration', () => {
       'read',
       'click',
       'type',
+      'upload',
       'scroll',
       'keypress',
       'screenshot',
@@ -585,6 +587,11 @@ describe('gateway browser api integration', () => {
           })
         ]),
         actions: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'upload',
+            selector: '#avatar',
+            filePath: '/tmp/ops-avatar.png'
+          }),
           expect.objectContaining({
             type: 'scroll',
             selector: '#feed',
@@ -635,6 +642,7 @@ describe('gateway browser api integration', () => {
         actions: [
           { type: 'click', selector: '#continue' },
           { type: 'type', selector: '#search', text: 'live instagram reels' },
+          { type: 'upload', selector: '#avatar', filePaths: ['/tmp/live-avatar.png'] },
           { type: 'scroll', selector: '#feed', deltaY: 720 },
           { type: 'keypress', key: 'Escape' },
           { type: 'read' }
@@ -653,6 +661,7 @@ describe('gateway browser api integration', () => {
     expect(liveActionBody.control.actions.map((action) => action.type)).toEqual([
       'click',
       'type',
+      'upload',
       'scroll',
       'keypress',
       'read'
@@ -666,6 +675,11 @@ describe('gateway browser api integration', () => {
             type: 'type',
             selector: '#search',
             text: 'live instagram reels'
+          }),
+          expect.objectContaining({
+            type: 'upload',
+            selector: '#avatar',
+            filePaths: ['/tmp/live-avatar.png']
           }),
           expect.objectContaining({
             type: 'scroll',

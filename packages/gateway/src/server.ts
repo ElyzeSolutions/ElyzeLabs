@@ -53410,6 +53410,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       value === 'read' ||
       value === 'click' ||
       value === 'type' ||
+      value === 'upload' ||
       value === 'scroll' ||
       value === 'keypress' ||
       value === 'wait' ||
@@ -53440,6 +53441,17 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         }
         if (typeof entry.text === 'string') {
           action.text = entry.text;
+        }
+        if (typeof entry.filePath === 'string' && entry.filePath.trim().length > 0) {
+          action.filePath = entry.filePath.trim();
+        }
+        if (Array.isArray(entry.filePaths)) {
+          const filePaths = entry.filePaths
+            .filter((filePath): filePath is string => typeof filePath === 'string' && filePath.trim().length > 0)
+            .map((filePath) => filePath.trim());
+          if (filePaths.length > 0) {
+            action.filePaths = filePaths;
+          }
         }
         if (typeof entry.key === 'string' && entry.key.trim().length > 0) {
           action.key = entry.key.trim();
