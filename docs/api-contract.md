@@ -219,6 +219,9 @@ Browser operations, profiles, credentials, history, and artifacts:
 - `POST /api/browser/login-capture/start`
 - `POST /api/browser/connect-account`
 - `POST /api/browser/interactive/run`
+- `POST /api/browser/interactive/sessions`
+- `POST /api/browser/interactive/sessions/:liveSessionId/actions`
+- `DELETE /api/browser/interactive/sessions/:liveSessionId`
 - `POST /api/browser/session-profiles/:sessionProfileId/enable`
 - `POST /api/browser/session-profiles/:sessionProfileId/disable`
 - `POST /api/browser/session-profiles/:sessionProfileId/revoke`
@@ -231,6 +234,8 @@ Browser operations, profiles, credentials, history, and artifacts:
 - `GET /api/browser/history`
 - `GET /api/browser/history/:runId`
 - `GET /api/browser/artifacts/:handle`
+
+Interactive browser action payloads support `open`, `read`, `click`, `type`, `scroll`, `keypress`, `wait`, `screenshot`, and `pdf`. `scroll` accepts optional `selector`, `deltaX`, and `deltaY`; `keypress` accepts `key` plus an optional `selector` to focus first.
 
 Self-improvement and agent operations:
 - `GET /api/improvement/learnings`

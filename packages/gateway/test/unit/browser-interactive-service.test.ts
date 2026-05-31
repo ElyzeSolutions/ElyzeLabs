@@ -19,7 +19,7 @@ interface FakeCdpServer {
 }
 
 describe('browser interactive service', () => {
-  it('uses native CDP mouse and text input for click and type actions', async () => {
+  it('uses native CDP input events for click, type, scroll, and keypress actions', async () => {
     const fakeCdp = await startFakeCdpServer();
     try {
       const service = new BrowserInteractiveService();
@@ -31,21 +31,54 @@ describe('browser interactive service', () => {
           { type: 'open', url: 'https://example.test/form', timeoutMs: 250 },
           { type: 'click', selector: '#continue', timeoutMs: 100 },
           { type: 'type', selector: '#search', text: 'hello native input', timeoutMs: 50 },
+          { type: 'scroll', selector: '#feed', deltaY: 720, timeoutMs: 50 },
+          { type: 'keypress', key: 'Enter', timeoutMs: 50 },
           { type: 'read' }
         ]
       });
 
       expect(result.ok).toBe(true);
       expect(result.provider).toBe('cdp_chrome');
-      expect(result.actions.map((action) => action.type)).toEqual(['open', 'click', 'type', 'read']);
+      expect(result.actions.map((action) => action.type)).toEqual([
+        'open',
+        'click',
+        'type',
+        'scroll',
+        'keypress',
+        'read'
+      ]);
 
       const mouseEventTypes = fakeCdp.commands
         .filter((command) => command.method === 'Input.dispatchMouseEvent')
         .map((command) => readStringField(command.params, 'type'));
-      expect(mouseEventTypes).toEqual(['mouseMoved', 'mousePressed', 'mouseReleased', 'mouseMoved', 'mousePressed', 'mouseReleased']);
+      expect(mouseEventTypes).toEqual([
+        'mouseMoved',
+        'mousePressed',
+        'mouseReleased',
+        'mouseMoved',
+        'mousePressed',
+        'mouseReleased',
+        'mouseWheel'
+      ]);
+
+      const wheelCommand = fakeCdp.commands.find(
+        (command) =>
+          command.method === 'Input.dispatchMouseEvent' && readStringField(command.params, 'type') === 'mouseWheel'
+      );
+      expect(wheelCommand ? readNumberField(wheelCommand.params, 'deltaY') : null).toBe(720);
 
       const insertedTextCommand = fakeCdp.commands.find((command) => command.method === 'Input.insertText');
       expect(insertedTextCommand ? readStringField(insertedTextCommand.params, 'text') : '').toBe('hello native input');
+
+      const keyEventTypes = fakeCdp.commands
+        .filter((command) => command.method === 'Input.dispatchKeyEvent')
+        .map((command) => readStringField(command.params, 'type'));
+      expect(keyEventTypes).toEqual(['rawKeyDown', 'keyUp']);
+      const keyDownCommand = fakeCdp.commands.find(
+        (command) =>
+          command.method === 'Input.dispatchKeyEvent' && readStringField(command.params, 'type') === 'rawKeyDown'
+      );
+      expect(keyDownCommand ? readStringField(keyDownCommand.params, 'key') : '').toBe('Enter');
 
       const mutationExpressions = fakeCdp.commands
         .filter((command) => command.method === 'Runtime.evaluate')
@@ -79,6 +112,8 @@ describe('browser interactive service', () => {
         actions: [
           { type: 'click', selector: '#continue', timeoutMs: 100 },
           { type: 'type', selector: '#search', text: 'live session input', timeoutMs: 50 },
+          { type: 'scroll', selector: '#feed', deltaY: 500, timeoutMs: 50 },
+          { type: 'keypress', key: 'Escape', timeoutMs: 50 },
           { type: 'read' }
         ]
       });
@@ -86,7 +121,13 @@ describe('browser interactive service', () => {
       expect(acted.session.sessionId).toBe(started.session.sessionId);
       expect(acted.session.lastActivityAt >= started.session.lastActivityAt).toBe(true);
       expect(acted.control.ok).toBe(true);
-      expect(acted.control.actions.map((action) => action.type)).toEqual(['click', 'type', 'read']);
+      expect(acted.control.actions.map((action) => action.type)).toEqual([
+        'click',
+        'type',
+        'scroll',
+        'keypress',
+        'read'
+      ]);
 
       const closed = await service.closeSession(started.session.sessionId);
       expect(closed.closed).toBe(true);

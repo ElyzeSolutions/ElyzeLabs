@@ -545,6 +545,8 @@ describe('gateway browser api integration', () => {
           { type: 'read' },
           { type: 'click', selector: '#continue' },
           { type: 'type', selector: '#search', text: 'instagram reels' },
+          { type: 'scroll', selector: '#feed', deltaY: 640 },
+          { type: 'keypress', key: 'Enter' },
           { type: 'screenshot' },
           { type: 'pdf' }
         ]
@@ -563,7 +565,15 @@ describe('gateway browser api integration', () => {
     expect(interactiveBody.run.status).toBe('completed');
     expect(interactiveBody.control.ok).toBe(true);
     expect(interactiveBody.control.provider).toBe('test');
-    expect(interactiveBody.control.actions.map((action) => action.type)).toEqual(['read', 'click', 'type', 'screenshot', 'pdf']);
+    expect(interactiveBody.control.actions.map((action) => action.type)).toEqual([
+      'read',
+      'click',
+      'type',
+      'scroll',
+      'keypress',
+      'screenshot',
+      'pdf'
+    ]);
     expect(interactiveBody.control.artifacts.map((artifact) => artifact.kind)).toEqual(['read', 'screenshot']);
     expect(provider.run).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -572,6 +582,17 @@ describe('gateway browser api integration', () => {
           expect.objectContaining({
             name: 'sid',
             value: 'interactive-session'
+          })
+        ]),
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'scroll',
+            selector: '#feed',
+            deltaY: 640
+          }),
+          expect.objectContaining({
+            type: 'keypress',
+            key: 'Enter'
           })
         ])
       })
@@ -614,6 +635,8 @@ describe('gateway browser api integration', () => {
         actions: [
           { type: 'click', selector: '#continue' },
           { type: 'type', selector: '#search', text: 'live instagram reels' },
+          { type: 'scroll', selector: '#feed', deltaY: 720 },
+          { type: 'keypress', key: 'Escape' },
           { type: 'read' }
         ]
       }
@@ -627,7 +650,13 @@ describe('gateway browser api integration', () => {
     expect(liveActionBody.run.status).toBe('completed');
     expect(liveActionBody.liveSession.sessionId).toBe(liveSessionId);
     expect(liveActionBody.control.ok).toBe(true);
-    expect(liveActionBody.control.actions.map((action) => action.type)).toEqual(['click', 'type', 'read']);
+    expect(liveActionBody.control.actions.map((action) => action.type)).toEqual([
+      'click',
+      'type',
+      'scroll',
+      'keypress',
+      'read'
+    ]);
     expect(liveActionBody.control.artifacts.map((artifact) => artifact.kind)).toEqual(['read']);
     expect(provider.runSessionActions).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -637,6 +666,15 @@ describe('gateway browser api integration', () => {
             type: 'type',
             selector: '#search',
             text: 'live instagram reels'
+          }),
+          expect.objectContaining({
+            type: 'scroll',
+            selector: '#feed',
+            deltaY: 720
+          }),
+          expect.objectContaining({
+            type: 'keypress',
+            key: 'Escape'
           })
         ])
       })

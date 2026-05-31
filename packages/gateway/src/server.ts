@@ -53405,7 +53405,17 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
   });
 
   const parseBrowserInteractiveActionType = (value: unknown): BrowserInteractiveActionType | null => {
-    if (value === 'open' || value === 'read' || value === 'click' || value === 'type' || value === 'wait' || value === 'screenshot' || value === 'pdf') {
+    if (
+      value === 'open' ||
+      value === 'read' ||
+      value === 'click' ||
+      value === 'type' ||
+      value === 'scroll' ||
+      value === 'keypress' ||
+      value === 'wait' ||
+      value === 'screenshot' ||
+      value === 'pdf'
+    ) {
       return value;
     }
     return null;
@@ -53430,6 +53440,15 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         }
         if (typeof entry.text === 'string') {
           action.text = entry.text;
+        }
+        if (typeof entry.key === 'string' && entry.key.trim().length > 0) {
+          action.key = entry.key.trim();
+        }
+        if (Number.isFinite(Number(entry.deltaX))) {
+          action.deltaX = Number(entry.deltaX);
+        }
+        if (Number.isFinite(Number(entry.deltaY))) {
+          action.deltaY = Number(entry.deltaY);
         }
         if (Number.isFinite(Number(entry.timeoutMs))) {
           action.timeoutMs = Number(entry.timeoutMs);

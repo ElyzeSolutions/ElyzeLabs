@@ -6,13 +6,25 @@ import net from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
-export type BrowserInteractiveActionType = 'open' | 'read' | 'click' | 'type' | 'wait' | 'screenshot' | 'pdf';
+export type BrowserInteractiveActionType =
+  | 'open'
+  | 'read'
+  | 'click'
+  | 'type'
+  | 'scroll'
+  | 'keypress'
+  | 'wait'
+  | 'screenshot'
+  | 'pdf';
 
 export interface BrowserInteractiveActionInput {
   type: BrowserInteractiveActionType;
   url?: string;
   selector?: string;
   text?: string;
+  key?: string;
+  deltaX?: number;
+  deltaY?: number;
   timeoutMs?: number;
 }
 
@@ -328,6 +340,13 @@ interface CdpSelectorPoint {
   height: number;
 }
 
+interface CdpKeyPress {
+  key: string;
+  code: string;
+  keyCode: number;
+  text: string | null;
+}
+
 interface CdpConnection {
   client: CdpClient;
   chrome: ChildProcessWithoutNullStreams | null;
@@ -606,6 +625,60 @@ async function executeCdpAction(input: {
       await client.send('Input.insertText', { text });
       await delay(Math.min(Math.max(action.timeoutMs ?? 250, 50), 5_000));
       return actionResult(index, action, true, `Typed into ${selector}`, text.slice(0, previewChars));
+    }
+
+    if (action.type === 'scroll') {
+      const point = action.selector
+        ? await resolveSelectorPoint(client, action.selector)
+        : await resolveViewportCenterPoint(client);
+      if (!point) {
+        throw new Error(action.selector ? `Selector not found: ${action.selector}` : 'Viewport not available for scroll action.');
+      }
+      const deltaX = normalizeScrollDelta(action.deltaX, 0);
+      const deltaY = normalizeScrollDelta(action.deltaY, deltaX === 0 ? 600 : 0);
+      await client.send('Input.dispatchMouseEvent', {
+        type: 'mouseWheel',
+        x: point.x,
+        y: point.y,
+        button: 'none',
+        deltaX,
+        deltaY
+      });
+      await delay(Math.min(Math.max(action.timeoutMs ?? 250, 50), 5_000));
+      return actionResult(
+        index,
+        action,
+        true,
+        action.selector ? `Scrolled ${action.selector}` : 'Scrolled page',
+        `${String(deltaX)},${String(deltaY)}`.slice(0, previewChars)
+      );
+    }
+
+    if (action.type === 'keypress') {
+      const keyPress = normalizeKeyPress(action.key ?? action.text ?? '');
+      if (!keyPress) {
+        throw new Error('keypress action requires key.');
+      }
+      const selector = action.selector?.trim() ?? '';
+      if (selector) {
+        const point = await dispatchNativeClick(client, selector);
+        if (!point) {
+          throw new Error(`Selector not found: ${selector}`);
+        }
+        const focused = await focusSelector(client, selector);
+        if (!focused) {
+          throw new Error(`Selector not focusable: ${selector}`);
+        }
+      }
+      await dispatchNativeKeyPress(client, keyPress);
+      await delay(Math.min(Math.max(action.timeoutMs ?? 150, 50), 5_000));
+      return actionResult(
+        index,
+        action,
+        true,
+        `Pressed ${keyPress.key}`,
+        keyPress.text?.slice(0, previewChars) ?? null
+      );
     }
 
     if (action.type === 'screenshot') {
@@ -953,8 +1026,29 @@ async function resolveSelectorPoint(client: CdpCommandClient, selector: string):
   return readSelectorPoint(response);
 }
 
+async function resolveViewportCenterPoint(client: CdpCommandClient): Promise<CdpSelectorPoint | null> {
+  const response = await client.send('Runtime.evaluate', {
+    expression: `(() => {
+      const width = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+      const height = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+      return {
+        x: width / 2,
+        y: height / 2,
+        width,
+        height
+      };
+    })()`,
+    returnByValue: true
+  });
+  return readSelectorPoint(response);
+}
+
 async function focusAndSelectSelector(client: CdpCommandClient, selector: string): Promise<boolean> {
   return evaluateBoolean(client, focusAndSelectSelectorExpression(selector));
+}
+
+async function focusSelector(client: CdpCommandClient, selector: string): Promise<boolean> {
+  return evaluateBoolean(client, focusSelectorExpression(selector));
 }
 
 function selectorPointExpression(selector: string): string {
@@ -1000,6 +1094,16 @@ function focusAndSelectSelectorExpression(selector: string): string {
   })()`;
 }
 
+function focusSelectorExpression(selector: string): string {
+  return `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return false;
+    if (typeof el.focus !== 'function') return false;
+    el.focus({ preventScroll: true });
+    return document.activeElement === el || el.contains(document.activeElement);
+  })()`;
+}
+
 function readSelectorPoint(response: unknown): CdpSelectorPoint | null {
   const value = readRemoteObject(response);
   if (!value) {
@@ -1013,6 +1117,91 @@ function readSelectorPoint(response: unknown): CdpSelectorPoint | null {
     return null;
   }
   return { x, y, width, height };
+}
+
+function normalizeScrollDelta(value: number | null | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(-3_000, Math.min(3_000, value));
+}
+
+async function dispatchNativeKeyPress(client: CdpCommandClient, keyPress: CdpKeyPress): Promise<void> {
+  const baseParams = {
+    key: keyPress.key,
+    code: keyPress.code,
+    windowsVirtualKeyCode: keyPress.keyCode,
+    nativeVirtualKeyCode: keyPress.keyCode
+  };
+  await client.send('Input.dispatchKeyEvent', {
+    ...baseParams,
+    type: 'rawKeyDown'
+  });
+  if (keyPress.text !== null) {
+    await client.send('Input.dispatchKeyEvent', {
+      ...baseParams,
+      type: 'char',
+      text: keyPress.text,
+      unmodifiedText: keyPress.text
+    });
+  }
+  await client.send('Input.dispatchKeyEvent', {
+    ...baseParams,
+    type: 'keyUp'
+  });
+}
+
+function normalizeKeyPress(value: string): CdpKeyPress | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const lower = trimmed.toLowerCase();
+  const named = namedKeyPress(lower);
+  if (named) {
+    return named;
+  }
+  if (trimmed.length !== 1) {
+    return null;
+  }
+  const codePoint = trimmed.codePointAt(0);
+  if (codePoint === undefined) {
+    return null;
+  }
+  const upper = trimmed.toUpperCase();
+  const code = /^[A-Z]$/u.test(upper)
+    ? `Key${upper}`
+    : /^[0-9]$/u.test(trimmed)
+      ? `Digit${trimmed}`
+      : `Key${upper}`;
+  return {
+    key: trimmed,
+    code,
+    keyCode: codePoint,
+    text: trimmed
+  };
+}
+
+function namedKeyPress(value: string): CdpKeyPress | null {
+  const namedKeys: Record<string, CdpKeyPress> = {
+    enter: { key: 'Enter', code: 'Enter', keyCode: 13, text: null },
+    return: { key: 'Enter', code: 'Enter', keyCode: 13, text: null },
+    tab: { key: 'Tab', code: 'Tab', keyCode: 9, text: null },
+    escape: { key: 'Escape', code: 'Escape', keyCode: 27, text: null },
+    esc: { key: 'Escape', code: 'Escape', keyCode: 27, text: null },
+    backspace: { key: 'Backspace', code: 'Backspace', keyCode: 8, text: null },
+    delete: { key: 'Delete', code: 'Delete', keyCode: 46, text: null },
+    space: { key: ' ', code: 'Space', keyCode: 32, text: ' ' },
+    arrowup: { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38, text: null },
+    arrowdown: { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, text: null },
+    arrowleft: { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37, text: null },
+    arrowright: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, text: null },
+    pagedown: { key: 'PageDown', code: 'PageDown', keyCode: 34, text: null },
+    pageup: { key: 'PageUp', code: 'PageUp', keyCode: 33, text: null },
+    home: { key: 'Home', code: 'Home', keyCode: 36, text: null },
+    end: { key: 'End', code: 'End', keyCode: 35, text: null }
+  };
+  return namedKeys[value] ?? null;
 }
 
 async function evaluateString(client: CdpCommandClient, expression: string): Promise<string> {
