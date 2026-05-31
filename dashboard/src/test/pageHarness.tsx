@@ -94,6 +94,7 @@ const { apiMocks, storeState, toastMocks, useAppStoreMock, routeHeaderContextMoc
     revokeBrowserSessionProfile: vi.fn(),
     revokeBrowserStorageState: vi.fn(),
     runArtifactCleanupPreview: vi.fn(),
+    runBrowserInteractiveSessionActions: vi.fn(),
     runBrowserTest: vi.fn(),
     runDoctorRepair: vi.fn(),
     runDeadLetterPreview: vi.fn(),
@@ -112,6 +113,8 @@ const { apiMocks, storeState, toastMocks, useAppStoreMock, routeHeaderContextMoc
     setAgentSelfImprovement: vi.fn(),
     setAgentSelfImprovementEnabled: vi.fn(),
     setSessionBrowserAuthProfile: vi.fn(),
+    closeBrowserInteractiveSession: vi.fn(),
+    startBrowserInteractiveSession: vi.fn(),
     startBrowserLoginCapture: vi.fn(),
     startBrowserMobileHandoff: vi.fn(),
     startPlaywrightAuthCapture: vi.fn(),
@@ -557,6 +560,113 @@ function configurePageApiMocks(): void {
     limit: 18,
     offset: 0,
     rows: []
+  });
+  apiMocks.startBrowserInteractiveSession.mockResolvedValue({
+    run: {
+      ...makeRun(),
+      id: 'run-live-start',
+      status: 'completed',
+      runtime: 'process',
+      resultSummary: 'Live interactive browser session started.'
+    },
+    liveSession: {
+      schema: 'ops.browser-interactive-session.v1',
+      provider: 'test',
+      sessionId: 'live-session-1',
+      startedUrl: 'https://example.com/',
+      currentUrl: 'https://example.com/',
+      startedAt: '2026-05-31T10:00:00.000Z',
+      lastActivityAt: '2026-05-31T10:00:00.000Z',
+      expiresAt: null
+    },
+    control: {
+      schema: 'ops.browser-interactive-run.v1',
+      provider: 'test',
+      ok: true,
+      startedUrl: 'https://example.com/',
+      finalUrl: 'https://example.com/',
+      actions: [
+        {
+          index: 0,
+          type: 'open',
+          ok: true,
+          summary: 'Opened https://example.com/',
+          selector: null,
+          url: 'https://example.com/',
+          textPreview: null,
+          error: null
+        }
+      ],
+      artifacts: [],
+      error: null
+    }
+  });
+  apiMocks.runBrowserInteractiveSessionActions.mockResolvedValue({
+    run: {
+      ...makeRun(),
+      id: 'run-live-action',
+      status: 'completed',
+      runtime: 'process',
+      resultSummary: 'Live action completed.'
+    },
+    liveSession: {
+      schema: 'ops.browser-interactive-session.v1',
+      provider: 'test',
+      sessionId: 'live-session-1',
+      startedUrl: 'https://example.com/',
+      currentUrl: 'https://example.com/#clicked',
+      startedAt: '2026-05-31T10:00:00.000Z',
+      lastActivityAt: '2026-05-31T10:00:01.000Z',
+      expiresAt: null
+    },
+    control: {
+      schema: 'ops.browser-interactive-run.v1',
+      provider: 'test',
+      ok: true,
+      startedUrl: 'https://example.com/',
+      finalUrl: 'https://example.com/#clicked',
+      actions: [
+        {
+          index: 0,
+          type: 'click',
+          ok: true,
+          summary: 'Clicked #continue',
+          selector: '#continue',
+          url: null,
+          textPreview: null,
+          error: null
+        }
+      ],
+      artifacts: [
+        {
+          id: 'interactive_artifact:0:read',
+          actionIndex: 0,
+          kind: 'read',
+          mimeType: 'text/plain',
+          sizeBytes: 16,
+          contentPreview: 'live page result',
+          contentBase64: null
+        }
+      ],
+      error: null
+    }
+  });
+  apiMocks.closeBrowserInteractiveSession.mockResolvedValue({
+    run: {
+      ...makeRun(),
+      id: 'run-live-close',
+      status: 'completed',
+      runtime: 'process',
+      resultSummary: 'Live interactive browser session closed.'
+    },
+    closed: {
+      schema: 'ops.browser-interactive-session-close.v1',
+      provider: 'test',
+      sessionId: 'live-session-1',
+      closed: true,
+      finalUrl: 'https://example.com/#clicked',
+      error: null
+    }
   });
   apiMocks.fetchBacklogBoard.mockResolvedValue({
     columns: {

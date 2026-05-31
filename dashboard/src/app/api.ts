@@ -26,6 +26,10 @@ import type {
   BrowserConnectMethod,
   BrowserConnectSiteKey,
   BrowserConnectVerificationRow,
+  BrowserInteractiveActionInput,
+  BrowserInteractiveRunResult,
+  BrowserInteractiveSessionCloseResult,
+  BrowserInteractiveSessionRecord,
   BrowserMobileSessionHandoffRow,
   BrowserLocalProfileKind,
   BrowserSessionVaultState,
@@ -2200,6 +2204,70 @@ export async function runBrowserTest(
     {
       method: 'POST',
       body: JSON.stringify(payload)
+    },
+    { token }
+  );
+}
+
+export async function startBrowserInteractiveSession(
+  token: string,
+  payload: {
+    agentId?: string;
+    url: string;
+    sessionId?: string;
+    sessionProfileId?: string;
+    cdpEndpoint?: string;
+    previewChars?: number;
+  }
+): Promise<{ run: RunRow; liveSession: BrowserInteractiveSessionRecord; control: BrowserInteractiveRunResult }> {
+  return apiRequest<
+    ApiEnvelope & {
+      run: RunRow;
+      liveSession: BrowserInteractiveSessionRecord;
+      control: BrowserInteractiveRunResult;
+    }
+  >(
+    '/api/browser/interactive/sessions',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    },
+    { token }
+  );
+}
+
+export async function runBrowserInteractiveSessionActions(
+  token: string,
+  liveSessionId: string,
+  payload: {
+    actions: BrowserInteractiveActionInput[];
+    previewChars?: number;
+  }
+): Promise<{ run: RunRow; liveSession: BrowserInteractiveSessionRecord; control: BrowserInteractiveRunResult }> {
+  return apiRequest<
+    ApiEnvelope & {
+      run: RunRow;
+      liveSession: BrowserInteractiveSessionRecord;
+      control: BrowserInteractiveRunResult;
+    }
+  >(
+    `/api/browser/interactive/sessions/${encodeURIComponent(liveSessionId)}/actions`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    },
+    { token }
+  );
+}
+
+export async function closeBrowserInteractiveSession(
+  token: string,
+  liveSessionId: string
+): Promise<{ run: RunRow; closed: BrowserInteractiveSessionCloseResult }> {
+  return apiRequest<ApiEnvelope & { run: RunRow; closed: BrowserInteractiveSessionCloseResult }>(
+    `/api/browser/interactive/sessions/${encodeURIComponent(liveSessionId)}`,
+    {
+      method: 'DELETE'
     },
     { token }
   );

@@ -514,4 +514,56 @@ describe('BrowserPage', () => {
     );
     expect(await screen.findByDisplayValue('http://127.0.0.1:8788/mobile-browser-handoff/mobile_handoff%3Atiktok')).toBeInTheDocument();
   });
+
+  it('starts a live browser session and sends operator actions from the Live tab', async () => {
+    renderDashboardPage(<BrowserPage />, { path: '/browser' });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Live' }));
+    fireEvent.change(await screen.findByLabelText('Live URL'), {
+      target: { value: 'https://example.com/app' }
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Start Live Browser' }));
+
+    await waitFor(() =>
+      expect(apiMocks.startBrowserInteractiveSession).toHaveBeenCalledWith(
+        'token-123',
+        expect.objectContaining({
+          agentId: 'agent-1',
+          url: 'https://example.com/app',
+          previewChars: 1000
+        })
+      )
+    );
+    expect(await screen.findByText('live-session-1')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Live action'), {
+      target: { value: 'click' }
+    });
+    fireEvent.change(screen.getByLabelText('Selector'), {
+      target: { value: '#continue' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Run Live Action' }));
+
+    await waitFor(() =>
+      expect(apiMocks.runBrowserInteractiveSessionActions).toHaveBeenCalledWith(
+        'token-123',
+        'live-session-1',
+        expect.objectContaining({
+          actions: [
+            expect.objectContaining({
+              type: 'click',
+              selector: '#continue',
+              timeoutMs: 500
+            })
+          ],
+          previewChars: 1000
+        })
+      )
+    );
+    expect(await screen.findByText('Clicked #continue')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close Live Browser' }));
+
+    await waitFor(() => expect(apiMocks.closeBrowserInteractiveSession).toHaveBeenCalledWith('token-123', 'live-session-1'));
+  });
 });

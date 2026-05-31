@@ -16,6 +16,7 @@ import { useSearch } from '@tanstack/react-router';
 
 import {
   ApiClientError,
+  closeBrowserInteractiveSession,
   connectBrowserAccount,
   downloadBrowserArtifact,
   deleteBrowserSessionProfile,
@@ -29,8 +30,10 @@ import {
   revokeBrowserProxyProfile,
   revokeBrowserStorageState,
   resetAgentProfileBaseline,
+  runBrowserInteractiveSessionActions,
   runBrowserTest,
   saveBrowserConfig,
+  startBrowserInteractiveSession,
   startBrowserLoginCapture,
   startBrowserMobileHandoff,
   startPlaywrightAuthCapture,
@@ -66,6 +69,10 @@ import type {
   BrowserConnectVerificationRow,
   BrowserCookieSourceKind,
   BrowserExtractionMode,
+  BrowserInteractiveActionInput,
+  BrowserInteractiveActionType,
+  BrowserInteractiveRunResult,
+  BrowserInteractiveSessionRecord,
   BrowserLocalProfileKind,
   BrowserHistoryState,
   BrowserMobileSessionHandoffRow,
@@ -76,7 +83,8 @@ import type {
   BrowserSessionVaultState,
   BrowserTransportMode,
   BrowserTestRequestRow,
-  CardMetric
+  CardMetric,
+  RunRow
 } from '../app/types';
 import { useRouteHeaderMetrics } from '../components/shell/RouteHeaderContext';
 import { clampCount, formatRelativeTime } from '../lib/format';
@@ -95,6 +103,19 @@ const STATUS_TONE_CLASS: Record<BrowserCapabilityStatusRow['healthState'], strin
 
 const EXTRACTION_OPTIONS: BrowserExtractionMode[] = ['markdown', 'html', 'text'];
 const TRANSPORT_OPTIONS: BrowserTransportMode[] = ['stdio', 'http'];
+const LIVE_BROWSER_ACTION_OPTIONS: Array<{ id: BrowserInteractiveActionType; label: string }> = [
+  { id: 'read', label: 'Read page' },
+  { id: 'click', label: 'Click selector' },
+  { id: 'type', label: 'Type text' },
+  { id: 'open', label: 'Open URL' },
+  { id: 'scroll', label: 'Scroll' },
+  { id: 'keypress', label: 'Keypress' },
+  { id: 'screenshot', label: 'Screenshot' },
+  { id: 'pdf', label: 'PDF' },
+  { id: 'download', label: 'Download' },
+  { id: 'upload', label: 'Upload file' },
+  { id: 'wait', label: 'Wait' }
+];
 const CONNECT_METHOD_OPTIONS: Array<{
   id: BrowserConnectMethod;
   label: string;
@@ -131,6 +152,11 @@ const sourceKindForConnectMethod = (
   method: BrowserConnectMethod,
   currentSourceKind: BrowserCookieSourceKind
 ): BrowserCookieSourceKind => (method === 'mobile_session_import' ? 'raw_cookie_header' : currentSourceKind);
+
+function normalizeBrowserInteractiveActionType(value: string): BrowserInteractiveActionType {
+  const match = LIVE_BROWSER_ACTION_OPTIONS.find((option) => option.id === value);
+  return match?.id ?? 'read';
+}
 
 const CONNECT_SITE_OPTIONS: Array<{
   siteKey: BrowserConnectSiteKey;
@@ -234,6 +260,10 @@ type BrowserOpsState = {
   loading: boolean;
   refreshing: boolean;
   testRunning: boolean;
+  liveBusy: 'start' | 'action' | 'close' | null;
+  liveSession: BrowserInteractiveSessionRecord | null;
+  liveControl: BrowserInteractiveRunResult | null;
+  liveRun: RunRow | null;
   configSaving: boolean;
   assignmentBusy: string | null;
   downloadBusy: string | null;
@@ -260,6 +290,24 @@ type BrowserFormState = {
     sessionProfileId: string;
     suspiciousPromptInjection: boolean;
     previewChars: string;
+  };
+  liveForm: {
+    agentId: string;
+    url: string;
+    sessionId: string;
+    sessionProfileId: string;
+    cdpEndpoint: string;
+    previewChars: string;
+    actionType: BrowserInteractiveActionType;
+    actionUrl: string;
+    selector: string;
+    text: string;
+    key: string;
+    filePath: string;
+    filePaths: string;
+    deltaX: string;
+    deltaY: string;
+    timeoutMs: string;
   };
   cookieImportForm: {
     label: string;
@@ -414,6 +462,81 @@ function parseKeyValueLines(value: string): Record<string, string> {
   );
 }
 
+function parseOptionalNumber(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parsePreviewChars(value: string): number | undefined {
+  const parsed = parseOptionalNumber(value);
+  return parsed === undefined ? undefined : Math.max(80, Math.min(8_000, Math.round(parsed)));
+}
+
+function buildLiveBrowserAction(form: BrowserFormState['liveForm']): BrowserInteractiveActionInput {
+  const action: BrowserInteractiveActionInput = {
+    type: form.actionType
+  };
+  const actionUrl = form.actionUrl.trim();
+  const selector = form.selector.trim();
+  const text = form.text;
+  const key = form.key.trim();
+  const filePath = form.filePath.trim();
+  const filePaths = parseLineList(form.filePaths);
+  const deltaX = parseOptionalNumber(form.deltaX);
+  const deltaY = parseOptionalNumber(form.deltaY);
+  const timeoutMs = parseOptionalNumber(form.timeoutMs);
+
+  if (form.actionType === 'open' && !actionUrl && form.url.trim()) {
+    action.url = form.url.trim();
+  } else if (actionUrl) {
+    action.url = actionUrl;
+  }
+  if (selector) {
+    action.selector = selector;
+  }
+  if (text || form.actionType === 'type') {
+    action.text = text;
+  }
+  if (key) {
+    action.key = key;
+  }
+  if (filePaths.length > 0) {
+    action.filePaths = filePaths;
+  } else if (filePath) {
+    action.filePath = filePath;
+  }
+  if (deltaX !== undefined) {
+    action.deltaX = deltaX;
+  }
+  if (deltaY !== undefined) {
+    action.deltaY = deltaY;
+  }
+  if (timeoutMs !== undefined) {
+    action.timeoutMs = timeoutMs;
+  }
+  return action;
+}
+
+function isLiveBrowserActionReady(form: BrowserFormState['liveForm']): boolean {
+  if (form.actionType === 'click' || form.actionType === 'type' || form.actionType === 'upload') {
+    return form.selector.trim().length > 0;
+  }
+  if (form.actionType === 'open') {
+    return form.actionUrl.trim().length > 0 || form.url.trim().length > 0;
+  }
+  if (form.actionType === 'download') {
+    return form.selector.trim().length > 0 || form.actionUrl.trim().length > 0;
+  }
+  if (form.actionType === 'keypress') {
+    return form.key.trim().length > 0 || form.text.trim().length > 0;
+  }
+  return true;
+}
+
 function stringifyJsonObject(value: Record<string, unknown>): string {
   return JSON.stringify(value, null, 2);
 }
@@ -531,6 +654,10 @@ function useBrowserPageModel() {
     loading: true,
     refreshing: false,
     testRunning: false,
+    liveBusy: null,
+    liveSession: null,
+    liveControl: null,
+    liveRun: null,
     configSaving: false,
     assignmentBusy: null,
     downloadBusy: null,
@@ -553,6 +680,10 @@ function useBrowserPageModel() {
     selectedArtifact,
     refreshing,
     testRunning,
+    liveBusy,
+    liveSession,
+    liveControl,
+    liveRun,
     configSaving,
     assignmentBusy,
     downloadBusy,
@@ -590,6 +721,24 @@ function useBrowserPageModel() {
         sessionProfileId: '',
         suspiciousPromptInjection: false,
         previewChars: '360'
+      },
+      liveForm: {
+        agentId: '',
+        url: 'https://example.com/',
+        sessionId: '',
+        sessionProfileId: '',
+        cdpEndpoint: '',
+        previewChars: '1000',
+        actionType: 'read',
+        actionUrl: '',
+        selector: '',
+        text: '',
+        key: 'Enter',
+        filePath: '',
+        filePaths: '',
+        deltaX: '',
+        deltaY: '600',
+        timeoutMs: '500'
       },
       cookieImportForm: {
         label: 'TikTok session',
@@ -663,6 +812,7 @@ function useBrowserPageModel() {
   });
   const {
     form,
+    liveForm,
     cookieImportForm,
     connectForm,
     connectBusy,
@@ -712,6 +862,16 @@ function useBrowserPageModel() {
   const setLoading = useCallback((value: boolean) => setOpsField('loading', value), [setOpsField]);
   const setRefreshing = useCallback((value: boolean) => setOpsField('refreshing', value), [setOpsField]);
   const setTestRunning = useCallback((value: boolean) => setOpsField('testRunning', value), [setOpsField]);
+  const setLiveBusy = useCallback((value: BrowserOpsState['liveBusy']) => setOpsField('liveBusy', value), [setOpsField]);
+  const setLiveSession = useCallback(
+    (value: BrowserInteractiveSessionRecord | null) => setOpsField('liveSession', value),
+    [setOpsField]
+  );
+  const setLiveControl = useCallback(
+    (value: BrowserInteractiveRunResult | null) => setOpsField('liveControl', value),
+    [setOpsField]
+  );
+  const setLiveRun = useCallback((value: RunRow | null) => setOpsField('liveRun', value), [setOpsField]);
   const setConfigSaving = useCallback((value: boolean) => setOpsField('configSaving', value), [setOpsField]);
   const setAssignmentBusy = useCallback((value: string | null) => setOpsField('assignmentBusy', value), [setOpsField]);
   const setDownloadBusy = useCallback((value: string | null) => setOpsField('downloadBusy', value), [setOpsField]);
@@ -726,6 +886,11 @@ function useBrowserPageModel() {
   );
   const setForm = useCallback(
     (value: BrowserFormState['form'] | ((current: BrowserFormState['form']) => BrowserFormState['form'])) => setFormField('form', value),
+    [setFormField]
+  );
+  const setLiveForm = useCallback(
+    (value: BrowserFormState['liveForm'] | ((current: BrowserFormState['liveForm']) => BrowserFormState['liveForm'])) =>
+      setFormField('liveForm', value),
     [setFormField]
   );
   const setCookieImportForm = useCallback(
@@ -1302,7 +1467,11 @@ function useBrowserPageModel() {
         vault: null,
         history: null,
         selectedRun: null,
-        selectedArtifact: null
+        selectedArtifact: null,
+        liveSession: null,
+        liveControl: null,
+        liveRun: null,
+        liveBusy: null
       }));
       return;
     }
@@ -1588,6 +1757,15 @@ function useBrowserPageModel() {
     }
   }, [enabledAgents, entitledAgents, form.agentId]);
 
+  useEffect(() => {
+    if (!liveForm.agentId) {
+      const preferred = entitledAgents[0]?.id ?? enabledAgents[0]?.id ?? '';
+      if (preferred) {
+        setLiveForm((current) => ({ ...current, agentId: preferred }));
+      }
+    }
+  }, [enabledAgents, entitledAgents, liveForm.agentId]);
+
   const allowedAgentOverride = Boolean(status && status.allowedAgents.length > 0);
   const draftAllowedAgentOverride = Boolean(configDraft && configDraft.allowedAgents.length > 0);
   const configDirty = useMemo(() => {
@@ -1757,6 +1935,102 @@ function useBrowserPageModel() {
       setTestRunning(false);
     }
   }, [form, loadArtifact, refresh, token]);
+
+  const handleStartLiveBrowserSession = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before starting live browser control.');
+      return;
+    }
+    if (!liveForm.url.trim()) {
+      setError('Live browser needs a URL.');
+      return;
+    }
+    setLiveBusy('start');
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await startBrowserInteractiveSession(token, {
+        agentId: liveForm.agentId || undefined,
+        url: liveForm.url.trim(),
+        sessionId: liveForm.sessionId || undefined,
+        sessionProfileId: liveForm.sessionProfileId || undefined,
+        cdpEndpoint: liveForm.cdpEndpoint.trim() || undefined,
+        previewChars: parsePreviewChars(liveForm.previewChars)
+      });
+      setLiveSession(result.liveSession);
+      setLiveControl(result.control);
+      setLiveRun(result.run);
+      setNotice(`Live browser started at ${result.liveSession.currentUrl ?? result.liveSession.startedUrl}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to start live browser control.');
+    } finally {
+      setLiveBusy(null);
+    }
+  }, [liveForm, token]);
+
+  const handleRunLiveBrowserAction = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before controlling the live browser.');
+      return;
+    }
+    if (!liveSession) {
+      setError('Start a live browser session before sending actions.');
+      return;
+    }
+    if (!isLiveBrowserActionReady(liveForm)) {
+      setError('Fill the required fields for this live browser action.');
+      return;
+    }
+    setLiveBusy('action');
+    setError(null);
+    setNotice(null);
+    try {
+      const action = buildLiveBrowserAction(liveForm);
+      const result = await runBrowserInteractiveSessionActions(token, liveSession.sessionId, {
+        actions: [action],
+        previewChars: parsePreviewChars(liveForm.previewChars)
+      });
+      setLiveSession(result.liveSession);
+      setLiveControl(result.control);
+      setLiveRun(result.run);
+      setNotice(
+        result.control.ok
+          ? `Live browser action completed: ${action.type}.`
+          : `Live browser action failed: ${result.control.error ?? action.type}.`
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to run live browser action.');
+    } finally {
+      setLiveBusy(null);
+    }
+  }, [liveForm, liveSession, token]);
+
+  const handleCloseLiveBrowserSession = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before closing live browser control.');
+      return;
+    }
+    if (!liveSession) {
+      return;
+    }
+    setLiveBusy('close');
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await closeBrowserInteractiveSession(token, liveSession.sessionId);
+      setLiveRun(result.run);
+      setLiveSession(null);
+      setNotice(
+        result.closed.closed
+          ? `Closed live browser at ${result.closed.finalUrl ?? liveSession.currentUrl ?? liveSession.startedUrl}.`
+          : `Live browser close failed: ${result.closed.error ?? 'unknown error'}.`
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to close live browser control.');
+    } finally {
+      setLiveBusy(null);
+    }
+  }, [liveSession, token]);
 
   const handleImportCookieJar = useCallback(async () => {
     if (!token) {
@@ -2128,7 +2402,7 @@ function useBrowserPageModel() {
     }
   }, [selectedArtifactHandle, token]);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'agents' | 'sessions' | 'captures'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'agents' | 'sessions' | 'captures' | 'live'>('overview');
 
   const isLoading = (browserStatusResult.isPending || browserDoctorResult.isPending || browserVaultResult.isPending || browserHistoryResult.isPending) && !status;
 
@@ -2150,6 +2424,10 @@ function useBrowserPageModel() {
       loading: isLoading,
       refreshing,
       testRunning,
+      liveBusy,
+      liveSession,
+      liveControl,
+      liveRun,
       configSaving,
       assignmentBusy,
       downloadBusy,
@@ -2162,6 +2440,7 @@ function useBrowserPageModel() {
     },
     formState: {
       form,
+      liveForm,
       cookieImportForm,
       connectForm,
       connectBusy,
@@ -2191,6 +2470,7 @@ function useBrowserPageModel() {
       setActiveTab,
       setShowAdvanced,
       updateTestForm,
+      setLiveForm,
       applyConnectSite,
       setCookieImportForm,
       setConnectForm,
@@ -2213,6 +2493,9 @@ function useBrowserPageModel() {
       handleToggleAllowlistedAgent,
       handleSaveConfig,
       handleTestRun,
+      handleStartLiveBrowserSession,
+      handleRunLiveBrowserAction,
+      handleCloseLiveBrowserSession,
       handleImportCookieJar,
       handleSaveHeaderProfile,
       handleSaveProxyProfile,
@@ -2253,6 +2536,10 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
     loading,
     refreshing,
     testRunning,
+    liveBusy,
+    liveSession,
+    liveControl,
+    liveRun,
     configSaving,
     assignmentBusy,
     vaultBusy,
@@ -2262,6 +2549,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
   } = opsState;
   const {
     form,
+    liveForm,
     connectForm,
     connectBusy,
     loginCaptureBusy,
@@ -2279,6 +2567,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
   const {
     setActiveTab,
     updateTestForm,
+    setLiveForm,
     applyConnectSite,
     setConnectForm,
     setDraftValue,
@@ -2293,6 +2582,9 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
     handleSessionProfileAction,
     handleSaveConfig,
     handleTestRun,
+    handleStartLiveBrowserSession,
+    handleRunLiveBrowserAction,
+    handleCloseLiveBrowserSession,
     handleRevokeCookieJar,
     handleToggleCapability,
     handleDownloadArtifact,
@@ -2314,7 +2606,8 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
     { id: 'overview', label: 'Overview' },
     { id: 'agents', label: 'Agents' },
     { id: 'sessions', label: 'Sessions' },
-    { id: 'captures', label: 'Captures' }
+    { id: 'captures', label: 'Captures' },
+    { id: 'live', label: 'Live' }
   ];
 
   return (
@@ -3166,6 +3459,331 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                     </div>
                   ) : (
                     <p className="text-xs text-[var(--shell-muted)]">Select a trace to view artifacts.</p>
+                  )}
+                </section>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'live' && (
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+              <div className="space-y-6">
+                <section className={`${PANEL_CLASS} p-6`}>
+                  <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-medium text-white">Live Browser</h2>
+                      <p className="mt-1 text-xs leading-5 text-[var(--shell-muted)]">
+                        Persistent CDP session for click, type, read, screenshot, PDF, upload, download, scroll, and keypress actions.
+                      </p>
+                    </div>
+                    <span className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wider ${liveSession ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100' : 'border-white/10 bg-white/[0.04] text-white/55'}`}>
+                      {liveSession ? 'connected' : 'idle'}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block space-y-1.5 sm:col-span-2">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Live URL</span>
+                      <input
+                        value={liveForm.url}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, url: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="https://..."
+                      />
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Agent</span>
+                      <select
+                        value={liveForm.agentId}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, agentId: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none"
+                      >
+                        {enabledAgents.map((agent) => (
+                          <option key={agent.id} value={agent.id}>
+                            {agent.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Profile</span>
+                      <select
+                        value={liveForm.sessionProfileId}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, sessionProfileId: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none"
+                      >
+                        <option value="">Auto / none</option>
+                        {(vault?.sessionProfiles ?? []).map((profile) => (
+                          <option key={profile.id} value={profile.id}>
+                            {profile.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Source session</span>
+                      <select
+                        value={liveForm.sessionId}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, sessionId: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none"
+                      >
+                        <option value="">None</option>
+                        {connectableSessions.map((session) => (
+                          <option key={session.id} value={session.id}>
+                            {session.sessionKey}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Preview chars</span>
+                      <input
+                        value={liveForm.previewChars}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, previewChars: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        inputMode="numeric"
+                      />
+                    </label>
+
+                    <label className="block space-y-1.5 sm:col-span-2">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">CDP endpoint</span>
+                      <input
+                        value={liveForm.cdpEndpoint}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, cdpEndpoint: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="Optional admin-only http://127.0.0.1:9222"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-3 border-t border-white/5 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => void handleStartLiveBrowserSession()}
+                      disabled={liveBusy !== null || !liveForm.url.trim()}
+                      className="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-white/90 disabled:opacity-50"
+                    >
+                      {liveBusy === 'start' ? 'Starting...' : 'Start Live Browser'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCloseLiveBrowserSession()}
+                      disabled={liveBusy !== null || !liveSession}
+                      className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-white/70 hover:border-white/25 hover:text-white disabled:opacity-50"
+                    >
+                      {liveBusy === 'close' ? 'Closing...' : 'Close Live Browser'}
+                    </button>
+                  </div>
+                </section>
+
+                <section className={`${PANEL_CLASS} p-6`}>
+                  <h2 className="text-lg font-medium text-white mb-6">Action Console</h2>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Live action</span>
+                      <select
+                        value={liveForm.actionType}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({
+                            ...current,
+                            actionType: normalizeBrowserInteractiveActionType(value)
+                          }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none"
+                      >
+                        {LIVE_BROWSER_ACTION_OPTIONS.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Timeout ms</span>
+                      <input
+                        value={liveForm.timeoutMs}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, timeoutMs: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        inputMode="numeric"
+                      />
+                    </label>
+                    <label className="block space-y-1.5 sm:col-span-2">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Selector</span>
+                      <input
+                        value={liveForm.selector}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, selector: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="#search, input[name=q], button:has-text('Continue')"
+                      />
+                    </label>
+                    <label className="block space-y-1.5 sm:col-span-2">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Text</span>
+                      <textarea
+                        value={liveForm.text}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, text: value }));
+                        }}
+                        rows={3}
+                        className="w-full resize-y bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="Text for type or keypress actions"
+                      />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Action URL</span>
+                      <input
+                        value={liveForm.actionUrl}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, actionUrl: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="For open or direct download"
+                      />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Key</span>
+                      <input
+                        value={liveForm.key}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, key: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="Enter, Escape, Tab"
+                      />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">File path</span>
+                      <input
+                        value={liveForm.filePath}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, filePath: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="/tmp/upload.png"
+                      />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Scroll Y</span>
+                      <input
+                        value={liveForm.deltaY}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, deltaY: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        inputMode="numeric"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-3 border-t border-white/5 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => void handleRunLiveBrowserAction()}
+                      disabled={liveBusy !== null || !liveSession || !isLiveBrowserActionReady(liveForm)}
+                      className="rounded-lg bg-[var(--shell-accent)] px-4 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50"
+                    >
+                      {liveBusy === 'action' ? 'Running...' : 'Run Live Action'}
+                    </button>
+                  </div>
+                </section>
+              </div>
+
+              <div className="space-y-6">
+                <section className={`${PANEL_CLASS} p-6`}>
+                  <h2 className="text-lg font-medium text-white mb-6">Live State</h2>
+                  {liveSession ? (
+                    <div className="space-y-3">
+                      <InfoRow label="Session" value={liveSession.sessionId} />
+                      <InfoRow label="Provider" value={liveSession.provider} />
+                      <InfoRow label="Current URL" value={liveSession.currentUrl ?? liveSession.startedUrl} />
+                    </div>
+                  ) : (
+                    <p className="text-xs leading-5 text-[var(--shell-muted)]">No live browser session is active.</p>
+                  )}
+                  {liveRun ? (
+                    <div className="mt-4 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-xs leading-5 text-[var(--shell-muted)]">
+                      Last run: <span className="text-white">{liveRun.status}</span>
+                    </div>
+                  ) : null}
+                </section>
+
+                <section className={`${PANEL_CLASS} p-6`}>
+                  <h2 className="text-lg font-medium text-white mb-6">Last Result</h2>
+                  {liveControl ? (
+                    <div className="space-y-4">
+                      <div className={`rounded-xl border p-3 text-xs leading-5 ${liveControl.ok ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : 'border-rose-300/20 bg-rose-300/10 text-rose-100'}`}>
+                        {liveControl.ok ? 'Action batch completed.' : liveControl.error ?? 'Action batch failed.'}
+                      </div>
+                      <div className="space-y-2">
+                        {liveControl.actions.map((action) => (
+                          <div key={`${action.index}-${action.type}`} className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-medium text-white">{action.type}</p>
+                              <span className={action.ok ? 'text-xs text-emerald-200' : 'text-xs text-rose-200'}>
+                                {action.ok ? 'ok' : 'failed'}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-xs leading-5 text-[var(--shell-muted)]">{action.summary}</p>
+                            {action.textPreview ? (
+                              <pre className="mt-2 max-h-36 overflow-auto rounded-lg bg-black/30 p-2 text-[0.7rem] text-white">
+                                {action.textPreview}
+                              </pre>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                      {liveControl.artifacts.length > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Artifacts</p>
+                          {liveControl.artifacts.map((artifact) => (
+                            <div key={artifact.id} className="rounded-xl border border-white/5 bg-black/20 p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-semibold text-white">{artifact.kind}</p>
+                                <p className="text-[0.65rem] text-[var(--shell-muted)]">{artifact.mimeType}</p>
+                              </div>
+                              <pre className="mt-2 max-h-40 overflow-auto text-[0.7rem] leading-5 text-white/80">
+                                {artifact.contentPreview}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-xs leading-5 text-[var(--shell-muted)]">Run a live action to see CDP results here.</p>
                   )}
                 </section>
               </div>

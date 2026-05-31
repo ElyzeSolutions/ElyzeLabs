@@ -1057,6 +1057,84 @@ export interface BrowserTestRequestRow {
   previewChars?: number;
 }
 
+export type BrowserInteractiveActionType =
+  | 'open'
+  | 'read'
+  | 'click'
+  | 'type'
+  | 'upload'
+  | 'download'
+  | 'scroll'
+  | 'keypress'
+  | 'wait'
+  | 'screenshot'
+  | 'pdf';
+
+export interface BrowserInteractiveActionInput {
+  type: BrowserInteractiveActionType;
+  url?: string;
+  selector?: string;
+  text?: string;
+  filePath?: string;
+  filePaths?: string[];
+  key?: string;
+  deltaX?: number;
+  deltaY?: number;
+  timeoutMs?: number;
+}
+
+export interface BrowserInteractiveActionResult {
+  index: number;
+  type: BrowserInteractiveActionType;
+  ok: boolean;
+  summary: string;
+  selector: string | null;
+  url: string | null;
+  textPreview: string | null;
+  error: string | null;
+}
+
+export interface BrowserInteractiveArtifactRow {
+  id: string;
+  actionIndex: number;
+  kind: 'read' | 'screenshot' | 'pdf' | 'download';
+  mimeType: string;
+  sizeBytes: number;
+  contentPreview: string;
+  contentBase64: string | null;
+}
+
+export interface BrowserInteractiveRunResult {
+  schema: 'ops.browser-interactive-run.v1';
+  provider: 'cdp_chrome' | 'test';
+  ok: boolean;
+  startedUrl: string;
+  finalUrl: string | null;
+  actions: BrowserInteractiveActionResult[];
+  artifacts: BrowserInteractiveArtifactRow[];
+  error: string | null;
+}
+
+export interface BrowserInteractiveSessionRecord {
+  schema: 'ops.browser-interactive-session.v1';
+  provider: 'cdp_chrome' | 'test';
+  sessionId: string;
+  startedUrl: string;
+  currentUrl: string | null;
+  startedAt: string;
+  lastActivityAt: string;
+  expiresAt: string | null;
+}
+
+export interface BrowserInteractiveSessionCloseResult {
+  schema: 'ops.browser-interactive-session-close.v1';
+  provider: 'cdp_chrome' | 'test';
+  sessionId: string;
+  closed: boolean;
+  finalUrl: string | null;
+  error: string | null;
+}
+
 export type BrowserConnectSiteKey = 'tiktok' | 'instagram' | 'reddit' | 'x' | 'pinterest' | 'facebook' | 'generic';
 export type BrowserConnectMethod =
   | 'real_chrome'
