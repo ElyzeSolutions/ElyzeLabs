@@ -370,6 +370,15 @@ describe('gateway browser api integration', () => {
             sizeBytes: 4,
             contentPreview: '[png screenshot]',
             contentBase64: Buffer.from('png', 'utf8').toString('base64')
+          },
+          {
+            id: 'interactive_artifact:4:download',
+            actionIndex: 4,
+            kind: 'download',
+            mimeType: 'text/plain',
+            sizeBytes: 14,
+            contentPreview: 'export payload',
+            contentBase64: Buffer.from('export payload', 'utf8').toString('base64')
           }
         ],
         error: null
@@ -445,6 +454,15 @@ describe('gateway browser api integration', () => {
               sizeBytes: 16,
               contentPreview: 'live page result',
               contentBase64: Buffer.from('live page result', 'utf8').toString('base64')
+            },
+            {
+              id: 'interactive_artifact:3:download',
+              actionIndex: 3,
+              kind: 'download',
+              mimeType: 'text/plain',
+              sizeBytes: 19,
+              contentPreview: 'live export payload',
+              contentBase64: Buffer.from('live export payload', 'utf8').toString('base64')
             }
           ],
           error: null
@@ -546,6 +564,7 @@ describe('gateway browser api integration', () => {
           { type: 'click', selector: '#continue' },
           { type: 'type', selector: '#search', text: 'instagram reels' },
           { type: 'upload', selector: '#avatar', filePath: '/tmp/ops-avatar.png' },
+          { type: 'download', selector: '#export', timeoutMs: 750 },
           { type: 'scroll', selector: '#feed', deltaY: 640 },
           { type: 'keypress', key: 'Enter' },
           { type: 'screenshot' },
@@ -571,12 +590,17 @@ describe('gateway browser api integration', () => {
       'click',
       'type',
       'upload',
+      'download',
       'scroll',
       'keypress',
       'screenshot',
       'pdf'
     ]);
-    expect(interactiveBody.control.artifacts.map((artifact) => artifact.kind)).toEqual(['read', 'screenshot']);
+    expect(interactiveBody.control.artifacts.map((artifact) => artifact.kind)).toEqual([
+      'read',
+      'screenshot',
+      'download'
+    ]);
     expect(provider.run).toHaveBeenCalledWith(
       expect.objectContaining({
         url: 'https://example.com/app',
@@ -591,6 +615,11 @@ describe('gateway browser api integration', () => {
             type: 'upload',
             selector: '#avatar',
             filePath: '/tmp/ops-avatar.png'
+          }),
+          expect.objectContaining({
+            type: 'download',
+            selector: '#export',
+            timeoutMs: 750
           }),
           expect.objectContaining({
             type: 'scroll',
@@ -643,6 +672,7 @@ describe('gateway browser api integration', () => {
           { type: 'click', selector: '#continue' },
           { type: 'type', selector: '#search', text: 'live instagram reels' },
           { type: 'upload', selector: '#avatar', filePaths: ['/tmp/live-avatar.png'] },
+          { type: 'download', selector: '#export', timeoutMs: 750 },
           { type: 'scroll', selector: '#feed', deltaY: 720 },
           { type: 'keypress', key: 'Escape' },
           { type: 'read' }
@@ -662,11 +692,12 @@ describe('gateway browser api integration', () => {
       'click',
       'type',
       'upload',
+      'download',
       'scroll',
       'keypress',
       'read'
     ]);
-    expect(liveActionBody.control.artifacts.map((artifact) => artifact.kind)).toEqual(['read']);
+    expect(liveActionBody.control.artifacts.map((artifact) => artifact.kind)).toEqual(['read', 'download']);
     expect(provider.runSessionActions).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: liveSessionId,
@@ -680,6 +711,11 @@ describe('gateway browser api integration', () => {
             type: 'upload',
             selector: '#avatar',
             filePaths: ['/tmp/live-avatar.png']
+          }),
+          expect.objectContaining({
+            type: 'download',
+            selector: '#export',
+            timeoutMs: 750
           }),
           expect.objectContaining({
             type: 'scroll',

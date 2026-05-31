@@ -1,7 +1,7 @@
 {
   "schema": "ops.route-inventory.v1",
   "sourceFile": "packages/gateway/src/server.ts",
-  "sourceHash": "63f79d6f4331aba760798ef089003151f78c724e743e7588ebb71b488baafe9c",
+  "sourceHash": "4bee15cebfb10fa77091282cf99dec0527e7c16e1859df25b452a73605b028d7",
   "docsFile": "docs/api-contract.md",
   "totalRoutes": 295,
   "methods": {
@@ -1696,7 +1696,7 @@
       "area": "browser",
       "public": false,
       "documented": true,
-      "line": 53493,
+      "line": 53494,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1705,7 +1705,7 @@
       "area": "browser",
       "public": false,
       "documented": true,
-      "line": 53654,
+      "line": 53655,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1714,7 +1714,7 @@
       "area": "browser",
       "public": false,
       "documented": true,
-      "line": 53728,
+      "line": 53729,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1723,7 +1723,7 @@
       "area": "browser",
       "public": false,
       "documented": true,
-      "line": 53789,
+      "line": 53790,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1732,7 +1732,7 @@
       "area": "browser",
       "public": false,
       "documented": true,
-      "line": 53947,
+      "line": 53948,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1741,7 +1741,7 @@
       "area": "browser",
       "public": false,
       "documented": true,
-      "line": 54083,
+      "line": 54084,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1750,7 +1750,7 @@
       "area": "browser",
       "public": false,
       "documented": true,
-      "line": 54103,
+      "line": 54104,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1759,7 +1759,7 @@
       "area": "browser",
       "public": false,
       "documented": true,
-      "line": 54115,
+      "line": 54116,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1768,7 +1768,7 @@
       "area": "bootstrap",
       "public": false,
       "documented": true,
-      "line": 54134,
+      "line": 54135,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1777,7 +1777,7 @@
       "area": "tools",
       "public": false,
       "documented": true,
-      "line": 54199,
+      "line": 54200,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1786,7 +1786,7 @@
       "area": "llm",
       "public": false,
       "documented": true,
-      "line": 54231,
+      "line": 54232,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1795,7 +1795,7 @@
       "area": "llm",
       "public": false,
       "documented": true,
-      "line": 54279,
+      "line": 54280,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1804,7 +1804,7 @@
       "area": "llm",
       "public": false,
       "documented": true,
-      "line": 54330,
+      "line": 54331,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1813,7 +1813,7 @@
       "area": "llm",
       "public": false,
       "documented": true,
-      "line": 54336,
+      "line": 54337,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1822,7 +1822,7 @@
       "area": "llm",
       "public": false,
       "documented": true,
-      "line": 54424,
+      "line": 54425,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1831,7 +1831,7 @@
       "area": "llm",
       "public": false,
       "documented": true,
-      "line": 54565,
+      "line": 54566,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1840,7 +1840,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 54608,
+      "line": 54609,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1849,7 +1849,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 54614,
+      "line": 54615,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1858,7 +1858,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 54620,
+      "line": 54621,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1867,7 +1867,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 54626,
+      "line": 54627,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1876,7 +1876,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 54655,
+      "line": 54656,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1885,7 +1885,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 54683,
+      "line": 54684,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1894,7 +1894,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 54701,
+      "line": 54702,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1903,7 +1903,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 54779,
+      "line": 54780,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1912,7 +1912,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 54847,
+      "line": 54848,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1921,7 +1921,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 54934,
+      "line": 54935,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1930,7 +1930,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 55068,
+      "line": 55069,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1939,7 +1939,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 55133,
+      "line": 55134,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1948,7 +1948,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 55187,
+      "line": 55188,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1957,7 +1957,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 55265,
+      "line": 55266,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1966,7 +1966,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 55282,
+      "line": 55283,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1975,7 +1975,7 @@
       "area": "skills",
       "public": false,
       "documented": true,
-      "line": 55324,
+      "line": 55325,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1984,7 +1984,7 @@
       "area": "pairings",
       "public": false,
       "documented": true,
-      "line": 55388,
+      "line": 55389,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -1993,7 +1993,7 @@
       "area": "pairings",
       "public": false,
       "documented": true,
-      "line": 55396,
+      "line": 55397,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2002,7 +2002,7 @@
       "area": "pairings",
       "public": false,
       "documented": true,
-      "line": 55409,
+      "line": 55410,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2011,7 +2011,7 @@
       "area": "ingress",
       "public": true,
       "documented": true,
-      "line": 55422,
+      "line": 55423,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2020,7 +2020,7 @@
       "area": "telegram",
       "public": true,
       "documented": true,
-      "line": 58595,
+      "line": 58596,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2029,7 +2029,7 @@
       "area": "telegram",
       "public": false,
       "documented": true,
-      "line": 58615,
+      "line": 58616,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2038,7 +2038,7 @@
       "area": "telegram",
       "public": false,
       "documented": true,
-      "line": 58664,
+      "line": 58665,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2047,7 +2047,7 @@
       "area": "events",
       "public": false,
       "documented": true,
-      "line": 58698,
+      "line": 58699,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2056,7 +2056,7 @@
       "area": "events",
       "public": false,
       "documented": true,
-      "line": 58708,
+      "line": 58709,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2065,7 +2065,7 @@
       "area": "office",
       "public": false,
       "documented": true,
-      "line": 58762,
+      "line": 58763,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2074,7 +2074,7 @@
       "area": "office",
       "public": false,
       "documented": true,
-      "line": 58778,
+      "line": 58779,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2083,7 +2083,7 @@
       "area": "bff",
       "public": false,
       "documented": true,
-      "line": 58827,
+      "line": 58828,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2092,7 +2092,7 @@
       "area": "bff",
       "public": false,
       "documented": true,
-      "line": 58959,
+      "line": 58960,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2101,7 +2101,7 @@
       "area": "bff",
       "public": false,
       "documented": true,
-      "line": 59014,
+      "line": 59015,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2110,7 +2110,7 @@
       "area": "bff",
       "public": false,
       "documented": true,
-      "line": 59035,
+      "line": 59036,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2119,7 +2119,7 @@
       "area": "audit",
       "public": false,
       "documented": true,
-      "line": 59048,
+      "line": 59049,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2128,7 +2128,7 @@
       "area": "metrics",
       "public": false,
       "documented": true,
-      "line": 59054,
+      "line": 59055,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2137,7 +2137,7 @@
       "area": "security",
       "public": false,
       "documented": true,
-      "line": 59062,
+      "line": 59063,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2146,7 +2146,7 @@
       "area": "security",
       "public": false,
       "documented": true,
-      "line": 59156,
+      "line": 59157,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2155,7 +2155,7 @@
       "area": "remediation",
       "public": false,
       "documented": true,
-      "line": 59170,
+      "line": 59171,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2164,7 +2164,7 @@
       "area": "remediation",
       "public": false,
       "documented": true,
-      "line": 59181,
+      "line": 59182,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2173,7 +2173,7 @@
       "area": "remediation",
       "public": false,
       "documented": true,
-      "line": 59194,
+      "line": 59195,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2182,7 +2182,7 @@
       "area": "remediation",
       "public": false,
       "documented": true,
-      "line": 59200,
+      "line": 59201,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2191,7 +2191,7 @@
       "area": "remediation",
       "public": false,
       "documented": true,
-      "line": 59273,
+      "line": 59274,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2200,7 +2200,7 @@
       "area": "remediation",
       "public": false,
       "documented": true,
-      "line": 59279,
+      "line": 59280,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2209,7 +2209,7 @@
       "area": "remediation",
       "public": false,
       "documented": true,
-      "line": 59290,
+      "line": 59291,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2218,7 +2218,7 @@
       "area": "remediation",
       "public": false,
       "documented": true,
-      "line": 59355,
+      "line": 59356,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2227,7 +2227,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59504,
+      "line": 59505,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2236,7 +2236,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59525,
+      "line": 59526,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2245,7 +2245,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59555,
+      "line": 59556,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2254,7 +2254,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59594,
+      "line": 59595,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2263,7 +2263,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59647,
+      "line": 59648,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2272,7 +2272,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59684,
+      "line": 59685,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2281,7 +2281,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59715,
+      "line": 59716,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2290,7 +2290,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59749,
+      "line": 59750,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2299,7 +2299,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59778,
+      "line": 59779,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2308,7 +2308,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59802,
+      "line": 59803,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2317,7 +2317,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59834,
+      "line": 59835,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2326,7 +2326,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59857,
+      "line": 59858,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2335,7 +2335,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59886,
+      "line": 59887,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2344,7 +2344,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59913,
+      "line": 59914,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2353,7 +2353,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59943,
+      "line": 59944,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2362,7 +2362,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59968,
+      "line": 59969,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2371,7 +2371,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 59986,
+      "line": 59987,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2380,7 +2380,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60006,
+      "line": 60007,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2389,7 +2389,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60032,
+      "line": 60033,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2398,7 +2398,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60062,
+      "line": 60063,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2407,7 +2407,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60068,
+      "line": 60069,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2416,7 +2416,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60074,
+      "line": 60075,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2425,7 +2425,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60111,
+      "line": 60112,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2434,7 +2434,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60145,
+      "line": 60146,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2443,7 +2443,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60160,
+      "line": 60161,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2452,7 +2452,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60200,
+      "line": 60201,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2461,7 +2461,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60290,
+      "line": 60291,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2470,7 +2470,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60296,
+      "line": 60297,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2479,7 +2479,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60349,
+      "line": 60350,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2488,7 +2488,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60361,
+      "line": 60362,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2497,7 +2497,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60390,
+      "line": 60391,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2506,7 +2506,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60402,
+      "line": 60403,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2515,7 +2515,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60424,
+      "line": 60425,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2524,7 +2524,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60486,
+      "line": 60487,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2533,7 +2533,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60534,
+      "line": 60535,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2542,7 +2542,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60578,
+      "line": 60579,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2551,7 +2551,7 @@
       "area": "frontier",
       "public": false,
       "documented": true,
-      "line": 60635,
+      "line": 60636,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2560,7 +2560,7 @@
       "area": "certification",
       "public": false,
       "documented": true,
-      "line": 60654,
+      "line": 60655,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2569,7 +2569,7 @@
       "area": "certification",
       "public": false,
       "documented": true,
-      "line": 60663,
+      "line": 60664,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2578,7 +2578,7 @@
       "area": "certification",
       "public": false,
       "documented": true,
-      "line": 60689,
+      "line": 60690,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2587,7 +2587,7 @@
       "area": "certification",
       "public": false,
       "documented": true,
-      "line": 60698,
+      "line": 60699,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2596,7 +2596,7 @@
       "area": "certification",
       "public": false,
       "documented": true,
-      "line": 60720,
+      "line": 60721,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2605,7 +2605,7 @@
       "area": "certification",
       "public": false,
       "documented": true,
-      "line": 60729,
+      "line": 60730,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2614,7 +2614,7 @@
       "area": "vault",
       "public": false,
       "documented": true,
-      "line": 60776,
+      "line": 60777,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2623,7 +2623,7 @@
       "area": "vault",
       "public": false,
       "documented": true,
-      "line": 60782,
+      "line": 60783,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2632,7 +2632,7 @@
       "area": "vault",
       "public": false,
       "documented": true,
-      "line": 60826,
+      "line": 60827,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2641,7 +2641,7 @@
       "area": "vault",
       "public": false,
       "documented": true,
-      "line": 60860,
+      "line": 60861,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2650,7 +2650,7 @@
       "area": "vault",
       "public": false,
       "documented": true,
-      "line": 60920,
+      "line": 60921,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2659,7 +2659,7 @@
       "area": "vault",
       "public": false,
       "documented": true,
-      "line": 60944,
+      "line": 60945,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2668,7 +2668,7 @@
       "area": "vault",
       "public": false,
       "documented": true,
-      "line": 60952,
+      "line": 60953,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2677,7 +2677,7 @@
       "area": "vault",
       "public": false,
       "documented": true,
-      "line": 61011,
+      "line": 61012,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2686,7 +2686,7 @@
       "area": "vault",
       "public": false,
       "documented": true,
-      "line": 61051,
+      "line": 61052,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2695,7 +2695,7 @@
       "area": "vault",
       "public": false,
       "documented": true,
-      "line": 61117,
+      "line": 61118,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2704,7 +2704,7 @@
       "area": "backup",
       "public": false,
       "documented": true,
-      "line": 61161,
+      "line": 61162,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2713,7 +2713,7 @@
       "area": "root",
       "public": true,
       "documented": true,
-      "line": 61202,
+      "line": 61203,
       "sourceFile": "packages/gateway/src/server.ts"
     },
     {
@@ -2722,7 +2722,7 @@
       "area": "*",
       "public": true,
       "documented": true,
-      "line": 61208,
+      "line": 61209,
       "sourceFile": "packages/gateway/src/server.ts"
     }
   ]

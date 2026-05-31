@@ -12,6 +12,7 @@ export type BrowserInteractiveActionType =
   | 'click'
   | 'type'
   | 'upload'
+  | 'download'
   | 'scroll'
   | 'keypress'
   | 'wait'
@@ -75,7 +76,7 @@ export interface BrowserInteractiveActionResult {
 export interface BrowserInteractiveArtifact {
   id: string;
   actionIndex: number;
-  kind: 'read' | 'screenshot' | 'pdf';
+  kind: 'read' | 'screenshot' | 'pdf' | 'download';
   mimeType: string;
   sizeBytes: number;
   contentPreview: string;
@@ -179,6 +180,7 @@ class CdpChromeInteractiveProvider implements BrowserInteractiveProvider {
     try {
       const actionRun = await executeCdpActionPlan({
         client: connection.client,
+        downloadDir: connection.downloadDir,
         actions: normalizeActionPlan(input),
         previewChars: input.previewChars,
         storageState: input.storageState ?? null
@@ -209,6 +211,7 @@ class CdpChromeInteractiveProvider implements BrowserInteractiveProvider {
     const startedAt = new Date().toISOString();
     const actionRun = await executeCdpActionPlan({
       client: connection.client,
+      downloadDir: connection.downloadDir,
       actions: [{ type: 'open', url: input.url }],
       previewChars: input.previewChars,
       storageState: input.storageState ?? null
@@ -257,6 +260,7 @@ class CdpChromeInteractiveProvider implements BrowserInteractiveProvider {
     }
     const actionRun = await executeCdpActionPlan({
       client: liveSession.connection.client,
+      downloadDir: liveSession.connection.downloadDir,
       actions: input.actions,
       previewChars: input.previewChars,
       storageState: liveSession.storageState
@@ -354,6 +358,7 @@ interface CdpConnection {
   client: CdpClient;
   chrome: ChildProcessWithoutNullStreams | null;
   tempUserDataDir: string | null;
+  downloadDir: string;
   closeTabOnRelease: boolean;
 }
 
@@ -371,6 +376,12 @@ interface CdpLiveSession {
   connection: CdpConnection;
   session: BrowserInteractiveSessionRecord;
   storageState: Record<string, unknown> | null;
+}
+
+interface DownloadedFile {
+  path: string;
+  fileName: string;
+  sizeBytes: number;
 }
 
 class CdpClient {
@@ -442,6 +453,7 @@ async function openCdpConnection(input: BrowserInteractiveRunInput): Promise<Cdp
 
   const port = launchPlan.cdpEndpoint ? null : await reservePort();
   const tempUserDataDir = launchPlan.cdpEndpoint || launchPlan.userDataDir ? null : await fs.mkdtemp(path.join(os.tmpdir(), 'ops-interactive-browser-'));
+  const downloadDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ops-interactive-download-'));
   const userDataDir = launchPlan.userDataDir ?? tempUserDataDir ?? '';
   const browserArgs =
     port === null
@@ -493,6 +505,7 @@ async function openCdpConnection(input: BrowserInteractiveRunInput): Promise<Cdp
         client,
         chrome,
         tempUserDataDir,
+        downloadDir,
         closeTabOnRelease: tab.closeOnRelease
       },
       error: null
@@ -502,6 +515,7 @@ async function openCdpConnection(input: BrowserInteractiveRunInput): Promise<Cdp
     if (tempUserDataDir) {
       await fs.rm(tempUserDataDir, { recursive: true, force: true });
     }
+    await fs.rm(downloadDir, { recursive: true, force: true });
     return {
       connection: null,
       error: cause instanceof Error ? cause.message : String(cause)
@@ -522,10 +536,12 @@ async function closeCdpConnection(connection: CdpConnection): Promise<void> {
   if (connection.tempUserDataDir) {
     await fs.rm(connection.tempUserDataDir, { recursive: true, force: true });
   }
+  await fs.rm(connection.downloadDir, { recursive: true, force: true });
 }
 
 async function executeCdpActionPlan(input: {
   client: CdpCommandClient;
+  downloadDir: string;
   actions: BrowserInteractiveActionInput[];
   previewChars: number;
   storageState: Record<string, unknown> | null;
@@ -539,6 +555,7 @@ async function executeCdpActionPlan(input: {
     }
     const result = await executeCdpAction({
       client: input.client,
+      downloadDir: input.downloadDir,
       action,
       index,
       previewChars: input.previewChars,
@@ -571,13 +588,14 @@ function failedInteractiveRun(startedUrl: string, error: string): BrowserInterac
 
 async function executeCdpAction(input: {
   client: CdpCommandClient;
+  downloadDir: string;
   action: BrowserInteractiveActionInput;
   index: number;
   previewChars: number;
   artifacts: BrowserInteractiveArtifact[];
   storageState: Record<string, unknown> | null;
 }): Promise<BrowserInteractiveActionResult> {
-  const { client, action, index, previewChars, artifacts, storageState } = input;
+  const { client, downloadDir, action, index, previewChars, artifacts, storageState } = input;
   try {
     if (action.type === 'open') {
       const targetUrl = action.url?.trim() || null;
@@ -646,6 +664,18 @@ async function executeCdpAction(input: {
         true,
         `Uploaded ${String(filePaths.length)} file${filePaths.length === 1 ? '' : 's'} into ${selector}`,
         names.join(', ').slice(0, previewChars)
+      );
+    }
+
+    if (action.type === 'download') {
+      const downloaded = await runDownloadAction(client, action, downloadDir);
+      artifacts.push(await downloadArtifact(index, downloaded, previewChars));
+      return actionResult(
+        index,
+        action,
+        true,
+        `Downloaded ${downloaded.fileName}`,
+        downloaded.fileName.slice(0, previewChars)
       );
     }
 
@@ -868,6 +898,132 @@ async function normalizeUploadFilePaths(action: BrowserInteractiveActionInput): 
   return normalizedPaths;
 }
 
+async function runDownloadAction(
+  client: CdpCommandClient,
+  action: BrowserInteractiveActionInput,
+  downloadDir: string
+): Promise<DownloadedFile> {
+  const before = await listDownloadFiles(downloadDir);
+  await configureDownloadBehavior(client, downloadDir);
+  const selector = action.selector?.trim() ?? '';
+  const url = action.url?.trim() ?? '';
+  if (selector) {
+    const point = await dispatchNativeClick(client, selector);
+    if (!point) {
+      throw new Error(`Download selector not found: ${selector}`);
+    }
+  } else if (url) {
+    await client.send('Runtime.evaluate', {
+      expression: triggerDownloadExpression(url),
+      returnByValue: true,
+      awaitPromise: true
+    });
+  } else {
+    throw new Error('download action requires selector or url.');
+  }
+  const timeoutMs = Math.min(Math.max(action.timeoutMs ?? 10_000, 500), 60_000);
+  return waitForDownloadedFile(downloadDir, before, timeoutMs);
+}
+
+async function configureDownloadBehavior(client: CdpCommandClient, downloadDir: string): Promise<void> {
+  try {
+    await client.send('Browser.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: downloadDir,
+      eventsEnabled: true
+    });
+    return;
+  } catch {
+    await client.send('Page.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: downloadDir
+    });
+  }
+}
+
+async function waitForDownloadedFile(
+  downloadDir: string,
+  before: Map<string, number>,
+  timeoutMs: number
+): Promise<DownloadedFile> {
+  const deadline = Date.now() + timeoutMs;
+  let stableCandidate: DownloadedFile | null = null;
+  while (Date.now() < deadline) {
+    const current = await listDownloadFiles(downloadDir);
+    for (const [filePath, sizeBytes] of current) {
+      if (isPartialDownload(filePath)) {
+        continue;
+      }
+      const previousSize = before.get(filePath);
+      if (previousSize === sizeBytes) {
+        continue;
+      }
+      const candidate = {
+        path: filePath,
+        fileName: path.basename(filePath),
+        sizeBytes
+      };
+      if (stableCandidate?.path === candidate.path && stableCandidate.sizeBytes === candidate.sizeBytes) {
+        return candidate;
+      }
+      stableCandidate = candidate;
+    }
+    await delay(150);
+  }
+  throw new Error(`Timed out waiting for browser download after ${String(timeoutMs)}ms.`);
+}
+
+async function listDownloadFiles(downloadDir: string): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  const entries = await fs.readdir(downloadDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile()) {
+      continue;
+    }
+    const filePath = path.join(downloadDir, entry.name);
+    const stats = await fs.stat(filePath);
+    result.set(filePath, stats.size);
+  }
+  return result;
+}
+
+function isPartialDownload(filePath: string): boolean {
+  return filePath.endsWith('.crdownload') || filePath.endsWith('.tmp');
+}
+
+function triggerDownloadExpression(url: string): string {
+  return `(() => {
+    const anchor = document.createElement('a');
+    anchor.href = ${JSON.stringify(url)};
+    anchor.download = '';
+    anchor.rel = 'noopener';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    return true;
+  })()`;
+}
+
+function inferMimeType(fileName: string): string {
+  const extension = path.extname(fileName).toLowerCase();
+  const mimeTypes: Record<string, string> = {
+    '.csv': 'text/csv',
+    '.htm': 'text/html',
+    '.html': 'text/html',
+    '.json': 'application/json',
+    '.md': 'text/markdown',
+    '.pdf': 'application/pdf',
+    '.png': 'image/png',
+    '.txt': 'text/plain',
+    '.webp': 'image/webp'
+  };
+  return mimeTypes[extension] ?? 'application/octet-stream';
+}
+
+function isTextMimeType(mimeType: string): boolean {
+  return mimeType.startsWith('text/') || mimeType === 'application/json';
+}
+
 function readSameSite(value: unknown): BrowserInteractiveCookie['sameSite'] {
   return value === 'Lax' || value === 'None' || value === 'Strict' ? value : null;
 }
@@ -914,6 +1070,27 @@ function textArtifact(index: number, text: string, previewChars: number): Browse
     sizeBytes: Buffer.byteLength(text, 'utf8'),
     contentPreview: text.slice(0, previewChars),
     contentBase64: Buffer.from(text, 'utf8').toString('base64')
+  };
+}
+
+async function downloadArtifact(
+  index: number,
+  downloaded: DownloadedFile,
+  previewChars: number
+): Promise<BrowserInteractiveArtifact> {
+  const content = await fs.readFile(downloaded.path);
+  const mimeType = inferMimeType(downloaded.fileName);
+  const preview = isTextMimeType(mimeType)
+    ? content.toString('utf8').slice(0, previewChars)
+    : `[download ${downloaded.fileName}]`;
+  return {
+    id: `interactive_artifact:${String(index)}:download`,
+    actionIndex: index,
+    kind: 'download',
+    mimeType,
+    sizeBytes: downloaded.sizeBytes,
+    contentPreview: preview,
+    contentBase64: content.toString('base64')
   };
 }
 

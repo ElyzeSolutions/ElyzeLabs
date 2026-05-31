@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
@@ -21,8 +22,13 @@ interface FakeCdpServer {
   close: () => Promise<void>;
 }
 
+interface FakeCdpState {
+  downloadPath: string | null;
+  downloadWritten: boolean;
+}
+
 describe('browser interactive service', () => {
-  it('uses native CDP events for click, type, upload, scroll, and keypress actions', async () => {
+  it('uses native CDP events for click, type, upload, download, scroll, and keypress actions', async () => {
     const fakeCdp = await startFakeCdpServer();
     const uploadRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ops-browser-upload-test-'));
     const uploadPath = path.join(uploadRoot, 'fixture.txt');
@@ -38,6 +44,7 @@ describe('browser interactive service', () => {
           { type: 'click', selector: '#continue', timeoutMs: 100 },
           { type: 'type', selector: '#search', text: 'hello native input', timeoutMs: 50 },
           { type: 'upload', selector: '#avatar', filePath: uploadPath, timeoutMs: 50 },
+          { type: 'download', selector: '#export', timeoutMs: 500 },
           { type: 'scroll', selector: '#feed', deltaY: 720, timeoutMs: 50 },
           { type: 'keypress', key: 'Enter', timeoutMs: 50 },
           { type: 'read' }
@@ -51,6 +58,7 @@ describe('browser interactive service', () => {
         'click',
         'type',
         'upload',
+        'download',
         'scroll',
         'keypress',
         'read'
@@ -60,6 +68,9 @@ describe('browser interactive service', () => {
         .filter((command) => command.method === 'Input.dispatchMouseEvent')
         .map((command) => readStringField(command.params, 'type'));
       expect(mouseEventTypes).toEqual([
+        'mouseMoved',
+        'mousePressed',
+        'mouseReleased',
         'mouseMoved',
         'mousePressed',
         'mouseReleased',
@@ -80,6 +91,11 @@ describe('browser interactive service', () => {
 
       const uploadCommand = fakeCdp.commands.find((command) => command.method === 'DOM.setFileInputFiles');
       expect(uploadCommand ? readStringArrayField(uploadCommand.params, 'files') : []).toEqual([uploadPath]);
+
+      const downloadCommand = fakeCdp.commands.find((command) => command.method === 'Browser.setDownloadBehavior');
+      expect(downloadCommand ? readStringField(downloadCommand.params, 'behavior') : '').toBe('allow');
+      const downloadArtifact = result.artifacts.find((artifact) => artifact.kind === 'download');
+      expect(downloadArtifact?.contentPreview).toContain('download fixture');
 
       const keyEventTypes = fakeCdp.commands
         .filter((command) => command.method === 'Input.dispatchKeyEvent')
@@ -128,6 +144,7 @@ describe('browser interactive service', () => {
           { type: 'click', selector: '#continue', timeoutMs: 100 },
           { type: 'type', selector: '#search', text: 'live session input', timeoutMs: 50 },
           { type: 'upload', selector: '#avatar', filePaths: [uploadPath], timeoutMs: 50 },
+          { type: 'download', selector: '#export', timeoutMs: 500 },
           { type: 'scroll', selector: '#feed', deltaY: 500, timeoutMs: 50 },
           { type: 'keypress', key: 'Escape', timeoutMs: 50 },
           { type: 'read' }
@@ -141,6 +158,7 @@ describe('browser interactive service', () => {
         'click',
         'type',
         'upload',
+        'download',
         'scroll',
         'keypress',
         'read'
@@ -169,6 +187,10 @@ async function startFakeCdpServer(): Promise<FakeCdpServer> {
   const commands: RecordedCdpCommand[] = [];
   const requests: string[] = [];
   const sockets = new Set<Duplex>();
+  const state: FakeCdpState = {
+    downloadPath: null,
+    downloadWritten: false
+  };
   let websocketUrl = '';
   const server = http.createServer((request, response) => {
     requests.push(request.url ?? '');
@@ -217,7 +239,7 @@ async function startFakeCdpServer(): Promise<FakeCdpServer> {
       const parsed = readClientTextFrames(frameBuffer);
       frameBuffer = parsed.remaining;
       for (const message of parsed.messages) {
-        handleCdpMessage(socket, message, commands);
+        handleCdpMessage(socket, message, commands, state);
       }
     });
     socket.on('error', () => undefined);
@@ -251,7 +273,12 @@ async function startFakeCdpServer(): Promise<FakeCdpServer> {
   };
 }
 
-function handleCdpMessage(socket: { write: (chunk: Buffer | string) => unknown }, text: string, commands: RecordedCdpCommand[]): void {
+function handleCdpMessage(
+  socket: { write: (chunk: Buffer | string) => unknown },
+  text: string,
+  commands: RecordedCdpCommand[],
+  state: FakeCdpState
+): void {
   const message = parseJsonRecord(text);
   if (!message) {
     return;
@@ -263,12 +290,28 @@ function handleCdpMessage(socket: { write: (chunk: Buffer | string) => unknown }
   }
   const params = readRecordField(message, 'params') ?? {};
   commands.push({ method, params });
-  writeServerTextFrame(socket, JSON.stringify({ id, result: cdpResultFor(method, params) }));
+  writeServerTextFrame(socket, JSON.stringify({ id, result: cdpResultFor(method, params, state) }));
 }
 
-function cdpResultFor(method: string, params: Record<string, unknown>): Record<string, unknown> {
+function cdpResultFor(method: string, params: Record<string, unknown>, state: FakeCdpState): Record<string, unknown> {
   if (method === 'Runtime.evaluate') {
     return runtimeEvaluateResult(readStringField(params, 'expression'));
+  }
+  if (method === 'Browser.setDownloadBehavior' || method === 'Page.setDownloadBehavior') {
+    state.downloadPath = readStringField(params, 'downloadPath');
+    state.downloadWritten = false;
+    return {};
+  }
+  if (
+    method === 'Input.dispatchMouseEvent' &&
+    readStringField(params, 'type') === 'mouseReleased' &&
+    state.downloadPath &&
+    !state.downloadWritten
+  ) {
+    fsSync.mkdirSync(state.downloadPath, { recursive: true });
+    fsSync.writeFileSync(path.join(state.downloadPath, 'fake-download.txt'), 'download fixture', 'utf8');
+    state.downloadWritten = true;
+    return {};
   }
   if (method === 'DOM.getDocument') {
     return { root: { nodeId: 1 } };

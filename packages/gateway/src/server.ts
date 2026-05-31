@@ -53411,6 +53411,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       value === 'click' ||
       value === 'type' ||
       value === 'upload' ||
+      value === 'download' ||
       value === 'scroll' ||
       value === 'keypress' ||
       value === 'wait' ||
