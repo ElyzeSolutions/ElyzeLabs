@@ -236,6 +236,7 @@ Browser operations, profiles, credentials, history, and artifacts:
 - `GET /api/browser/artifacts/:handle`
 
 Interactive browser action payloads support `open`, `read`, `click`, `type`, `upload`, `download`, `scroll`, `keypress`, `wait`, `screenshot`, and `pdf`. `upload` accepts `selector` plus `filePath` or `filePaths`; `download` accepts `selector` or `url` and returns an artifact; `scroll` accepts optional `selector`, `deltaX`, and `deltaY`; `keypress` accepts `key` plus an optional `selector` to focus first.
+Selector-based actions resolve targets through the main document, open shadow roots, and same-origin frames.
 
 Self-improvement and agent operations:
 - `GET /api/improvement/learnings`

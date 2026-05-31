@@ -91,6 +91,12 @@ describe('browser interactive service', () => {
 
       const uploadCommand = fakeCdp.commands.find((command) => command.method === 'DOM.setFileInputFiles');
       expect(uploadCommand ? readStringArrayField(uploadCommand.params, 'files') : []).toEqual([uploadPath]);
+      expect(fakeCdp.commands.some((command) => command.method === 'DOM.requestNode')).toBe(true);
+      const selectorExpressions = fakeCdp.commands
+        .filter((command) => command.method === 'Runtime.evaluate')
+        .map((command) => readStringField(command.params, 'expression'));
+      expect(selectorExpressions.some((expression) => expression.includes('shadowRoot'))).toBe(true);
+      expect(selectorExpressions.some((expression) => expression.includes('contentDocument'))).toBe(true);
 
       const downloadCommand = fakeCdp.commands.find((command) => command.method === 'Browser.setDownloadBehavior');
       expect(downloadCommand ? readStringField(downloadCommand.params, 'behavior') : '').toBe('allow');
@@ -316,6 +322,9 @@ function cdpResultFor(method: string, params: Record<string, unknown>, state: Fa
   if (method === 'DOM.getDocument') {
     return { root: { nodeId: 1 } };
   }
+  if (method === 'DOM.requestNode') {
+    return { nodeId: 7 };
+  }
   if (method === 'DOM.querySelector') {
     return { nodeId: readStringField(params, 'selector') === '#missing' ? 0 : 7 };
   }
@@ -326,6 +335,9 @@ function cdpResultFor(method: string, params: Record<string, unknown>, state: Fa
 }
 
 function runtimeEvaluateResult(expression: string): Record<string, unknown> {
+  if (expression.includes('return found ? found.el : null')) {
+    return { result: { type: 'object', objectId: 'deep-node-7' } };
+  }
   if (expression === 'window.location.href') {
     return { result: { type: 'string', value: 'https://example.test/form' } };
   }

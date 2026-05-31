@@ -1279,16 +1279,7 @@ async function resolveViewportCenterPoint(client: CdpCommandClient): Promise<Cdp
 }
 
 async function setFileInputFiles(client: CdpCommandClient, selector: string, filePaths: string[]): Promise<boolean> {
-  const documentResponse = await client.send('DOM.getDocument', { depth: -1, pierce: true });
-  const rootNodeId = readDocumentRootNodeId(documentResponse);
-  if (rootNodeId === null) {
-    return false;
-  }
-  const queryResponse = await client.send('DOM.querySelector', {
-    nodeId: rootNodeId,
-    selector
-  });
-  const nodeId = readNodeId(queryResponse);
+  const nodeId = await resolveSelectorNodeId(client, selector);
   if (nodeId === null || nodeId === 0) {
     return false;
   }
@@ -1297,6 +1288,32 @@ async function setFileInputFiles(client: CdpCommandClient, selector: string, fil
     files: filePaths
   });
   return true;
+}
+
+async function resolveSelectorNodeId(client: CdpCommandClient, selector: string): Promise<number | null> {
+  await client.send('DOM.getDocument', { depth: -1, pierce: true });
+  const response = await client.send('Runtime.evaluate', {
+    expression: selectorElementExpression(selector),
+    awaitPromise: true
+  });
+  const objectId = readRemoteObjectId(response);
+  if (!objectId) {
+    return null;
+  }
+  try {
+    const requestNodeResponse = await client.send('DOM.requestNode', { objectId });
+    return readNodeId(requestNodeResponse);
+  } finally {
+    await releaseRemoteObject(client, objectId);
+  }
+}
+
+async function releaseRemoteObject(client: CdpCommandClient, objectId: string): Promise<void> {
+  try {
+    await client.send('Runtime.releaseObject', { objectId });
+  } catch {
+    // Releasing remote handles is best-effort; action success should not depend on cleanup acknowledgement.
+  }
 }
 
 async function focusAndSelectSelector(client: CdpCommandClient, selector: string): Promise<boolean> {
@@ -1308,29 +1325,43 @@ async function focusSelector(client: CdpCommandClient, selector: string): Promis
 }
 
 function selectorPointExpression(selector: string): string {
-  return `(() => {
-    const el = document.querySelector(${JSON.stringify(selector)});
-    if (!el) return null;
-    if (typeof el.scrollIntoView === 'function') {
-      el.scrollIntoView({ block: 'center', inline: 'center' });
+  return deepSelectorExpression(
+    selector,
+    `if (!found) return null;
+    for (const frame of found.frames) {
+      if (typeof frame.scrollIntoView === 'function') {
+        frame.scrollIntoView({ block: 'center', inline: 'center' });
+      }
     }
+    if (typeof found.el.scrollIntoView === 'function') {
+      found.el.scrollIntoView({ block: 'center', inline: 'center' });
+    }
+    const el = found.el;
     const rect = el.getBoundingClientRect();
     if (!Number.isFinite(rect.left) || !Number.isFinite(rect.top) || rect.width <= 0 || rect.height <= 0) return null;
     const style = window.getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden') return null;
+    let left = rect.left;
+    let top = rect.top;
+    for (let index = found.frames.length - 1; index >= 0; index -= 1) {
+      const frameRect = found.frames[index].getBoundingClientRect();
+      left += frameRect.left;
+      top += frameRect.top;
+    }
     return {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
+      x: left + rect.width / 2,
+      y: top + rect.height / 2,
       width: rect.width,
       height: rect.height
-    };
-  })()`;
+    };`
+  );
 }
 
 function focusAndSelectSelectorExpression(selector: string): string {
-  return `(() => {
-    const el = document.querySelector(${JSON.stringify(selector)});
-    if (!el) return false;
+  return deepSelectorExpression(
+    selector,
+    `if (!found) return false;
+    const el = found.el;
     if (typeof el.focus === 'function') {
       el.focus({ preventScroll: true });
     }
@@ -1346,17 +1377,57 @@ function focusAndSelectSelectorExpression(selector: string): string {
       selection.removeAllRanges();
       selection.addRange(range);
     }
-    return true;
-  })()`;
+    return true;`
+  );
 }
 
 function focusSelectorExpression(selector: string): string {
-  return `(() => {
-    const el = document.querySelector(${JSON.stringify(selector)});
-    if (!el) return false;
+  return deepSelectorExpression(
+    selector,
+    `if (!found) return false;
+    const el = found.el;
     if (typeof el.focus !== 'function') return false;
     el.focus({ preventScroll: true });
-    return document.activeElement === el || el.contains(document.activeElement);
+    const doc = el.ownerDocument || document;
+    return doc.activeElement === el || el.contains(doc.activeElement);`
+  );
+}
+
+function selectorElementExpression(selector: string): string {
+  return deepSelectorExpression(selector, 'return found ? found.el : null;');
+}
+
+function deepSelectorExpression(selector: string, foundBody: string): string {
+  return `(() => {
+    const selector = ${JSON.stringify(selector)};
+    const findDeepTarget = (root) => {
+      if (!root || typeof root.querySelector !== 'function') return null;
+      const direct = root.querySelector(selector);
+      if (direct) return { el: direct, frames: [] };
+      const all = root.querySelectorAll('*');
+      for (const node of all) {
+        if (node.shadowRoot) {
+          const shadowResult = findDeepTarget(node.shadowRoot);
+          if (shadowResult) return shadowResult;
+        }
+        const tagName = typeof node.tagName === 'string' ? node.tagName.toLowerCase() : '';
+        if (tagName === 'iframe' || tagName === 'frame') {
+          let frameDocument = null;
+          try {
+            frameDocument = node.contentDocument;
+          } catch {
+            frameDocument = null;
+          }
+          if (frameDocument) {
+            const frameResult = findDeepTarget(frameDocument);
+            if (frameResult) return { el: frameResult.el, frames: [node, ...frameResult.frames] };
+          }
+        }
+      }
+      return null;
+    };
+    const found = findDeepTarget(document);
+    ${foundBody}
   })()`;
 }
 
@@ -1373,13 +1444,6 @@ function readSelectorPoint(response: unknown): CdpSelectorPoint | null {
     return null;
   }
   return { x, y, width, height };
-}
-
-function readDocumentRootNodeId(response: unknown): number | null {
-  if (!isRecord(response) || !isRecord(response.root)) {
-    return null;
-  }
-  return readNodeId(response.root);
 }
 
 function readNodeId(response: unknown): number | null {
@@ -1496,6 +1560,14 @@ function readRemoteObject(response: unknown): Record<string, unknown> | null {
   }
   const value = response.result.value;
   return isRecord(value) ? value : null;
+}
+
+function readRemoteObjectId(response: unknown): string | null {
+  if (!isRecord(response) || !isRecord(response.result)) {
+    return null;
+  }
+  const objectId = response.result.objectId;
+  return typeof objectId === 'string' && objectId.trim().length > 0 ? objectId : null;
 }
 
 function readRemoteValue(response: unknown): string {
