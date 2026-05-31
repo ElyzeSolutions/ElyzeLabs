@@ -44,6 +44,7 @@ import {
   type AgentProfileRecord,
   type BrowserExtractorId,
   type BrowserIntent,
+  type BrowserCookieSourceKind,
   type ChatType,
   type MessageSource,
   type MessageRecord,
@@ -4808,6 +4809,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/openapi',
   '/api/docs',
   '/api/ingress/telegram',
+  '/api/mobile-browser-handoff',
   '/api/telegram/webhook'
 ] as const;
 
@@ -6356,6 +6358,34 @@ export async function buildGatewayApp(
     createdAt: string;
   };
   const pendingPlaywrightAuthCaptures = new Map<string, PendingPlaywrightAuthCapture>();
+  type BrowserMobileSessionHandoffStatus = 'pending' | 'submitted' | 'expired';
+  type PendingBrowserMobileSessionHandoff = {
+    id: string;
+    siteKey: BrowserConnectSiteKey;
+    label: string;
+    ownerLabel: string | null;
+    visibility: BrowserSessionProfileRecord['visibility'];
+    allowedSessionIds: string[];
+    domains: string[];
+    verifyUrl: string;
+    sourceKind: BrowserCookieSourceKind;
+    notes: string | null;
+    locale: string | null;
+    countryCode: string | null;
+    timezoneId: string | null;
+    headersProfileId: string | null;
+    proxyProfileId: string | null;
+    storageStateId: string | null;
+    sessionProfileId: string | null;
+    cookieJarId: string | null;
+    requestedAgentId: string | null;
+    createdAt: string;
+    expiresAt: string;
+    submittedAt: string | null;
+    status: BrowserMobileSessionHandoffStatus;
+  };
+  const MOBILE_SESSION_HANDOFF_TTL_MS = 15 * 60 * 1000;
+  const pendingBrowserMobileSessionHandoffs = new Map<string, PendingBrowserMobileSessionHandoff>();
   type BrowserConnectPreset = {
     siteKey: BrowserConnectSiteKey;
     label: string;
@@ -6695,6 +6725,94 @@ export async function buildGatewayApp(
     storageStatePath: capture.storageStatePath,
     createdAt: capture.createdAt
   });
+  const buildBrowserMobileHandoffSubmitUrl = (request: FastifyRequest, handoffId: string): string => {
+    const host = typeof request.headers.host === 'string' && request.headers.host.trim().length > 0
+      ? request.headers.host.trim()
+      : `${config.server.host}:${String(config.server.port)}`;
+    const forwardedProto = request.headers['x-forwarded-proto'];
+    const protocol =
+      typeof forwardedProto === 'string' && forwardedProto.trim().toLowerCase().startsWith('https') ? 'https' : 'http';
+    return `${protocol}://${host}/mobile-browser-handoff/${encodeURIComponent(handoffId)}`;
+  };
+  const updateExpiredBrowserMobileHandoff = (
+    handoff: PendingBrowserMobileSessionHandoff,
+    nowMs = Date.now()
+  ): PendingBrowserMobileSessionHandoff => {
+    if (handoff.status === 'pending' && Date.parse(handoff.expiresAt) <= nowMs) {
+      handoff.status = 'expired';
+    }
+    return handoff;
+  };
+  const serializeBrowserMobileHandoff = (handoff: PendingBrowserMobileSessionHandoff) => {
+    const current = updateExpiredBrowserMobileHandoff(handoff);
+    return {
+      id: current.id,
+      siteKey: current.siteKey,
+      label: current.label,
+      domains: current.domains,
+      verifyUrl: current.verifyUrl,
+      sourceKind: current.sourceKind,
+      status: current.status,
+      expiresAt: current.expiresAt,
+      submittedAt: current.submittedAt,
+      createdAt: current.createdAt
+    };
+  };
+  const renderBrowserMobileHandoffPage = (input: {
+    handoff: PendingBrowserMobileSessionHandoff | null;
+    error?: string | null;
+  }): string => {
+    const handoff = input.handoff ? updateExpiredBrowserMobileHandoff(input.handoff) : null;
+    const title = handoff ? `${handoff.label} mobile handoff` : 'Mobile browser handoff';
+    const disabled = !handoff || handoff.status !== 'pending';
+    const status = input.error ?? (handoff ? `Status: ${handoff.status}` : 'This handoff link is not available.');
+    const action = handoff ? `/api/mobile-browser-handoff/${encodeURIComponent(handoff.id)}/complete` : '#';
+    return [
+      '<!doctype html>',
+      '<html lang="en">',
+      '<head>',
+      '<meta charset="utf-8">',
+      '<meta name="viewport" content="width=device-width, initial-scale=1">',
+      `<title>${escapeHtml(title)}</title>`,
+      '<style>',
+      'body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#080b12;color:#f8fafc;}',
+      'main{min-height:100dvh;display:grid;place-items:center;padding:24px;}',
+      'section{width:min(100%,560px);border:1px solid rgba(255,255,255,.12);border-radius:24px;background:rgba(255,255,255,.045);padding:22px;box-shadow:0 24px 90px rgba(0,0,0,.35);}',
+      'h1{font-size:24px;margin:0 0 8px;}p{color:rgba(248,250,252,.72);line-height:1.5;}',
+      'textarea{width:100%;min-height:180px;box-sizing:border-box;border-radius:16px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.34);color:#f8fafc;padding:12px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace;}',
+      'button{margin-top:14px;width:100%;border:0;border-radius:14px;background:#f8fafc;color:#020617;font-weight:700;padding:13px 16px;}button:disabled{opacity:.48;}',
+      '.status{font-size:13px;color:#a7f3d0}.error{color:#fecdd3}',
+      '</style>',
+      '</head>',
+      '<body>',
+      '<main>',
+      '<section>',
+      `<h1>${escapeHtml(title)}</h1>`,
+      `<p class="${input.error ? 'error' : 'status'}">${escapeHtml(status)}</p>`,
+      '<p>Paste the mobile browser Cookie header or exported cookie text, then submit once. The desktop Browser Ops page will show the verified login.</p>',
+      `<form id="handoff-form" data-action="${escapeHtml(action)}">`,
+      `<textarea name="raw" aria-label="Cookie payload" ${disabled ? 'disabled' : ''} placeholder="sessionid=...; csrftoken=..."></textarea>`,
+      `<button type="submit" ${disabled ? 'disabled' : ''}>Submit mobile session</button>`,
+      '</form>',
+      '<p id="result" class="status"></p>',
+      '</section>',
+      '</main>',
+      '<script>',
+      'const form=document.getElementById("handoff-form");',
+      'const result=document.getElementById("result");',
+      'form?.addEventListener("submit",async(event)=>{',
+      'event.preventDefault();',
+      'const raw=String(new FormData(form).get("raw")||"").trim();',
+      'if(!raw){result.textContent="Paste a cookie payload first.";return;}',
+      'const response=await fetch(form.dataset.action,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({raw})});',
+      'const payload=await response.json().catch(()=>({ok:false,error:"Unexpected response"}));',
+      'result.textContent=payload.ok?"Mobile session submitted and verified. You can close this page.":(payload.error||"Submission failed.");',
+      '});',
+      '</script>',
+      '</body>',
+      '</html>'
+    ].join('');
+  };
   const createPlaywrightStorageStateProfileFromFile = async (input: {
     storageStatePath: string;
     siteKey: BrowserConnectSiteKey;
@@ -52865,6 +52983,189 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         site: preset,
         storageStatePath,
         vault: browserSessionVaultPayload(scope)
+      });
+    }
+  });
+
+  app.post('/api/browser/mobile-handoff/start', async (request, reply) => {
+    const scope = resolveBrowserVaultAccessScope(request, reply);
+    if (!scope) {
+      return reply;
+    }
+    const body = isRecord(request.body) ? request.body : {};
+    const siteKey = parseBrowserConnectSiteKey(body.siteKey) ?? 'generic';
+    const preset = resolveBrowserConnectPreset(
+      siteKey,
+      typeof body.verifyUrl === 'string' && body.verifyUrl.trim().length > 0 ? body.verifyUrl.trim() : null
+    );
+    const label =
+      typeof body.label === 'string' && body.label.trim().length > 0
+        ? body.label.trim()
+        : `${preset.label} mobile login`;
+    const sourceKind = parseBrowserCookieSourceKind(body.sourceKind) ?? 'raw_cookie_header';
+    const domains = Array.isArray(body.domains)
+      ? body.domains.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0)
+      : preset.domains;
+    const createdAt = utcNow();
+    const handoff: PendingBrowserMobileSessionHandoff = {
+      id: `mobile_handoff:${randomUUID()}`,
+      siteKey,
+      label,
+      ownerLabel:
+        typeof body.ownerLabel === 'string' && body.ownerLabel.trim().length > 0
+          ? body.ownerLabel.trim()
+          : scope.session?.sessionKey ?? null,
+      visibility: scope.session && scope.role !== 'admin' ? 'session_only' : parseBrowserProfileVisibility(body.visibility),
+      allowedSessionIds: scope.session && scope.role !== 'admin' ? [scope.session.id] : parseBrowserAllowedSessionIds(body.allowedSessionIds),
+      domains,
+      verifyUrl: preset.verifyUrl,
+      sourceKind,
+      notes:
+        typeof body.notes === 'string' && body.notes.trim().length > 0
+          ? body.notes.trim()
+          : 'Imported through a one-time mobile browser handoff; Scrapling uses the saved cookie copy by default.',
+      locale: typeof body.locale === 'string' && body.locale.trim().length > 0 ? body.locale.trim() : null,
+      countryCode: typeof body.countryCode === 'string' && body.countryCode.trim().length > 0 ? body.countryCode.trim() : null,
+      timezoneId: typeof body.timezoneId === 'string' && body.timezoneId.trim().length > 0 ? body.timezoneId.trim() : null,
+      headersProfileId:
+        typeof body.headersProfileId === 'string' && body.headersProfileId.trim().length > 0 ? body.headersProfileId.trim() : null,
+      proxyProfileId:
+        typeof body.proxyProfileId === 'string' && body.proxyProfileId.trim().length > 0 ? body.proxyProfileId.trim() : null,
+      storageStateId:
+        typeof body.storageStateId === 'string' && body.storageStateId.trim().length > 0 ? body.storageStateId.trim() : null,
+      sessionProfileId:
+        typeof body.sessionProfileId === 'string' && body.sessionProfileId.trim().length > 0 ? body.sessionProfileId.trim() : null,
+      cookieJarId: typeof body.cookieJarId === 'string' && body.cookieJarId.trim().length > 0 ? body.cookieJarId.trim() : null,
+      requestedAgentId: typeof body.agentId === 'string' && body.agentId.trim().length > 0 ? body.agentId.trim() : null,
+      createdAt,
+      expiresAt: new Date(Date.parse(createdAt) + MOBILE_SESSION_HANDOFF_TTL_MS).toISOString(),
+      submittedAt: null,
+      status: 'pending'
+    };
+    pendingBrowserMobileSessionHandoffs.set(handoff.id, handoff);
+    database.appendAudit({
+      actor: String(body.actor ?? 'operator').trim() || 'operator',
+      action: 'browser.mobile_handoff.start',
+      resource: handoff.id,
+      decision: 'allowed',
+      reason: 'operator_request',
+      details: {
+        handoff: serializeBrowserMobileHandoff(handoff),
+        site: preset
+      },
+      correlationId: randomUUID()
+    });
+    return jsonOk(reply, {
+      handoff: serializeBrowserMobileHandoff(handoff),
+      submitUrl: buildBrowserMobileHandoffSubmitUrl(request, handoff.id),
+      nextStep: 'Open the one-time handoff URL on the phone, paste the mobile cookie export, and submit it once.',
+      vault: browserSessionVaultPayload(scope)
+    });
+  });
+
+  app.get('/mobile-browser-handoff/:handoffId', async (request, reply) => {
+    const params = isRecord(request.params) ? request.params : {};
+    const handoffId = typeof params.handoffId === 'string' ? params.handoffId : '';
+    const handoff = pendingBrowserMobileSessionHandoffs.get(handoffId) ?? null;
+    reply.type('text/html; charset=utf-8');
+    if (!handoff) {
+      return reply.send(renderBrowserMobileHandoffPage({ handoff: null, error: 'This handoff link is no longer available.' }));
+    }
+    return reply.send(renderBrowserMobileHandoffPage({ handoff }));
+  });
+
+  app.post('/api/mobile-browser-handoff/:handoffId/complete', async (request, reply) => {
+    const params = isRecord(request.params) ? request.params : {};
+    const handoffId = typeof params.handoffId === 'string' ? params.handoffId : '';
+    const handoff = handoffId ? pendingBrowserMobileSessionHandoffs.get(handoffId) ?? null : null;
+    if (!handoff) {
+      return jsonError(reply, 'Mobile browser handoff not found or already consumed.', 404, {
+        reason: 'browser_mobile_handoff_not_found'
+      });
+    }
+    const current = updateExpiredBrowserMobileHandoff(handoff);
+    if (current.status !== 'pending') {
+      return jsonError(reply, 'Mobile browser handoff is no longer pending.', 410, {
+        reason: `browser_mobile_handoff_${current.status}`,
+        handoff: serializeBrowserMobileHandoff(current)
+      });
+    }
+    const body = isRecord(request.body) ? request.body : {};
+    const raw = typeof body.raw === 'string' ? body.raw.trim() : '';
+    if (!raw) {
+      return jsonError(reply, 'raw is required for mobile browser handoff completion', 400, {
+        reason: 'browser_mobile_handoff_raw_required'
+      });
+    }
+    const sourceKind = parseBrowserCookieSourceKind(body.sourceKind) ?? current.sourceKind;
+    let importedCookieJar: ReturnType<BrowserSessionVault['importCookieJar']>;
+    try {
+      importedCookieJar = browserSessionVault.importCookieJar({
+        id: current.cookieJarId && current.cookieJarId.trim().length > 0 ? current.cookieJarId.trim() : `browser_cookie_jar:${Date.now().toString(36)}`,
+        label: `${current.label} mobile cookies`,
+        domains: current.domains,
+        sourceKind,
+        raw,
+        notes: current.notes
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return jsonError(reply, `Failed to import mobile browser cookies: ${message}`, 400, {
+        reason: 'browser_mobile_handoff_cookie_import_failed'
+      });
+    }
+    const sessionProfile = browserSessionVault.upsertSessionProfile({
+      id:
+        current.sessionProfileId && current.sessionProfileId.trim().length > 0
+          ? current.sessionProfileId.trim()
+          : `browser_session_profile:${Date.now().toString(36)}`,
+      label: current.label,
+      domains: current.domains,
+      cookieJarId: importedCookieJar.id,
+      headersProfileId: current.headersProfileId,
+      proxyProfileId: current.proxyProfileId,
+      storageStateId: current.storageStateId,
+      useRealChrome: false,
+      ownerLabel: current.ownerLabel,
+      visibility: current.visibility,
+      allowedSessionIds: current.allowedSessionIds,
+      siteKey: current.siteKey,
+      locale: current.locale,
+      countryCode: current.countryCode,
+      timezoneId: current.timezoneId,
+      notes: current.notes,
+      enabled: true
+    });
+    try {
+      const verification = await verifyBrowserSessionProfile({
+        profile: sessionProfile,
+        verifyUrl: current.verifyUrl,
+        requestedAgentId: current.requestedAgentId
+      });
+      current.status = 'submitted';
+      current.submittedAt = utcNow();
+      pendingBrowserMobileSessionHandoffs.delete(current.id);
+      return jsonOk(reply, {
+        handoff: serializeBrowserMobileHandoff(current),
+        cookieJar: serializeBrowserCookieJar(importedCookieJar),
+        sessionProfile: serializeBrowserSessionProfile(verification.profile),
+        verification: {
+          run: verification.run,
+          trace: verification.trace ? serializeBrowserTrace(verification.trace) : null,
+          summary: verification.resultSummary,
+          method: 'mobile_session_import',
+          site: resolveBrowserConnectPreset(current.siteKey, current.verifyUrl)
+        }
+      });
+    } catch (error) {
+      const failedProfile = database.getBrowserSessionProfileById(sessionProfile.id) ?? sessionProfile;
+      const message = error instanceof Error ? error.message : String(error);
+      return jsonError(reply, message, 502, {
+        handoff: serializeBrowserMobileHandoff(current),
+        cookieJar: serializeBrowserCookieJar(importedCookieJar),
+        sessionProfile: serializeBrowserSessionProfile(failedProfile),
+        method: 'mobile_session_import',
+        site: resolveBrowserConnectPreset(current.siteKey, current.verifyUrl)
       });
     }
   });

@@ -1724,6 +1724,87 @@ describe('gateway browser api integration', () => {
     expect(connectBody.verification?.trace?.artifacts[0]?.previewText).toContain('SessionCookie: mobile-tiktok-session');
   });
 
+  it('creates a one-time mobile browser handoff URL that imports and verifies phone cookies without API auth on the phone', async () => {
+    const harness = await createHarness('browser-mobile-session-url-handoff', (config) => {
+      const root = path.dirname(config.persistence.sqlitePath);
+      config.browser.enabled = true;
+      config.browser.transport = 'stdio';
+      config.browser.executable = installFakeScraplingExecutable(root);
+      config.browser.policy.allowStealth = true;
+      config.browser.policy.requireApprovalForStealth = false;
+    });
+
+    const onboardingResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/onboarding/ceo-baseline',
+      payload: {
+        actor: 'browser-mobile-url-handoff-test'
+      }
+    });
+    expect(onboardingResponse.statusCode).toBe(200);
+    const localAdminHeaders = {
+      Authorization: `Bearer ${harness.config.server.apiToken}`,
+      host: '127.0.0.1:8788',
+      'x-ops-role': 'admin'
+    };
+
+    const startResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/mobile-handoff/start',
+      headers: localAdminHeaders,
+      payload: {
+        siteKey: 'tiktok',
+        label: 'TikTok phone login',
+        ownerLabel: 'operator-phone',
+        domains: ['www.tiktok.com', 'tiktok.com'],
+        verifyUrl: 'https://www.tiktok.com/session-profile-proof',
+        sourceKind: 'raw_cookie_header'
+      }
+    });
+    expect(startResponse.statusCode).toBe(200);
+    const startBody = startResponse.json();
+    expect(startBody.handoff?.status).toBe('pending');
+    expect(startBody.submitUrl).toContain('/mobile-browser-handoff/mobile_handoff%3A');
+
+    const handoffPagePath = new URL(String(startBody.submitUrl)).pathname;
+    const pageResponse = await harness.inject({
+      method: 'GET',
+      url: handoffPagePath
+    });
+    expect(pageResponse.statusCode).toBe(200);
+    expect(pageResponse.body).toContain('TikTok phone login mobile handoff');
+    expect(pageResponse.body).toContain('Submit mobile session');
+
+    const completeResponse = await harness.inject({
+      method: 'POST',
+      url: `/api/mobile-browser-handoff/${encodeURIComponent(String(startBody.handoff.id))}/complete`,
+      payload: {
+        raw: 'sessionid=phone-tiktok-session'
+      }
+    });
+    expect(completeResponse.statusCode).toBe(200);
+    const completeBody = completeResponse.json();
+    expect(completeBody.cookieJar?.sourceKind).toBe('raw_cookie_header');
+    expect(completeBody.sessionProfile).toMatchObject({
+      label: 'TikTok phone login',
+      siteKey: 'tiktok',
+      ownerLabel: 'operator-phone',
+      profileClass: 'auth_state',
+      lastVerificationStatus: 'connected'
+    });
+    expect(completeBody.verification?.method).toBe('mobile_session_import');
+    expect(completeBody.verification?.trace?.artifacts[0]?.previewText).toContain('SessionCookie: phone-tiktok-session');
+
+    const replayResponse = await harness.inject({
+      method: 'POST',
+      url: `/api/mobile-browser-handoff/${encodeURIComponent(String(startBody.handoff.id))}/complete`,
+      payload: {
+        raw: 'sessionid=replay'
+      }
+    });
+    expect(replayResponse.statusCode).toBe(404);
+  });
+
   it('saves a live CDP browser session metadata file as filtered Scrapling auth state', async () => {
     const harness = await createHarness('browser-playwright-cdp-auth', (config) => {
       const root = path.dirname(config.persistence.sqlitePath);

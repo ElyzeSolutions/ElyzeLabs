@@ -466,4 +466,52 @@ describe('BrowserPage', () => {
       )
     );
   });
+
+  it('creates a one-time phone handoff link for mobile session import', async () => {
+    const vault = {
+      cookieJars: [],
+      headerProfiles: [],
+      proxyProfiles: [],
+      storageStates: [],
+      sessionProfiles: [],
+      localProfiles: []
+    };
+    apiMocks.fetchBrowserSessionVault.mockResolvedValue(vault);
+    apiMocks.startBrowserMobileHandoff.mockResolvedValue({
+      vault,
+      handoff: {
+        id: 'mobile_handoff:tiktok',
+        siteKey: 'tiktok',
+        label: 'TikTok personal login',
+        domains: ['www.tiktok.com', 'tiktok.com'],
+        verifyUrl: 'https://www.tiktok.com/foryou',
+        sourceKind: 'raw_cookie_header',
+        status: 'pending',
+        expiresAt: '2026-05-31T10:15:00.000Z',
+        submittedAt: null,
+        createdAt: '2026-05-31T10:00:00.000Z'
+      },
+      submitUrl: 'http://127.0.0.1:8788/mobile-browser-handoff/mobile_handoff%3Atiktok',
+      nextStep: 'Open the one-time handoff URL on the phone, paste the mobile cookie export, and submit it once.'
+    });
+
+    renderDashboardPage(<BrowserPage />, { path: '/browser' });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sessions' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Mobile handoff/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create phone link' }));
+
+    await waitFor(() =>
+      expect(apiMocks.startBrowserMobileHandoff).toHaveBeenCalledWith(
+        'token-123',
+        expect.objectContaining({
+          siteKey: 'tiktok',
+          label: 'TikTok personal login',
+          sourceKind: 'raw_cookie_header',
+          domains: ['www.tiktok.com', 'tiktok.com']
+        })
+      )
+    );
+    expect(await screen.findByDisplayValue('http://127.0.0.1:8788/mobile-browser-handoff/mobile_handoff%3Atiktok')).toBeInTheDocument();
+  });
 });

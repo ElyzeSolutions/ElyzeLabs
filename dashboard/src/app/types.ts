@@ -1085,6 +1085,19 @@ export interface BrowserConnectVerificationRow {
   site?: BrowserConnectSitePresetRow;
 }
 
+export interface BrowserMobileSessionHandoffRow {
+  id: string;
+  siteKey: BrowserConnectSiteKey;
+  label: string;
+  domains: string[];
+  verifyUrl: string;
+  sourceKind: BrowserCookieSourceKind;
+  status: 'pending' | 'submitted' | 'expired';
+  expiresAt: string;
+  submittedAt: string | null;
+  createdAt: string;
+}
+
 export interface PairingRow {
   id: string;
   channel: ChannelKind;

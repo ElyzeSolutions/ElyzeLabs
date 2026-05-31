@@ -26,6 +26,7 @@ import type {
   BrowserConnectMethod,
   BrowserConnectSiteKey,
   BrowserConnectVerificationRow,
+  BrowserMobileSessionHandoffRow,
   BrowserLocalProfileKind,
   BrowserSessionVaultState,
   BrowserHistoryState,
@@ -1764,6 +1765,51 @@ export async function connectBrowserAccount(
     sessionProfile: response.sessionProfile,
     verification: response.verification
   };
+}
+
+export async function startBrowserMobileHandoff(
+  token: string,
+  payload: {
+    sessionProfileId?: string;
+    cookieJarId?: string;
+    label: string;
+    ownerLabel?: string | null;
+    siteKey: BrowserConnectSiteKey;
+    domains?: string[];
+    verifyUrl?: string | null;
+    sourceKind?: 'raw_cookie_header' | 'netscape_cookies_txt' | 'manual' | 'json_cookie_export' | 'browser_profile_import';
+    visibility?: 'shared' | 'session_only';
+    allowedSessionIds?: string[];
+    headersProfileId?: string | null;
+    proxyProfileId?: string | null;
+    storageStateId?: string | null;
+    locale?: string | null;
+    countryCode?: string | null;
+    timezoneId?: string | null;
+    notes?: string | null;
+    agentId?: string | null;
+  }
+): Promise<{
+  vault: BrowserSessionVaultState;
+  handoff: BrowserMobileSessionHandoffRow;
+  submitUrl: string;
+  nextStep: string;
+}> {
+  return apiRequest<
+    ApiEnvelope & {
+      vault: BrowserSessionVaultState;
+      handoff: BrowserMobileSessionHandoffRow;
+      submitUrl: string;
+      nextStep: string;
+    }
+  >(
+    '/api/browser/mobile-handoff/start',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    },
+    { token }
+  );
 }
 
 export async function verifyBrowserSessionProfile(

@@ -32,6 +32,7 @@ import {
   runBrowserTest,
   saveBrowserConfig,
   startBrowserLoginCapture,
+  startBrowserMobileHandoff,
   startPlaywrightAuthCapture,
   savePlaywrightAuthCapture,
   saveCurrentPlaywrightAuthSession,
@@ -67,6 +68,7 @@ import type {
   BrowserExtractionMode,
   BrowserLocalProfileKind,
   BrowserHistoryState,
+  BrowserMobileSessionHandoffRow,
   BrowserProviderCapabilityContractRow,
   BrowserRunTraceRow,
   BrowserSessionProfileSummaryRow,
@@ -288,6 +290,11 @@ type BrowserFormState = {
     storageStateId: string;
     playwrightCaptureId: string;
     cdpEndpoint: string;
+    mobileHandoff: {
+      handoff: BrowserMobileSessionHandoffRow;
+      submitUrl: string;
+      nextStep: string;
+    } | null;
   };
   connectBusy: boolean;
   loginCaptureBusy: boolean;
@@ -612,7 +619,8 @@ function useBrowserPageModel() {
         proxyProfileId: '',
         storageStateId: '',
         playwrightCaptureId: '',
-        cdpEndpoint: ''
+        cdpEndpoint: '',
+        mobileHandoff: null
       },
       connectBusy: false,
       loginCaptureBusy: false,
@@ -788,7 +796,8 @@ function useBrowserPageModel() {
       label: current.label.trim().length > 0 && current.siteKey === siteKey ? current.label : preset.defaultProfileLabel,
       verifyUrl: preset.defaultVerifyUrl,
       domains: preset.defaultDomains,
-      sourceKind: siteKey === 'generic' ? current.sourceKind : 'netscape_cookies_txt'
+      sourceKind: siteKey === 'generic' ? current.sourceKind : 'netscape_cookies_txt',
+      mobileHandoff: null
     }));
   }, []);
   const handleConnectAccount = useCallback(async () => {
@@ -867,7 +876,7 @@ function useBrowserPageModel() {
         notes: result.sessionProfile.notes ?? ''
       }));
       if (connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import') {
-        setConnectForm((current) => ({ ...current, raw: '' }));
+        setConnectForm((current) => ({ ...current, raw: '', mobileHandoff: null }));
       }
       if (connectForm.method === 'playwright_storage_state') {
         setConnectForm((current) => ({ ...current, playwrightCaptureId: '' }));
@@ -1001,7 +1010,8 @@ function useBrowserPageModel() {
         visibility: nextVisibility,
         allowedSessionId: nextAllowedSessionId,
         verifyUrl: nextVerifyUrl,
-        domains: nextDomains
+        domains: nextDomains,
+        mobileHandoff: current.siteKey === nextSiteKey && current.method === nextMethod ? current.mobileHandoff : null
       };
     });
   }, [routeBrowser, routeOwner, routeSessionId, routeSite, routeVisibility]);
@@ -1027,7 +1037,8 @@ function useBrowserPageModel() {
         method: 'playwright_storage_state',
         playwrightCaptureId: result.capture.id,
         browserKind: result.capture.browserKind,
-        storageStateId: ''
+        storageStateId: '',
+        mobileHandoff: null
       }));
       setNotice(`Opened ${result.capture.label}. Log in there, then click Connect and test to save auth state.`);
     } catch (cause) {
@@ -1083,7 +1094,8 @@ function useBrowserPageModel() {
         ...current,
         method: 'playwright_storage_state',
         playwrightCaptureId: '',
-        browserKind: result.sessionProfile.browserKind ?? current.browserKind
+        browserKind: result.sessionProfile.browserKind ?? current.browserKind,
+        mobileHandoff: null
       }));
       setNotice(`Saved ${result.sessionProfile.label} from the current Playwright session.`);
     } catch (cause) {
@@ -1111,6 +1123,68 @@ function useBrowserPageModel() {
     connectForm.visibility,
     token,
     updateTestForm
+  ]);
+  const handleStartMobileHandoff = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before creating a mobile handoff link.');
+      return;
+    }
+    setLoginCaptureBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await startBrowserMobileHandoff(token, {
+        siteKey: connectForm.siteKey,
+        label: connectForm.label.trim() || activeConnectSite.defaultProfileLabel,
+        ownerLabel: connectForm.ownerLabel.trim() || null,
+        visibility: connectForm.visibility,
+        allowedSessionIds: connectForm.allowedSessionId ? [connectForm.allowedSessionId] : [],
+        domains: parseLineList(connectForm.domains),
+        verifyUrl: connectForm.verifyUrl.trim() || null,
+        sourceKind: connectForm.sourceKind,
+        headersProfileId: connectForm.headersProfileId || null,
+        proxyProfileId: connectForm.proxyProfileId || null,
+        storageStateId: connectForm.storageStateId || null,
+        locale: connectForm.locale.trim() || null,
+        countryCode: connectForm.countryCode.trim() || null,
+        timezoneId: connectForm.timezoneId.trim() || null,
+        notes: connectForm.notes.trim() || null
+      });
+      setVault(result.vault);
+      setConnectForm((current) => ({
+        ...current,
+        method: 'mobile_session_import',
+        sourceKind: result.handoff.sourceKind,
+        mobileHandoff: {
+          handoff: result.handoff,
+          submitUrl: result.submitUrl,
+          nextStep: result.nextStep
+        }
+      }));
+      setNotice(`Mobile handoff ready for ${result.handoff.label}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to create mobile handoff link.');
+    } finally {
+      setLoginCaptureBusy(false);
+    }
+  }, [
+    activeConnectSite.defaultProfileLabel,
+    connectForm.allowedSessionId,
+    connectForm.countryCode,
+    connectForm.domains,
+    connectForm.headersProfileId,
+    connectForm.label,
+    connectForm.locale,
+    connectForm.notes,
+    connectForm.ownerLabel,
+    connectForm.proxyProfileId,
+    connectForm.siteKey,
+    connectForm.sourceKind,
+    connectForm.storageStateId,
+    connectForm.timezoneId,
+    connectForm.verifyUrl,
+    connectForm.visibility,
+    token
   ]);
   const handleStartLoginCapture = useCallback(async () => {
     if (!token) {
@@ -2129,10 +2203,11 @@ function useBrowserPageModel() {
       applyStealthPreset,
       handleConnectAccount,
       handleVerifySessionProfile,
-      handleEnsureManagedProfile,
-      handleStartPlaywrightAuthCapture,
-      handleSaveCurrentPlaywrightAuthSession,
-      handleStartLoginCapture,
+	      handleEnsureManagedProfile,
+	      handleStartPlaywrightAuthCapture,
+	      handleSaveCurrentPlaywrightAuthSession,
+	      handleStartMobileHandoff,
+	      handleStartLoginCapture,
       handleSessionProfileAction,
       handleAccessModeChange,
       handleToggleAllowlistedAgent,
@@ -2209,9 +2284,10 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
     setDraftValue,
     applyStealthPreset,
     handleConnectAccount,
-    handleStartPlaywrightAuthCapture,
-    handleSaveCurrentPlaywrightAuthSession,
-    handleStartLoginCapture,
+	    handleStartPlaywrightAuthCapture,
+	    handleSaveCurrentPlaywrightAuthSession,
+	    handleStartMobileHandoff,
+	    handleStartLoginCapture,
     handleVerifySessionProfile,
     handleEnsureManagedProfile,
     handleSessionProfileAction,
@@ -2570,7 +2646,8 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                               setConnectForm((c) => ({
                                 ...c,
                                 method: option.id,
-                                sourceKind: sourceKindForConnectMethod(option.id, c.sourceKind)
+                                sourceKind: sourceKindForConnectMethod(option.id, c.sourceKind),
+                                mobileHandoff: null
                               }))
                             }
                             className={[
@@ -2670,7 +2747,8 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                                 setConnectForm((c) => ({
                                   ...c,
                                   browserKind: e.target.value === 'edge' ? 'edge' : 'chrome',
-                                  playwrightCaptureId: ''
+                                  playwrightCaptureId: '',
+                                  mobileHandoff: null
                                 }))
                               }
                               className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
@@ -2729,7 +2807,8 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                                 setConnectForm((c) => ({
                                   ...c,
                                   browserKind: normalizeBrowserLocalProfileKind(e.target.value),
-                                  browserProfileId: ''
+                                  browserProfileId: '',
+                                  mobileHandoff: null
                                 }))
                               }
                               className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
@@ -2779,6 +2858,41 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
 
                     {connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import' ? (
                       <div className="space-y-4 rounded-xl border border-white/8 bg-white/[0.02] p-4">
+                        {connectForm.method === 'mobile_session_import' ? (
+                          <div className="rounded-xl border border-emerald-300/15 bg-emerald-300/[0.06] p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-emerald-50">Phone handoff</p>
+                                <p className="mt-1 max-w-xl text-xs leading-5 text-emerald-50/70">
+                                  Create a one-time phone URL for this site. Submit from the phone, then refresh sessions here.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleStartMobileHandoff()}
+                                disabled={loginCaptureBusy || !connectForm.label.trim()}
+                                className="rounded-lg border border-emerald-200/20 bg-emerald-200/10 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200/35 hover:bg-emerald-200/15 disabled:opacity-50"
+                              >
+                                {loginCaptureBusy ? 'Creating...' : 'Create phone link'}
+                              </button>
+                            </div>
+                            {connectForm.mobileHandoff ? (
+                              <div className="mt-4 grid gap-3">
+                                <label className="space-y-1.5">
+                                  <span className="text-[0.65rem] font-bold uppercase tracking-wider text-emerald-50/70">Phone URL</span>
+                                  <input
+                                    readOnly
+                                    value={connectForm.mobileHandoff.submitUrl}
+                                    className="w-full bg-black/25 border border-emerald-100/15 rounded-lg px-3 py-2 text-xs text-emerald-50"
+                                  />
+                                </label>
+                                <p className="text-xs leading-5 text-emerald-50/70">
+                                  Expires {formatRelativeTime(connectForm.mobileHandoff.handoff.expiresAt)}. {connectForm.mobileHandoff.nextStep}
+                                </p>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <label className="space-y-1.5">
                           <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Cookie Source</span>
                           <select
