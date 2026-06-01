@@ -126,6 +126,7 @@ import {
   type BrowserInteractiveActionInput,
   type BrowserInteractiveActionType,
   type BrowserInteractiveBrowserProfile,
+  type BrowserInteractiveSessionRecord,
   type BrowserInteractiveProvider
 } from './browser-interactive-service.js';
 import { BrowserSessionVault, inferDomainsFromCookies, parseStorageStateCookies } from './browser-session-vault.js';
@@ -7125,6 +7126,44 @@ export async function buildGatewayApp(
       };
     } else {
       delete nextMetadata.browserConnectDraft;
+    }
+    return database.updateSessionMetadata({
+      sessionId: session.id,
+      metadata: nextMetadata
+    });
+  };
+  const parseSessionBrowserInteractiveLiveSessionId = (session: SessionRecord): string | null => {
+    const metadata = parseJsonSafe<Record<string, unknown>>(session.metadataJson, {});
+    const direct = typeof metadata.browserInteractiveLiveSessionId === 'string'
+      ? metadata.browserInteractiveLiveSessionId.trim()
+      : '';
+    if (direct) {
+      return direct;
+    }
+    const nested = isRecord(metadata.browserInteractiveLiveSession) ? metadata.browserInteractiveLiveSession : null;
+    const nestedId = typeof nested?.sessionId === 'string' ? nested.sessionId.trim() : '';
+    return nestedId || null;
+  };
+  const updateSessionBrowserInteractiveLiveSession = (
+    session: SessionRecord,
+    liveSession: BrowserInteractiveSessionRecord | null
+  ): SessionRecord => {
+    const metadata = parseJsonSafe<Record<string, unknown>>(session.metadataJson, {});
+    const nextMetadata = { ...metadata };
+    if (liveSession) {
+      nextMetadata.browserInteractiveLiveSessionId = liveSession.sessionId;
+      nextMetadata.browserInteractiveLiveSession = {
+        sessionId: liveSession.sessionId,
+        provider: liveSession.provider,
+        startedUrl: liveSession.startedUrl,
+        currentUrl: liveSession.currentUrl,
+        startedAt: liveSession.startedAt,
+        lastActivityAt: liveSession.lastActivityAt,
+        updatedAt: utcNow()
+      };
+    } else {
+      delete nextMetadata.browserInteractiveLiveSessionId;
+      delete nextMetadata.browserInteractiveLiveSession;
     }
     return database.updateSessionMetadata({
       sessionId: session.id,
@@ -56793,6 +56832,398 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
           return jsonOk(reply, {
             status: 'blocked',
             reason: 'browser_save_failed'
+          });
+        }
+      }
+
+      if (subcommand === 'live') {
+        const liveMode = (args[1] ?? '').trim().toLowerCase();
+        if (liveMode === 'close') {
+          const liveSessionId = parseSessionBrowserInteractiveLiveSessionId(session);
+          if (!liveSessionId) {
+            await saveOutboundMessage(session, 'system', 'system', 'No live browser session is active for this chat.', {
+              command: 'browser',
+              subcommand: 'live',
+              mode: 'close'
+            });
+            return jsonOk(reply, {
+              status: 'ignored',
+              reason: 'browser_live_session_missing'
+            });
+          }
+          const run = database.createRun({
+            sessionId: session.id,
+            runtime: 'process',
+            requestedRuntime: 'process',
+            effectiveRuntime: 'process',
+            triggerSource: 'telegram',
+            prompt: `Telegram close live browser session ${liveSessionId}`,
+            status: 'running'
+          });
+          try {
+            const closed = await browserInteractiveService.closeSession(liveSessionId);
+            browserInteractiveLiveSessions.delete(liveSessionId);
+            const updatedSession = updateSessionBrowserInteractiveLiveSession(session, null);
+            database.updateRunStatus({
+              runId: run.id,
+              status: closed.closed ? 'completed' : 'failed',
+              error: closed.closed ? null : closed.error ?? 'browser_live_close_failed',
+              resultSummary: closed.closed
+                ? `Live browser session closed: ${liveSessionId}`
+                : `Live browser session close failed: ${closed.error ?? 'unknown'}`
+            });
+            await saveOutboundMessage(
+              updatedSession,
+              'system',
+              'system',
+              closed.closed
+                ? `Closed live browser session ${liveSessionId}.`
+                : `Live browser close failed: ${closed.error ?? 'unknown'}`,
+              {
+                command: 'browser',
+                subcommand: 'live',
+                mode: 'close',
+                liveSessionId
+              }
+            );
+            return jsonOk(reply, {
+              status: closed.closed ? 'command_applied' : 'blocked',
+              command: 'browser',
+              subcommand: 'live',
+              mode: 'close',
+              liveSessionId
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            browserInteractiveLiveSessions.delete(liveSessionId);
+            const updatedSession = updateSessionBrowserInteractiveLiveSession(session, null);
+            database.updateRunStatus({
+              runId: run.id,
+              status: 'failed',
+              error: message,
+              resultSummary: `Live browser session close failed: ${message}`
+            });
+            await saveOutboundMessage(updatedSession, 'system', 'system', `Live browser close failed: ${message}`, {
+              command: 'browser',
+              subcommand: 'live',
+              mode: 'close',
+              liveSessionId
+            });
+            return jsonOk(reply, {
+              status: 'blocked',
+              reason: 'browser_live_close_failed',
+              liveSessionId
+            });
+          }
+        }
+
+        const existingLiveSessionId = parseSessionBrowserInteractiveLiveSessionId(session);
+        if (existingLiveSessionId && browserInteractiveLiveSessions.has(existingLiveSessionId)) {
+          await saveOutboundMessage(
+            session,
+            'system',
+            'system',
+            `Live browser session ${existingLiveSessionId} is already active for this chat. Use /browser observe, /browser click <selector>, /browser type <selector> | <text>, or /browser live close.`,
+            {
+              command: 'browser',
+              subcommand: 'live',
+              liveSessionId: existingLiveSessionId
+            }
+          );
+          return jsonOk(reply, {
+            status: 'ignored',
+            reason: 'browser_live_session_already_active',
+            liveSessionId: existingLiveSessionId
+          });
+        }
+        if (existingLiveSessionId) {
+          updateSessionBrowserInteractiveLiveSession(session, null);
+        }
+
+        const targetText = args.slice(1).join(' ').trim();
+        const stickyProfileId = parseSessionBrowserAuthProfileId(session);
+        const stickyProfile = stickyProfileId ? database.getBrowserSessionProfileById(stickyProfileId) : null;
+        const stickySiteKey = stickyProfile ? inferBrowserConnectSiteFromProfile(stickyProfile) : null;
+        const explicitSiteKey = parseBrowserNamedSiteKey(targetText);
+        const explicitUrl = /^https?:\/\//i.test(targetText) ? targetText : '';
+        const inferredSiteKey = inferBrowserConnectSite({
+          url: explicitUrl || null,
+          prompt: targetText || (stickyProfile?.label ?? null),
+          siteKey: explicitSiteKey
+        });
+        const selectedSiteKey = explicitSiteKey ?? inferredSiteKey ?? (stickySiteKey && stickySiteKey !== 'generic' ? stickySiteKey : null);
+        const targetUrl = explicitUrl || (selectedSiteKey ? resolveBrowserConnectPreset(selectedSiteKey, null).verifyUrl : '');
+        if (!targetUrl) {
+          await saveOutboundMessage(
+            session,
+            'system',
+            'system',
+            'Usage: /browser live <url|tiktok|instagram|reddit|x|pinterest|facebook>. Select a browser profile first or name the site.',
+            {
+              command: 'browser',
+              subcommand: 'live'
+            }
+          );
+          return jsonOk(reply, {
+            status: 'ignored',
+            reason: 'browser_live_target_required'
+          });
+        }
+        const profile = resolveBrowserTestProfile(null);
+        if (!profile) {
+          await saveOutboundMessage(session, 'system', 'system', 'No browser-capable agent is enabled for live browser control.', {
+            command: 'browser',
+            subcommand: 'live'
+          });
+          return jsonOk(reply, {
+            status: 'blocked',
+            reason: 'browser_capable_agent_missing'
+          });
+        }
+        if (!browserCapabilityService.canAgentUse(profile.id, profile.tools)) {
+          await saveOutboundMessage(session, 'system', 'system', `Agent ${profile.id} is not entitled for browser control.`, {
+            command: 'browser',
+            subcommand: 'live'
+          });
+          return jsonOk(reply, {
+            status: 'blocked',
+            reason: 'browser_capability_not_allowed'
+          });
+        }
+        const authProfileResolution = resolveBrowserAuthProfileForRequest({
+          session,
+          targetUrl,
+          requestedSessionProfileId: null,
+          stickySessionProfileId: stickyProfileId,
+          siteKey: selectedSiteKey
+        });
+        const sessionProfileId = authProfileResolution.profile?.id ?? null;
+        const resolvedSessionState = browserSessionVault.resolveForRequest({
+          url: targetUrl,
+          sessionProfileId
+        });
+        const run = database.createRun({
+          sessionId: session.id,
+          runtime: 'process',
+          requestedRuntime: 'process',
+          effectiveRuntime: 'process',
+          triggerSource: 'telegram',
+          prompt: `Telegram start live browser session for ${targetUrl}`,
+          status: 'running'
+        });
+        try {
+          const started = await browserInteractiveService.startSession({
+            url: targetUrl,
+            actions: [],
+            previewChars: 1_500,
+            cookies: resolvedSessionState.cookies,
+            storageState: browserInteractiveStorageStatePayload(resolvedSessionState.storageState),
+            browserProfile: browserInteractiveProfilePayload(resolvedSessionState.sessionProfile)
+          });
+          browserInteractiveLiveSessions.set(started.session.sessionId, {
+            apiSessionId: session.id,
+            agentId: profile.id,
+            sourceSessionId: session.id,
+            sessionProfileId,
+            startedAt: started.session.startedAt
+          });
+          const updatedSession = updateSessionBrowserInteractiveLiveSession(session, started.session);
+          database.appendRunEvent({
+            runId: run.id,
+            sessionId: session.id,
+            type: 'browser.interactive.telegram.live.started',
+            details: 'Telegram live browser session started.',
+            payload: {
+              liveSessionId: started.session.sessionId,
+              currentUrl: started.session.currentUrl,
+              authProfileResolutionSource: authProfileResolution.source,
+              sessionProfileId
+            }
+          });
+          database.updateRunStatus({
+            runId: run.id,
+            status: 'completed',
+            error: null,
+            resultSummary: `Telegram live browser session started: ${started.session.sessionId}`
+          });
+          const authSummary = authProfileResolution.profile
+            ? ` using ${authProfileResolution.profile.label}`
+            : ' without a saved auth profile';
+          await saveOutboundMessage(
+            updatedSession,
+            'system',
+            'system',
+            `Live browser session ${started.session.sessionId} opened ${started.session.currentUrl ?? started.session.startedUrl}${authSummary}. Use /browser observe, /browser click <selector>, /browser type <selector> | <text>, then /browser live close.`,
+            {
+              command: 'browser',
+              subcommand: 'live',
+              liveSessionId: started.session.sessionId,
+              sessionProfileId
+            }
+          );
+          return jsonOk(reply, {
+            status: 'command_applied',
+            command: 'browser',
+            subcommand: 'live',
+            liveSessionId: started.session.sessionId,
+            sessionProfileId,
+            authProfileResolutionSource: authProfileResolution.source
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          database.updateRunStatus({
+            runId: run.id,
+            status: 'failed',
+            error: message,
+            resultSummary: `Telegram live browser session failed: ${message}`
+          });
+          await saveOutboundMessage(session, 'system', 'system', `Live browser failed to start: ${message}`, {
+            command: 'browser',
+            subcommand: 'live'
+          });
+          return jsonOk(reply, {
+            status: 'blocked',
+            reason: 'browser_live_start_failed'
+          });
+        }
+      }
+
+      if (subcommand === 'observe' || subcommand === 'click' || subcommand === 'type') {
+        const liveSessionId = parseSessionBrowserInteractiveLiveSessionId(session);
+        const liveSession = liveSessionId ? browserInteractiveLiveSessions.get(liveSessionId) ?? null : null;
+        if (!liveSessionId || !liveSession) {
+          if (liveSessionId) {
+            updateSessionBrowserInteractiveLiveSession(session, null);
+          }
+          await saveOutboundMessage(
+            session,
+            'system',
+            'system',
+            'No live browser session is active for this chat. Start one with /browser live <url|site>.',
+            {
+              command: 'browser',
+              subcommand
+            }
+          );
+          return jsonOk(reply, {
+            status: 'ignored',
+            reason: 'browser_live_session_missing'
+          });
+        }
+        let action: BrowserInteractiveActionInput | null = null;
+        if (subcommand === 'observe') {
+          action = { type: 'snapshot' };
+        } else if (subcommand === 'click') {
+          const selector = args.slice(1).join(' ').trim();
+          if (selector) {
+            action = { type: 'click', selector, timeoutMs: 2_000 };
+          }
+        } else {
+          const payload = args.slice(1).join(' ').trim();
+          const separatorIndex = payload.indexOf('|');
+          const selector = separatorIndex >= 0 ? payload.slice(0, separatorIndex).trim() : (args[1] ?? '').trim();
+          const text = separatorIndex >= 0 ? payload.slice(separatorIndex + 1).trim() : args.slice(2).join(' ').trim();
+          if (selector && text) {
+            action = { type: 'type', selector, text, timeoutMs: 2_000 };
+          }
+        }
+        if (!action) {
+          const usage =
+            subcommand === 'click'
+              ? 'Usage: /browser click <selector>'
+              : subcommand === 'type'
+                ? 'Usage: /browser type <selector> | <text>'
+                : 'Usage: /browser observe';
+          await saveOutboundMessage(session, 'system', 'system', usage, {
+            command: 'browser',
+            subcommand
+          });
+          return jsonOk(reply, {
+            status: 'ignored',
+            reason: 'browser_live_action_invalid'
+          });
+        }
+        const run = database.createRun({
+          sessionId: session.id,
+          runtime: 'process',
+          requestedRuntime: 'process',
+          effectiveRuntime: 'process',
+          triggerSource: 'telegram',
+          prompt: `Telegram live browser ${subcommand} for ${liveSessionId}`,
+          status: 'running'
+        });
+        try {
+          const result = await browserInteractiveService.runSessionActions({
+            sessionId: liveSessionId,
+            actions: [action],
+            previewChars: 1_500
+          });
+          const updatedSession = updateSessionBrowserInteractiveLiveSession(session, result.session);
+          database.appendRunEvent({
+            runId: run.id,
+            sessionId: session.id,
+            type: 'browser.interactive.telegram.live.action',
+            details: result.control.ok ? 'Telegram live browser action completed.' : 'Telegram live browser action failed.',
+            payload: {
+              liveSessionId,
+              subcommand,
+              currentUrl: result.session.currentUrl,
+              actionCount: result.control.actions.length,
+              artifactCount: result.control.artifacts.length,
+              error: result.control.error
+            }
+          });
+          database.updateRunStatus({
+            runId: run.id,
+            status: result.control.ok ? 'completed' : 'failed',
+            error: result.control.ok ? null : result.control.error ?? 'browser_live_action_failed',
+            resultSummary: result.control.ok
+              ? `Telegram live browser ${subcommand} completed.`
+              : `Telegram live browser ${subcommand} failed: ${result.control.error ?? 'unknown'}`
+          });
+          const artifactPreview =
+            result.control.artifacts.find((artifact) => artifact.kind === 'snapshot')?.contentPreview ??
+            result.control.artifacts.find((artifact) => artifact.kind === 'read')?.contentPreview ??
+            null;
+          const actionSummary = result.control.actions.map((entry) => `${entry.type}: ${entry.summary}`).join('\n');
+          const messageText = [
+            result.control.ok ? `Live browser ${subcommand} completed.` : `Live browser ${subcommand} failed.`,
+            actionSummary,
+            artifactPreview ? `\n${artifactPreview}` : ''
+          ]
+            .filter((entry) => entry.trim().length > 0)
+            .join('\n');
+          await saveOutboundMessage(updatedSession, 'system', 'system', trimTelegramText(messageText), {
+            command: 'browser',
+            subcommand,
+            liveSessionId
+          });
+          return jsonOk(reply, {
+            status: result.control.ok ? 'command_applied' : 'blocked',
+            command: 'browser',
+            subcommand,
+            liveSessionId,
+            currentUrl: result.session.currentUrl,
+            actionCount: result.control.actions.length,
+            artifactCount: result.control.artifacts.length
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          database.updateRunStatus({
+            runId: run.id,
+            status: 'failed',
+            error: message,
+            resultSummary: `Telegram live browser ${subcommand} failed: ${message}`
+          });
+          await saveOutboundMessage(session, 'system', 'system', `Live browser ${subcommand} failed: ${message}`, {
+            command: 'browser',
+            subcommand,
+            liveSessionId
+          });
+          return jsonOk(reply, {
+            status: 'blocked',
+            reason: 'browser_live_action_failed',
+            liveSessionId
           });
         }
       }
