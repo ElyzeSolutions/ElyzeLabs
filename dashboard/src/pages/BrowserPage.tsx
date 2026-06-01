@@ -16,11 +16,14 @@ import { useSearch } from '@tanstack/react-router';
 
 import {
   ApiClientError,
+  closeBrowserInteractiveSession,
   connectBrowserAccount,
   downloadBrowserArtifact,
   deleteBrowserSessionProfile,
   disableBrowserSessionProfile,
   enableBrowserSessionProfile,
+  ensureManagedBrowserProfile,
+  fetchBrowserMobileHandoffStatus,
   importBrowserCookieJar,
   revokeBrowserSessionProfile,
   revokeBrowserCookieJar,
@@ -28,9 +31,15 @@ import {
   revokeBrowserProxyProfile,
   revokeBrowserStorageState,
   resetAgentProfileBaseline,
+  runBrowserInteractiveSessionActions,
   runBrowserTest,
   saveBrowserConfig,
+  startBrowserInteractiveSession,
   startBrowserLoginCapture,
+  startBrowserMobileHandoff,
+  startPlaywrightAuthCapture,
+  savePlaywrightAuthCapture,
+  saveCurrentPlaywrightAuthSession,
   upsertBrowserHeaderProfile,
   upsertBrowserProxyProfile,
   upsertBrowserStorageState,
@@ -61,8 +70,13 @@ import type {
   BrowserConnectVerificationRow,
   BrowserCookieSourceKind,
   BrowserExtractionMode,
+  BrowserInteractiveActionInput,
+  BrowserInteractiveActionType,
+  BrowserInteractiveRunResult,
+  BrowserInteractiveSessionRecord,
   BrowserLocalProfileKind,
   BrowserHistoryState,
+  BrowserMobileSessionHandoffRow,
   BrowserProviderCapabilityContractRow,
   BrowserRunTraceRow,
   BrowserSessionProfileSummaryRow,
@@ -70,7 +84,8 @@ import type {
   BrowserSessionVaultState,
   BrowserTransportMode,
   BrowserTestRequestRow,
-  CardMetric
+  CardMetric,
+  RunRow
 } from '../app/types';
 import { useRouteHeaderMetrics } from '../components/shell/RouteHeaderContext';
 import { clampCount, formatRelativeTime } from '../lib/format';
@@ -89,27 +104,66 @@ const STATUS_TONE_CLASS: Record<BrowserCapabilityStatusRow['healthState'], strin
 
 const EXTRACTION_OPTIONS: BrowserExtractionMode[] = ['markdown', 'html', 'text'];
 const TRANSPORT_OPTIONS: BrowserTransportMode[] = ['stdio', 'http'];
+const LIVE_BROWSER_ACTION_OPTIONS: Array<{ id: BrowserInteractiveActionType; label: string }> = [
+  { id: 'read', label: 'Read page' },
+  { id: 'snapshot', label: 'Snapshot targets' },
+  { id: 'hover', label: 'Hover selector' },
+  { id: 'click', label: 'Click selector' },
+  { id: 'type', label: 'Type text' },
+  { id: 'open', label: 'Open URL' },
+  { id: 'reload', label: 'Reload page' },
+  { id: 'back', label: 'Back' },
+  { id: 'forward', label: 'Forward' },
+  { id: 'scroll', label: 'Scroll' },
+  { id: 'keypress', label: 'Keypress' },
+  { id: 'screenshot', label: 'Screenshot' },
+  { id: 'pdf', label: 'PDF' },
+  { id: 'download', label: 'Download' },
+  { id: 'upload', label: 'Upload file' },
+  { id: 'wait', label: 'Wait' }
+];
 const CONNECT_METHOD_OPTIONS: Array<{
   id: BrowserConnectMethod;
   label: string;
   detail: string;
 }> = [
   {
+    id: 'playwright_storage_state',
+    label: 'Guided auth browser',
+    detail: 'Opens a dedicated Playwright browser for login, then saves storage state for low-detection Scrapling captures.'
+  },
+  {
     id: 'browser_profile_import',
     label: 'Import from browser',
-    detail: 'Best full-fidelity path. Elyze reads cookies from a local Chrome or Firefox profile and saves a reusable session.'
+    detail: 'Best full-fidelity path. Elyze reads cookies from a local Chrome, Edge, Firefox, or Zen profile and saves a reusable session.'
   },
   {
     id: 'real_chrome',
-    label: 'Use current Chrome login',
-    detail: 'Easiest path. Stay logged into the site in Chrome on this machine, then Elyze reuses that browser session.'
+    label: 'Managed real Chrome',
+    detail: 'Runs verification through the real Chrome browser provider. Use Import from browser when you want a saved login from your personal Chrome, Edge, Firefox, or Zen profile.'
   },
   {
     id: 'cookie_import',
     label: 'Paste cookies',
     detail: 'Fallback for other browsers, exported cookies.txt files, or service accounts.'
+  },
+  {
+    id: 'mobile_session_import',
+    label: 'Mobile handoff',
+    detail: 'Guided import for cookies or exported session data captured from a phone browser.'
   }
 ];
+
+const sourceKindForConnectMethod = (
+  method: BrowserConnectMethod,
+  currentSourceKind: BrowserCookieSourceKind
+): BrowserCookieSourceKind => (method === 'mobile_session_import' ? 'raw_cookie_header' : currentSourceKind);
+
+function normalizeBrowserInteractiveActionType(value: string): BrowserInteractiveActionType {
+  const match = LIVE_BROWSER_ACTION_OPTIONS.find((option) => option.id === value);
+  return match?.id ?? 'read';
+}
+
 const CONNECT_SITE_OPTIONS: Array<{
   siteKey: BrowserConnectSiteKey;
   label: string;
@@ -125,7 +179,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'tiktok',
     label: 'TikTok',
     hint: 'Profiles, likes, videos, and authenticated views.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'TikTok personal login',
     defaultVerifyUrl: 'https://www.tiktok.com/foryou',
     defaultDomains: 'www.tiktok.com\ntiktok.com',
@@ -136,7 +190,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'instagram',
     label: 'Instagram',
     hint: 'Profiles, reels, saved views, and guarded pages.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'Instagram personal login',
     defaultVerifyUrl: 'https://www.instagram.com/',
     defaultDomains: 'www.instagram.com\ninstagram.com',
@@ -147,7 +201,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'reddit',
     label: 'Reddit',
     hint: 'Logged-in feeds, saved posts, and private communities.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'Reddit personal login',
     defaultVerifyUrl: 'https://www.reddit.com/',
     defaultDomains: 'www.reddit.com\nreddit.com',
@@ -158,7 +212,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'x',
     label: 'X',
     hint: 'Home feed, searches, and account-specific browsing.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'X personal login',
     defaultVerifyUrl: 'https://x.com/home',
     defaultDomains: 'x.com\nwww.x.com\ntwitter.com\nwww.twitter.com',
@@ -169,7 +223,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'pinterest',
     label: 'Pinterest',
     hint: 'Boards, private pins, and account-scoped discovery.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'Pinterest personal login',
     defaultVerifyUrl: 'https://www.pinterest.com/',
     defaultDomains: 'www.pinterest.com\npinterest.com',
@@ -180,7 +234,7 @@ const CONNECT_SITE_OPTIONS: Array<{
     siteKey: 'facebook',
     label: 'Facebook',
     hint: 'Feeds, pages, and logged-in web views.',
-    recommendedMethod: 'browser_profile_import',
+    recommendedMethod: 'playwright_storage_state',
     defaultProfileLabel: 'Facebook personal login',
     defaultVerifyUrl: 'https://www.facebook.com/',
     defaultDomains: 'www.facebook.com\nfacebook.com\nm.facebook.com',
@@ -212,6 +266,10 @@ type BrowserOpsState = {
   loading: boolean;
   refreshing: boolean;
   testRunning: boolean;
+  liveBusy: 'start' | 'action' | 'close' | null;
+  liveSession: BrowserInteractiveSessionRecord | null;
+  liveControl: BrowserInteractiveRunResult | null;
+  liveRun: RunRow | null;
   configSaving: boolean;
   assignmentBusy: string | null;
   downloadBusy: string | null;
@@ -238,6 +296,24 @@ type BrowserFormState = {
     sessionProfileId: string;
     suspiciousPromptInjection: boolean;
     previewChars: string;
+  };
+  liveForm: {
+    agentId: string;
+    url: string;
+    sessionId: string;
+    sessionProfileId: string;
+    cdpEndpoint: string;
+    previewChars: string;
+    actionType: BrowserInteractiveActionType;
+    actionUrl: string;
+    selector: string;
+    text: string;
+    key: string;
+    filePath: string;
+    filePaths: string;
+    deltaX: string;
+    deltaY: string;
+    timeoutMs: string;
   };
   cookieImportForm: {
     label: string;
@@ -266,6 +342,13 @@ type BrowserFormState = {
     headersProfileId: string;
     proxyProfileId: string;
     storageStateId: string;
+    playwrightCaptureId: string;
+    cdpEndpoint: string;
+    mobileHandoff: {
+      handoff: BrowserMobileSessionHandoffRow;
+      submitUrl: string;
+      nextStep: string;
+    } | null;
   };
   connectBusy: boolean;
   loginCaptureBusy: boolean;
@@ -308,6 +391,23 @@ type BrowserFormState = {
 
 function connectSiteConfig(siteKey: BrowserConnectSiteKey) {
   return CONNECT_SITE_OPTIONS.find((entry) => entry.siteKey === siteKey) ?? CONNECT_SITE_OPTIONS[CONNECT_SITE_OPTIONS.length - 1];
+}
+
+function normalizeBrowserLocalProfileKind(value: string): BrowserLocalProfileKind {
+  if (value === 'edge') {
+    return 'edge';
+  }
+  return value === 'firefox' ? 'firefox' : 'chrome';
+}
+
+function sessionProfileStatusDotClass(profile: BrowserSessionProfileSummaryRow): string {
+  if (!profile.enabled || profile.lastVerificationStatus === 'failed') {
+    return 'bg-rose-400';
+  }
+  if (profile.lastVerificationStatus === 'connected') {
+    return 'bg-emerald-400';
+  }
+  return 'bg-amber-300';
 }
 
 function cloneBrowserConfig(config: BrowserCapabilityConfigRow): BrowserCapabilityConfigRow {
@@ -368,6 +468,81 @@ function parseKeyValueLines(value: string): Record<string, string> {
   );
 }
 
+function parseOptionalNumber(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parsePreviewChars(value: string): number | undefined {
+  const parsed = parseOptionalNumber(value);
+  return parsed === undefined ? undefined : Math.max(80, Math.min(8_000, Math.round(parsed)));
+}
+
+function buildLiveBrowserAction(form: BrowserFormState['liveForm']): BrowserInteractiveActionInput {
+  const action: BrowserInteractiveActionInput = {
+    type: form.actionType
+  };
+  const actionUrl = form.actionUrl.trim();
+  const selector = form.selector.trim();
+  const text = form.text;
+  const key = form.key.trim();
+  const filePath = form.filePath.trim();
+  const filePaths = parseLineList(form.filePaths);
+  const deltaX = parseOptionalNumber(form.deltaX);
+  const deltaY = parseOptionalNumber(form.deltaY);
+  const timeoutMs = parseOptionalNumber(form.timeoutMs);
+
+  if (form.actionType === 'open' && !actionUrl && form.url.trim()) {
+    action.url = form.url.trim();
+  } else if (actionUrl) {
+    action.url = actionUrl;
+  }
+  if (selector) {
+    action.selector = selector;
+  }
+  if (text || form.actionType === 'type') {
+    action.text = text;
+  }
+  if (key) {
+    action.key = key;
+  }
+  if (filePaths.length > 0) {
+    action.filePaths = filePaths;
+  } else if (filePath) {
+    action.filePath = filePath;
+  }
+  if (deltaX !== undefined) {
+    action.deltaX = deltaX;
+  }
+  if (deltaY !== undefined) {
+    action.deltaY = deltaY;
+  }
+  if (timeoutMs !== undefined) {
+    action.timeoutMs = timeoutMs;
+  }
+  return action;
+}
+
+function isLiveBrowserActionReady(form: BrowserFormState['liveForm']): boolean {
+  if (form.actionType === 'click' || form.actionType === 'type' || form.actionType === 'hover' || form.actionType === 'upload') {
+    return form.selector.trim().length > 0;
+  }
+  if (form.actionType === 'open') {
+    return form.actionUrl.trim().length > 0 || form.url.trim().length > 0;
+  }
+  if (form.actionType === 'download') {
+    return form.selector.trim().length > 0 || form.actionUrl.trim().length > 0;
+  }
+  if (form.actionType === 'keypress') {
+    return form.key.trim().length > 0 || form.text.trim().length > 0;
+  }
+  return true;
+}
+
 function stringifyJsonObject(value: Record<string, unknown>): string {
   return JSON.stringify(value, null, 2);
 }
@@ -392,6 +567,7 @@ function CapabilitySwitch({
         type="checkbox"
         role="switch"
         aria-label={label}
+        aria-checked={enabled}
         checked={enabled}
         disabled={disabled}
         onChange={onChange}
@@ -484,6 +660,10 @@ function useBrowserPageModel() {
     loading: true,
     refreshing: false,
     testRunning: false,
+    liveBusy: null,
+    liveSession: null,
+    liveControl: null,
+    liveRun: null,
     configSaving: false,
     assignmentBusy: null,
     downloadBusy: null,
@@ -506,6 +686,10 @@ function useBrowserPageModel() {
     selectedArtifact,
     refreshing,
     testRunning,
+    liveBusy,
+    liveSession,
+    liveControl,
+    liveRun,
     configSaving,
     assignmentBusy,
     downloadBusy,
@@ -544,6 +728,24 @@ function useBrowserPageModel() {
         suspiciousPromptInjection: false,
         previewChars: '360'
       },
+      liveForm: {
+        agentId: '',
+        url: 'https://example.com/',
+        sessionId: '',
+        sessionProfileId: '',
+        cdpEndpoint: '',
+        previewChars: '1000',
+        actionType: 'read',
+        actionUrl: '',
+        selector: '',
+        text: '',
+        key: 'Enter',
+        filePath: '',
+        filePaths: '',
+        deltaX: '',
+        deltaY: '600',
+        timeoutMs: '500'
+      },
       cookieImportForm: {
         label: 'TikTok session',
         domains: 'www.tiktok.com\ntiktok.com',
@@ -570,7 +772,10 @@ function useBrowserPageModel() {
         timezoneId: '',
         headersProfileId: '',
         proxyProfileId: '',
-        storageStateId: ''
+        storageStateId: '',
+        playwrightCaptureId: '',
+        cdpEndpoint: '',
+        mobileHandoff: null
       },
       connectBusy: false,
       loginCaptureBusy: false,
@@ -613,6 +818,7 @@ function useBrowserPageModel() {
   });
   const {
     form,
+    liveForm,
     cookieImportForm,
     connectForm,
     connectBusy,
@@ -629,7 +835,7 @@ function useBrowserPageModel() {
     <K extends keyof BrowserOpsState>(key: K, value: BrowserOpsState[K] | ((current: BrowserOpsState[K]) => BrowserOpsState[K])) => {
       setOpsState((current) => ({
         ...current,
-        [key]: typeof value === 'function' ? (value as (current: BrowserOpsState[K]) => BrowserOpsState[K])(current[key]) : value
+        [key]: typeof value === 'function' ? value(current[key]) : value
       }));
     },
     []
@@ -641,7 +847,7 @@ function useBrowserPageModel() {
     ) => {
       setFormState((current) => ({
         ...current,
-        [key]: typeof value === 'function' ? (value as (current: BrowserFormState[K]) => BrowserFormState[K])(current[key]) : value
+        [key]: typeof value === 'function' ? value(current[key]) : value
       }));
     },
     []
@@ -662,6 +868,16 @@ function useBrowserPageModel() {
   const setLoading = useCallback((value: boolean) => setOpsField('loading', value), [setOpsField]);
   const setRefreshing = useCallback((value: boolean) => setOpsField('refreshing', value), [setOpsField]);
   const setTestRunning = useCallback((value: boolean) => setOpsField('testRunning', value), [setOpsField]);
+  const setLiveBusy = useCallback((value: BrowserOpsState['liveBusy']) => setOpsField('liveBusy', value), [setOpsField]);
+  const setLiveSession = useCallback(
+    (value: BrowserInteractiveSessionRecord | null) => setOpsField('liveSession', value),
+    [setOpsField]
+  );
+  const setLiveControl = useCallback(
+    (value: BrowserInteractiveRunResult | null) => setOpsField('liveControl', value),
+    [setOpsField]
+  );
+  const setLiveRun = useCallback((value: RunRow | null) => setOpsField('liveRun', value), [setOpsField]);
   const setConfigSaving = useCallback((value: boolean) => setOpsField('configSaving', value), [setOpsField]);
   const setAssignmentBusy = useCallback((value: string | null) => setOpsField('assignmentBusy', value), [setOpsField]);
   const setDownloadBusy = useCallback((value: string | null) => setOpsField('downloadBusy', value), [setOpsField]);
@@ -676,6 +892,11 @@ function useBrowserPageModel() {
   );
   const setForm = useCallback(
     (value: BrowserFormState['form'] | ((current: BrowserFormState['form']) => BrowserFormState['form'])) => setFormField('form', value),
+    [setFormField]
+  );
+  const setLiveForm = useCallback(
+    (value: BrowserFormState['liveForm'] | ((current: BrowserFormState['liveForm']) => BrowserFormState['liveForm'])) =>
+      setFormField('liveForm', value),
     [setFormField]
   );
   const setCookieImportForm = useCallback(
@@ -746,7 +967,8 @@ function useBrowserPageModel() {
       label: current.label.trim().length > 0 && current.siteKey === siteKey ? current.label : preset.defaultProfileLabel,
       verifyUrl: preset.defaultVerifyUrl,
       domains: preset.defaultDomains,
-      sourceKind: siteKey === 'generic' ? current.sourceKind : 'netscape_cookies_txt'
+      sourceKind: siteKey === 'generic' ? current.sourceKind : 'netscape_cookies_txt',
+      mobileHandoff: null
     }));
   }, []);
   const handleConnectAccount = useCallback(async () => {
@@ -758,27 +980,55 @@ function useBrowserPageModel() {
     setError(null);
     setNotice(null);
     try {
-      const result = await connectBrowserAccount(token, {
-        label: connectForm.label.trim(),
-        ownerLabel: connectForm.ownerLabel.trim() || null,
-        siteKey: connectForm.siteKey,
-        method: connectForm.method,
-        browserKind: connectForm.method === 'browser_profile_import' ? connectForm.browserKind : null,
-        browserProfileId: connectForm.method === 'browser_profile_import' ? connectForm.browserProfileId || null : null,
-        visibility: connectForm.visibility,
-        allowedSessionIds: connectForm.allowedSessionId ? [connectForm.allowedSessionId] : [],
-        domains: parseLineList(connectForm.domains),
-        verifyUrl: connectForm.verifyUrl.trim() || null,
-        sourceKind: connectForm.method === 'cookie_import' ? connectForm.sourceKind : undefined,
-        raw: connectForm.method === 'cookie_import' ? connectForm.raw : undefined,
-        headersProfileId: connectForm.headersProfileId || null,
-        proxyProfileId: connectForm.proxyProfileId || null,
-        storageStateId: connectForm.storageStateId || null,
-        locale: connectForm.locale.trim() || null,
-        countryCode: connectForm.countryCode.trim() || null,
-        timezoneId: connectForm.timezoneId.trim() || null,
-        notes: connectForm.notes.trim() || null
-      });
+      if (connectForm.method === 'playwright_storage_state' && !connectForm.playwrightCaptureId) {
+        setError('Start the guided auth browser first, log in there, then click Connect and test.');
+        return;
+      }
+      const result =
+        connectForm.method === 'playwright_storage_state'
+          ? await savePlaywrightAuthCapture(token, {
+              captureId: connectForm.playwrightCaptureId,
+              label: connectForm.label.trim(),
+              ownerLabel: connectForm.ownerLabel.trim() || null,
+              visibility: connectForm.visibility,
+              allowedSessionIds: connectForm.allowedSessionId ? [connectForm.allowedSessionId] : [],
+              domains: parseLineList(connectForm.domains),
+              verifyUrl: connectForm.verifyUrl.trim() || null,
+              headersProfileId: connectForm.headersProfileId || null,
+              proxyProfileId: connectForm.proxyProfileId || null,
+              storageStateId: connectForm.storageStateId || undefined,
+              locale: connectForm.locale.trim() || null,
+              countryCode: connectForm.countryCode.trim() || null,
+              timezoneId: connectForm.timezoneId.trim() || null,
+              notes: connectForm.notes.trim() || null
+            })
+          : await connectBrowserAccount(token, {
+              label: connectForm.label.trim(),
+              ownerLabel: connectForm.ownerLabel.trim() || null,
+              siteKey: connectForm.siteKey,
+              method: connectForm.method,
+              browserKind: connectForm.method === 'browser_profile_import' ? connectForm.browserKind : null,
+              browserProfileId: connectForm.method === 'browser_profile_import' ? connectForm.browserProfileId || null : null,
+              visibility: connectForm.visibility,
+              allowedSessionIds: connectForm.allowedSessionId ? [connectForm.allowedSessionId] : [],
+              domains: parseLineList(connectForm.domains),
+              verifyUrl: connectForm.verifyUrl.trim() || null,
+              sourceKind:
+                connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import'
+                  ? connectForm.sourceKind
+                  : undefined,
+              raw:
+                connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import'
+                  ? connectForm.raw
+                  : undefined,
+              headersProfileId: connectForm.headersProfileId || null,
+              proxyProfileId: connectForm.proxyProfileId || null,
+              storageStateId: connectForm.storageStateId || null,
+              locale: connectForm.locale.trim() || null,
+              countryCode: connectForm.countryCode.trim() || null,
+              timezoneId: connectForm.timezoneId.trim() || null,
+              notes: connectForm.notes.trim() || null
+            });
       setVault(result.vault);
       setLastConnectVerification(result.verification);
       setNotice(`Connected ${result.sessionProfile.label} and ran a verification capture.`);
@@ -796,8 +1046,11 @@ function useBrowserPageModel() {
         timezoneId: result.sessionProfile.timezoneId ?? '',
         notes: result.sessionProfile.notes ?? ''
       }));
-      if (connectForm.method === 'cookie_import') {
-        setConnectForm((current) => ({ ...current, raw: '' }));
+      if (connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import') {
+        setConnectForm((current) => ({ ...current, raw: '', mobileHandoff: null }));
+      }
+      if (connectForm.method === 'playwright_storage_state') {
+        setConnectForm((current) => ({ ...current, playwrightCaptureId: '' }));
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Failed to connect browser account.');
@@ -828,6 +1081,25 @@ function useBrowserPageModel() {
     },
     [token, updateTestForm]
   );
+  const handleEnsureManagedProfile = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before creating managed browser profiles.');
+      return;
+    }
+    setVaultBusy('ensure-managed-profile');
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await ensureManagedBrowserProfile(token);
+      setVault(result.vault);
+      updateTestForm('sessionProfileId', result.sessionProfile.id);
+      setNotice(`Managed browser profile ${result.sessionProfile.label} is ready.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to create managed browser profile.');
+    } finally {
+      setVaultBusy(null);
+    }
+  }, [token, updateTestForm]);
   const activeConnectSite = useMemo(() => connectSiteConfig(connectForm.siteKey), [connectForm.siteKey]);
   const localProfiles = useMemo(() => vault?.localProfiles ?? [], [vault?.localProfiles]);
   const filteredLocalProfiles = useMemo(
@@ -872,7 +1144,8 @@ function useBrowserPageModel() {
     setConnectForm((current) => {
       const preset = connectSiteConfig(routeSite ?? current.siteKey);
       const nextSiteKey = routeSite ?? current.siteKey;
-      const nextMethod = current.method === 'cookie_import' ? current.method : preset.recommendedMethod;
+      const nextMethod =
+        current.method === 'cookie_import' || current.method === 'mobile_session_import' ? current.method : preset.recommendedMethod;
       const nextBrowserKind = routeBrowser ?? current.browserKind;
       const nextLabel = current.label.trim().length > 0 ? current.label : preset.defaultProfileLabel;
       const nextOwnerLabel = routeOwner ?? current.ownerLabel;
@@ -880,10 +1153,12 @@ function useBrowserPageModel() {
       const nextAllowedSessionId = routeSessionId ?? current.allowedSessionId;
       const nextVerifyUrl = routeSite ? preset.defaultVerifyUrl : current.verifyUrl;
       const nextDomains = routeSite ? preset.defaultDomains : current.domains;
+      const nextSourceKind = sourceKindForConnectMethod(nextMethod, current.sourceKind);
 
       if (
         current.siteKey === nextSiteKey &&
         current.method === nextMethod &&
+        current.sourceKind === nextSourceKind &&
         current.browserKind === nextBrowserKind &&
         current.label === nextLabel &&
         current.ownerLabel === nextOwnerLabel &&
@@ -899,16 +1174,242 @@ function useBrowserPageModel() {
         ...current,
         siteKey: nextSiteKey,
         method: nextMethod,
+        sourceKind: nextSourceKind,
         browserKind: nextBrowserKind,
         label: nextLabel,
         ownerLabel: nextOwnerLabel,
         visibility: nextVisibility,
         allowedSessionId: nextAllowedSessionId,
         verifyUrl: nextVerifyUrl,
-        domains: nextDomains
+        domains: nextDomains,
+        mobileHandoff: current.siteKey === nextSiteKey && current.method === nextMethod ? current.mobileHandoff : null
       };
     });
   }, [routeBrowser, routeOwner, routeSessionId, routeSite, routeVisibility]);
+  const handleStartPlaywrightAuthCapture = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before starting a guided auth browser.');
+      return;
+    }
+    setLoginCaptureBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await startPlaywrightAuthCapture(token, {
+        siteKey: connectForm.siteKey,
+        browserKind: connectForm.browserKind === 'edge' ? 'edge' : 'chrome',
+        label: connectForm.label.trim() || activeConnectSite.defaultProfileLabel,
+        domains: parseLineList(connectForm.domains),
+        verifyUrl: connectForm.verifyUrl.trim() || null
+      });
+      setVault(result.vault);
+      setConnectForm((current) => ({
+        ...current,
+        method: 'playwright_storage_state',
+        playwrightCaptureId: result.capture.id,
+        browserKind: result.capture.browserKind,
+        storageStateId: '',
+        mobileHandoff: null
+      }));
+      setNotice(`Opened ${result.capture.label}. Log in there, then click Connect and test to save auth state.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to start guided auth browser.');
+    } finally {
+      setLoginCaptureBusy(false);
+    }
+  }, [activeConnectSite.defaultProfileLabel, connectForm.browserKind, connectForm.domains, connectForm.label, connectForm.siteKey, connectForm.verifyUrl, token]);
+  const handleSaveCurrentPlaywrightAuthSession = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before saving the current Playwright login.');
+      return;
+    }
+    setLoginCaptureBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await saveCurrentPlaywrightAuthSession(token, {
+        siteKey: connectForm.siteKey,
+        browserKind: connectForm.browserKind === 'edge' ? 'edge' : 'chrome',
+        label: connectForm.label.trim() || activeConnectSite.defaultProfileLabel,
+        ownerLabel: connectForm.ownerLabel.trim() || null,
+        visibility: connectForm.visibility,
+        allowedSessionIds: connectForm.allowedSessionId ? [connectForm.allowedSessionId] : [],
+        domains: parseLineList(connectForm.domains),
+        verifyUrl: connectForm.verifyUrl.trim() || null,
+        headersProfileId: connectForm.headersProfileId || null,
+        proxyProfileId: connectForm.proxyProfileId || null,
+        storageStateId: connectForm.storageStateId || undefined,
+        cdpEndpoint: connectForm.cdpEndpoint.trim() || null,
+        locale: connectForm.locale.trim() || null,
+        countryCode: connectForm.countryCode.trim() || null,
+        timezoneId: connectForm.timezoneId.trim() || null,
+        notes: connectForm.notes.trim() || null
+      });
+      setVault(result.vault);
+      setLastConnectVerification(result.verification);
+      updateTestForm('sessionProfileId', result.sessionProfile.id);
+      setSessionProfileForm((current) => ({
+        ...current,
+        label: result.sessionProfile.label,
+        domains: result.sessionProfile.domains.join('\n'),
+        cookieJarId: result.sessionProfile.cookieJarId ?? current.cookieJarId,
+        headersProfileId: result.sessionProfile.headersProfileId ?? current.headersProfileId,
+        proxyProfileId: result.sessionProfile.proxyProfileId ?? current.proxyProfileId,
+        storageStateId: result.sessionProfile.storageStateId ?? current.storageStateId,
+        locale: result.sessionProfile.locale ?? '',
+        countryCode: result.sessionProfile.countryCode ?? '',
+        timezoneId: result.sessionProfile.timezoneId ?? '',
+        notes: result.sessionProfile.notes ?? ''
+      }));
+      setConnectForm((current) => ({
+        ...current,
+        method: 'playwright_storage_state',
+        playwrightCaptureId: '',
+        browserKind: result.sessionProfile.browserKind ?? current.browserKind,
+        mobileHandoff: null
+      }));
+      setNotice(`Saved ${result.sessionProfile.label} from the current Playwright session.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to save the current Playwright login.');
+    } finally {
+      setLoginCaptureBusy(false);
+    }
+  }, [
+    activeConnectSite.defaultProfileLabel,
+    connectForm.allowedSessionId,
+    connectForm.browserKind,
+    connectForm.countryCode,
+    connectForm.cdpEndpoint,
+    connectForm.domains,
+    connectForm.headersProfileId,
+    connectForm.label,
+    connectForm.locale,
+    connectForm.notes,
+    connectForm.ownerLabel,
+    connectForm.proxyProfileId,
+    connectForm.siteKey,
+    connectForm.storageStateId,
+    connectForm.timezoneId,
+    connectForm.verifyUrl,
+    connectForm.visibility,
+    token,
+    updateTestForm
+  ]);
+  const handleStartMobileHandoff = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before creating a mobile handoff link.');
+      return;
+    }
+    setLoginCaptureBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await startBrowserMobileHandoff(token, {
+        siteKey: connectForm.siteKey,
+        label: connectForm.label.trim() || activeConnectSite.defaultProfileLabel,
+        ownerLabel: connectForm.ownerLabel.trim() || null,
+        visibility: connectForm.visibility,
+        allowedSessionIds: connectForm.allowedSessionId ? [connectForm.allowedSessionId] : [],
+        domains: parseLineList(connectForm.domains),
+        verifyUrl: connectForm.verifyUrl.trim() || null,
+        sourceKind: connectForm.sourceKind,
+        headersProfileId: connectForm.headersProfileId || null,
+        proxyProfileId: connectForm.proxyProfileId || null,
+        storageStateId: connectForm.storageStateId || null,
+        locale: connectForm.locale.trim() || null,
+        countryCode: connectForm.countryCode.trim() || null,
+        timezoneId: connectForm.timezoneId.trim() || null,
+        notes: connectForm.notes.trim() || null
+      });
+      setVault(result.vault);
+      setConnectForm((current) => ({
+        ...current,
+        method: 'mobile_session_import',
+        sourceKind: result.handoff.sourceKind,
+        mobileHandoff: {
+          handoff: result.handoff,
+          submitUrl: result.submitUrl,
+          nextStep: result.nextStep
+        }
+      }));
+      setNotice(`Mobile handoff ready for ${result.handoff.label}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to create mobile handoff link.');
+    } finally {
+      setLoginCaptureBusy(false);
+    }
+  }, [
+    activeConnectSite.defaultProfileLabel,
+    connectForm.allowedSessionId,
+    connectForm.countryCode,
+    connectForm.domains,
+    connectForm.headersProfileId,
+    connectForm.label,
+    connectForm.locale,
+    connectForm.notes,
+    connectForm.ownerLabel,
+    connectForm.proxyProfileId,
+    connectForm.siteKey,
+    connectForm.sourceKind,
+    connectForm.storageStateId,
+    connectForm.timezoneId,
+    connectForm.verifyUrl,
+    connectForm.visibility,
+    token
+  ]);
+  const handleCheckMobileHandoff = useCallback(async () => {
+    const handoffId = connectForm.mobileHandoff?.handoff.id;
+    if (!handoffId) {
+      setError('Create a mobile handoff link before checking status.');
+      return;
+    }
+    if (!token) {
+      setError('Set API token in Settings before checking a mobile handoff.');
+      return;
+    }
+    setLoginCaptureBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await fetchBrowserMobileHandoffStatus(token, handoffId);
+      setVault(result.vault);
+      setConnectForm((current) => ({
+        ...current,
+        mobileHandoff: current.mobileHandoff
+          ? {
+              ...current.mobileHandoff,
+              handoff: result.handoff
+            }
+          : null
+      }));
+      if (result.handoff.status === 'submitted' && result.sessionProfile) {
+        updateTestForm('sessionProfileId', result.sessionProfile.id);
+        setSessionProfileForm((current) => ({
+          ...current,
+          label: result.sessionProfile ? result.sessionProfile.label : current.label,
+          domains: result.sessionProfile ? result.sessionProfile.domains.join('\n') : current.domains,
+          cookieJarId: result.sessionProfile?.cookieJarId ?? current.cookieJarId,
+          headersProfileId: result.sessionProfile?.headersProfileId ?? current.headersProfileId,
+          proxyProfileId: result.sessionProfile?.proxyProfileId ?? current.proxyProfileId,
+          storageStateId: result.sessionProfile?.storageStateId ?? current.storageStateId,
+          locale: result.sessionProfile?.locale ?? current.locale,
+          countryCode: result.sessionProfile?.countryCode ?? current.countryCode,
+          timezoneId: result.sessionProfile?.timezoneId ?? current.timezoneId
+        }));
+        setNotice(result.verification?.summary ?? `Mobile handoff submitted for ${result.sessionProfile.label}.`);
+        return;
+      }
+      if (result.handoff.status === 'expired') {
+        setNotice('Mobile handoff expired. Create a new phone link.');
+        return;
+      }
+      setNotice('Mobile handoff is still pending.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to check mobile handoff status.');
+    } finally {
+      setLoginCaptureBusy(false);
+    }
+  }, [connectForm.mobileHandoff, setConnectForm, setError, setLoginCaptureBusy, setNotice, setSessionProfileForm, setVault, token, updateTestForm]);
   const handleStartLoginCapture = useCallback(async () => {
     if (!token) {
       setError('Set API token in Settings before starting a login capture.');
@@ -1025,7 +1526,11 @@ function useBrowserPageModel() {
         vault: null,
         history: null,
         selectedRun: null,
-        selectedArtifact: null
+        selectedArtifact: null,
+        liveSession: null,
+        liveControl: null,
+        liveRun: null,
+        liveBusy: null
       }));
       return;
     }
@@ -1311,6 +1816,15 @@ function useBrowserPageModel() {
     }
   }, [enabledAgents, entitledAgents, form.agentId]);
 
+  useEffect(() => {
+    if (!liveForm.agentId) {
+      const preferred = entitledAgents[0]?.id ?? enabledAgents[0]?.id ?? '';
+      if (preferred) {
+        setLiveForm((current) => ({ ...current, agentId: preferred }));
+      }
+    }
+  }, [enabledAgents, entitledAgents, liveForm.agentId]);
+
   const allowedAgentOverride = Boolean(status && status.allowedAgents.length > 0);
   const draftAllowedAgentOverride = Boolean(configDraft && configDraft.allowedAgents.length > 0);
   const configDirty = useMemo(() => {
@@ -1480,6 +1994,102 @@ function useBrowserPageModel() {
       setTestRunning(false);
     }
   }, [form, loadArtifact, refresh, token]);
+
+  const handleStartLiveBrowserSession = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before starting live browser control.');
+      return;
+    }
+    if (!liveForm.url.trim()) {
+      setError('Live browser needs a URL.');
+      return;
+    }
+    setLiveBusy('start');
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await startBrowserInteractiveSession(token, {
+        agentId: liveForm.agentId || undefined,
+        url: liveForm.url.trim(),
+        sessionId: liveForm.sessionId || undefined,
+        sessionProfileId: liveForm.sessionProfileId || undefined,
+        cdpEndpoint: liveForm.cdpEndpoint.trim() || undefined,
+        previewChars: parsePreviewChars(liveForm.previewChars)
+      });
+      setLiveSession(result.liveSession);
+      setLiveControl(result.control);
+      setLiveRun(result.run);
+      setNotice(`Live browser started at ${result.liveSession.currentUrl ?? result.liveSession.startedUrl}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to start live browser control.');
+    } finally {
+      setLiveBusy(null);
+    }
+  }, [liveForm, token]);
+
+  const handleRunLiveBrowserAction = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before controlling the live browser.');
+      return;
+    }
+    if (!liveSession) {
+      setError('Start a live browser session before sending actions.');
+      return;
+    }
+    if (!isLiveBrowserActionReady(liveForm)) {
+      setError('Fill the required fields for this live browser action.');
+      return;
+    }
+    setLiveBusy('action');
+    setError(null);
+    setNotice(null);
+    try {
+      const action = buildLiveBrowserAction(liveForm);
+      const result = await runBrowserInteractiveSessionActions(token, liveSession.sessionId, {
+        actions: [action],
+        previewChars: parsePreviewChars(liveForm.previewChars)
+      });
+      setLiveSession(result.liveSession);
+      setLiveControl(result.control);
+      setLiveRun(result.run);
+      setNotice(
+        result.control.ok
+          ? `Live browser action completed: ${action.type}.`
+          : `Live browser action failed: ${result.control.error ?? action.type}.`
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to run live browser action.');
+    } finally {
+      setLiveBusy(null);
+    }
+  }, [liveForm, liveSession, token]);
+
+  const handleCloseLiveBrowserSession = useCallback(async () => {
+    if (!token) {
+      setError('Set API token in Settings before closing live browser control.');
+      return;
+    }
+    if (!liveSession) {
+      return;
+    }
+    setLiveBusy('close');
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await closeBrowserInteractiveSession(token, liveSession.sessionId);
+      setLiveRun(result.run);
+      setLiveSession(null);
+      setNotice(
+        result.closed.closed
+          ? `Closed live browser at ${result.closed.finalUrl ?? liveSession.currentUrl ?? liveSession.startedUrl}.`
+          : `Live browser close failed: ${result.closed.error ?? 'unknown error'}.`
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to close live browser control.');
+    } finally {
+      setLiveBusy(null);
+    }
+  }, [liveSession, token]);
 
   const handleImportCookieJar = useCallback(async () => {
     if (!token) {
@@ -1851,7 +2461,7 @@ function useBrowserPageModel() {
     }
   }, [selectedArtifactHandle, token]);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'agents' | 'sessions' | 'captures'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'agents' | 'sessions' | 'captures' | 'live'>('overview');
 
   const isLoading = (browserStatusResult.isPending || browserDoctorResult.isPending || browserVaultResult.isPending || browserHistoryResult.isPending) && !status;
 
@@ -1873,6 +2483,10 @@ function useBrowserPageModel() {
       loading: isLoading,
       refreshing,
       testRunning,
+      liveBusy,
+      liveSession,
+      liveControl,
+      liveRun,
       configSaving,
       assignmentBusy,
       downloadBusy,
@@ -1885,6 +2499,7 @@ function useBrowserPageModel() {
     },
     formState: {
       form,
+      liveForm,
       cookieImportForm,
       connectForm,
       connectBusy,
@@ -1914,6 +2529,7 @@ function useBrowserPageModel() {
       setActiveTab,
       setShowAdvanced,
       updateTestForm,
+      setLiveForm,
       applyConnectSite,
       setCookieImportForm,
       setConnectForm,
@@ -1926,12 +2542,20 @@ function useBrowserPageModel() {
       applyStealthPreset,
       handleConnectAccount,
       handleVerifySessionProfile,
+      handleEnsureManagedProfile,
+      handleStartPlaywrightAuthCapture,
+      handleSaveCurrentPlaywrightAuthSession,
+      handleStartMobileHandoff,
+      handleCheckMobileHandoff,
       handleStartLoginCapture,
       handleSessionProfileAction,
       handleAccessModeChange,
       handleToggleAllowlistedAgent,
       handleSaveConfig,
       handleTestRun,
+      handleStartLiveBrowserSession,
+      handleRunLiveBrowserAction,
+      handleCloseLiveBrowserSession,
       handleImportCookieJar,
       handleSaveHeaderProfile,
       handleSaveProxyProfile,
@@ -1972,19 +2596,29 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
     loading,
     refreshing,
     testRunning,
+    liveBusy,
+    liveSession,
+    liveControl,
+    liveRun,
     configSaving,
     assignmentBusy,
+    vaultBusy,
     error,
     notice,
     selectedRunId
   } = opsState;
   const {
     form,
+    liveForm,
     connectForm,
-    connectBusy
+    connectBusy,
+    loginCaptureBusy,
+    lastConnectVerification
   } = formState;
   const {
     activeConnectSite,
+    filteredLocalProfiles,
+    connectableSessions,
     allowedAgentOverride,
     configDirty,
     stealthMode,
@@ -1993,15 +2627,25 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
   const {
     setActiveTab,
     updateTestForm,
+    setLiveForm,
     applyConnectSite,
     setConnectForm,
     setDraftValue,
     applyStealthPreset,
     handleConnectAccount,
+    handleStartPlaywrightAuthCapture,
+    handleSaveCurrentPlaywrightAuthSession,
+    handleStartMobileHandoff,
+    handleCheckMobileHandoff,
+    handleStartLoginCapture,
     handleVerifySessionProfile,
+    handleEnsureManagedProfile,
     handleSessionProfileAction,
     handleSaveConfig,
     handleTestRun,
+    handleStartLiveBrowserSession,
+    handleRunLiveBrowserAction,
+    handleCloseLiveBrowserSession,
     handleRevokeCookieJar,
     handleToggleCapability,
     handleDownloadArtifact,
@@ -2009,6 +2653,11 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
     loadRun
   } = actions;
   const dockerSupportEntries = toKeyedNonEmptyStrings(status?.dockerSupport ?? [], 'docker-support');
+  const browserSessionProfiles = vault?.sessionProfiles ?? [];
+  const managedProfiles = browserSessionProfiles.filter((profile) => profile.profileClass === 'managed');
+  const localProfileImports = browserSessionProfiles.filter((profile) => profile.profileClass === 'local_profile');
+  const authStateProfiles = browserSessionProfiles.filter((profile) => profile.profileClass === 'auth_state');
+  const reconnectProfileCount = browserSessionProfiles.filter((profile) => profile.health.needsReconnect).length;
 
   if (loading) {
     return <BrowserPageSkeleton />;
@@ -2018,7 +2667,8 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
     { id: 'overview', label: 'Overview' },
     { id: 'agents', label: 'Agents' },
     { id: 'sessions', label: 'Sessions' },
-    { id: 'captures', label: 'Captures' }
+    { id: 'captures', label: 'Captures' },
+    { id: 'live', label: 'Live' }
   ];
 
   return (
@@ -2049,13 +2699,14 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
           </div>
         </header>
 
-        <nav className="flex items-center gap-1 border-b border-white/5 pb-px">
+        <nav className="flex items-center gap-1 overflow-x-auto border-b border-white/5 pb-px">
           {TAB_META.map((tab) => (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setActiveTab(tab.id)}
               className={[
-                'relative px-4 py-2 text-sm font-medium transition-colors outline-none',
+                'relative shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors outline-none',
                 activeTab === tab.id ? 'text-white' : 'text-[var(--shell-muted)] hover:text-white'
               ].join(' ')}
             >
@@ -2204,6 +2855,48 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                 </section>
 
                 <section className={`${PANEL_CLASS} p-6`}>
+                  <div className="mb-5 flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="text-lg font-medium text-white">Managed Profiles</h2>
+                      <p className="mt-1 text-xs text-[var(--shell-muted)]">Agent-only browser state separated from local Chrome profiles.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleEnsureManagedProfile()}
+                      disabled={vaultBusy === 'ensure-managed-profile'}
+                      className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/25 hover:bg-white/[0.09] disabled:opacity-50"
+                    >
+                      {vaultBusy === 'ensure-managed-profile' ? 'Creating...' : 'Create managed profile'}
+                    </button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <InfoRow label="Managed" value={String(managedProfiles.length)} />
+                    <InfoRow label="Auth states" value={String(authStateProfiles.length)} />
+                    <InfoRow label="Local imports" value={String(localProfileImports.length)} />
+                    <InfoRow label="Reconnect" value={String(reconnectProfileCount)} />
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {managedProfiles.length > 0 ? (
+                      managedProfiles.slice(0, 3).map((profile) => (
+                        <div key={profile.id} className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-white">{profile.label}</p>
+                            <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[0.65rem] uppercase tracking-wider text-emerald-100">
+                              isolated
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs leading-5 text-[var(--shell-muted)]">{profile.isolationSummary}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs leading-5 text-amber-100">
+                        No managed profile exists yet. Create one before attaching personal browser profiles.
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className={`${PANEL_CLASS} p-6`}>
                   <h2 className="text-lg font-medium text-white mb-4">Postures</h2>
                   <div className="space-y-4">
                     <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
@@ -2279,6 +2972,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                       return (
                         <button
                           key={site.siteKey}
+                          type="button"
                           onClick={() => applyConnectSite(site.siteKey)}
                           className={[
                             'p-4 rounded-xl border transition-all text-left',
@@ -2301,7 +2995,15 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                         return (
                           <button
                             key={option.id}
-                            onClick={() => setConnectForm((c) => ({ ...c, method: option.id }))}
+                            type="button"
+                            onClick={() =>
+                              setConnectForm((c) => ({
+                                ...c,
+                                method: option.id,
+                                sourceKind: sourceKindForConnectMethod(option.id, c.sourceKind),
+                                mobileHandoff: null
+                              }))
+                            }
                             className={[
                               'p-4 rounded-xl border transition-all text-left',
                               active
@@ -2337,30 +3039,344 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                       </label>
                     </div>
 
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="space-y-1.5">
+                        <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Verify URL</span>
+                        <input
+                          value={connectForm.verifyUrl}
+                          onChange={(e) => setConnectForm((c) => ({ ...c, verifyUrl: e.target.value }))}
+                          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                          placeholder={activeConnectSite.defaultVerifyUrl}
+                        />
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Visibility</span>
+                        <select
+                          value={connectForm.visibility}
+                          onChange={(e) => setConnectForm((c) => ({ ...c, visibility: e.target.value === 'session_only' ? 'session_only' : 'shared' }))}
+                          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        >
+                          <option value="shared">Shared</option>
+                          <option value="session_only">Session only</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    {connectForm.visibility === 'session_only' ? (
+                      <label className="block space-y-1.5">
+                        <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Allowed Session</span>
+                        <select
+                          value={connectForm.allowedSessionId}
+                          onChange={(e) => setConnectForm((c) => ({ ...c, allowedSessionId: e.target.value }))}
+                          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        >
+                          <option value="">Choose an active session</option>
+                          {connectableSessions.map((session) => (
+                            <option key={session.id} value={session.id}>
+                              {session.agentProfile?.name ?? session.sessionKey}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Domains</span>
+                      <textarea
+                        value={connectForm.domains}
+                        onChange={(e) => setConnectForm((c) => ({ ...c, domains: e.target.value }))}
+                        rows={3}
+                        className="w-full resize-y bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                      />
+                    </label>
+
+                    {connectForm.method === 'playwright_storage_state' ? (
+                      <div className="rounded-xl border border-violet-300/15 bg-violet-300/[0.06] p-4">
+                        <div className="grid gap-4 sm:grid-cols-[0.35fr_0.65fr]">
+                          <label className="space-y-1.5">
+                            <span className="text-[0.65rem] font-bold uppercase tracking-wider text-violet-100/80">Browser</span>
+                            <select
+                              value={connectForm.browserKind === 'edge' ? 'edge' : 'chrome'}
+                              onChange={(e) =>
+                                setConnectForm((c) => ({
+                                  ...c,
+                                  browserKind: e.target.value === 'edge' ? 'edge' : 'chrome',
+                                  playwrightCaptureId: '',
+                                  mobileHandoff: null
+                                }))
+                              }
+                              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                            >
+                              <option value="chrome">Chrome</option>
+                              <option value="edge">Edge</option>
+                            </select>
+                          </label>
+                          <div className="space-y-1.5">
+                            <span className="text-[0.65rem] font-bold uppercase tracking-wider text-violet-100/80">Guided Capture</span>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => void handleStartPlaywrightAuthCapture()}
+                                disabled={loginCaptureBusy}
+                                className="rounded-lg border border-violet-200/20 bg-violet-200/10 px-3 py-2 text-xs font-semibold text-violet-50 transition hover:border-violet-200/35 hover:bg-violet-200/15 disabled:opacity-50"
+                              >
+                                {loginCaptureBusy ? 'Working...' : connectForm.playwrightCaptureId ? 'Restart auth browser' : 'Open auth browser'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveCurrentPlaywrightAuthSession()}
+                                disabled={loginCaptureBusy}
+                                className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-violet-50 transition hover:border-white/20 hover:bg-white/[0.07] disabled:opacity-50"
+                              >
+                                {loginCaptureBusy ? 'Working...' : 'Save current login'}
+                              </button>
+                              <span className="text-xs leading-5 text-violet-50/70">
+                                {connectForm.playwrightCaptureId
+                                  ? 'Login window is ready; click Connect and test after signing in.'
+                                  : 'Opens a dedicated login browser and saves storage state into Scrapling auth.'}
+                              </span>
+                            </div>
+                            <label className="mt-3 block space-y-1.5">
+                              <span className="text-[0.65rem] font-bold uppercase tracking-wider text-violet-100/80">Live CDP Endpoint</span>
+                              <input
+                                value={connectForm.cdpEndpoint}
+                                onChange={(e) => setConnectForm((c) => ({ ...c, cdpEndpoint: e.target.value }))}
+                                placeholder="http://127.0.0.1:9339"
+                                className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {connectForm.method === 'browser_profile_import' ? (
+                      <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
+                        <div className="grid gap-4 sm:grid-cols-[0.42fr_0.58fr]">
+                          <label className="space-y-1.5">
+                            <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Browser</span>
+                            <select
+                              value={connectForm.browserKind}
+                              onChange={(e) =>
+                                setConnectForm((c) => ({
+                                  ...c,
+                                  browserKind: normalizeBrowserLocalProfileKind(e.target.value),
+                                  browserProfileId: '',
+                                  mobileHandoff: null
+                                }))
+                              }
+                              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                            >
+                              <option value="chrome">Chrome</option>
+                              <option value="edge">Edge</option>
+                              <option value="firefox">Firefox / Zen</option>
+                            </select>
+                          </label>
+                          <label className="space-y-1.5">
+                            <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Local Profile</span>
+                            <select
+                              value={connectForm.browserProfileId}
+                              onChange={(e) => setConnectForm((c) => ({ ...c, browserProfileId: e.target.value }))}
+                              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                            >
+                              <option value="">Choose profile</option>
+                              {filteredLocalProfiles.map((profile) => (
+                                <option key={profile.id} value={profile.id}>
+                                  {profile.label} ({profile.profileName})
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        {filteredLocalProfiles.length === 0 ? (
+                          <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs leading-5 text-amber-100">
+                            No local {connectForm.browserKind} profiles were detected on this machine.
+                          </p>
+                        ) : (
+                          <div className="mt-4 flex flex-wrap items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => void handleStartLoginCapture()}
+                              disabled={loginCaptureBusy || !connectForm.browserProfileId}
+                              className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white transition hover:border-white/25 hover:bg-white/[0.09] disabled:opacity-50"
+                            >
+                              {loginCaptureBusy ? 'Opening...' : 'Open login window'}
+                            </button>
+                            <span className="text-xs leading-5 text-[var(--shell-muted)]">
+                              Log in in the opened browser, return here, then connect and verify.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import' ? (
+                      <div className="space-y-4 rounded-xl border border-white/8 bg-white/[0.02] p-4">
+                        {connectForm.method === 'mobile_session_import' ? (
+                          <div className="rounded-xl border border-emerald-300/15 bg-emerald-300/[0.06] p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-emerald-50">Phone handoff</p>
+                                <p className="mt-1 max-w-xl text-xs leading-5 text-emerald-50/70">
+                                  Create a one-time phone URL for this site. Submit from the phone, then check status here.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleStartMobileHandoff()}
+                                disabled={loginCaptureBusy || !connectForm.label.trim()}
+                                className="rounded-lg border border-emerald-200/20 bg-emerald-200/10 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200/35 hover:bg-emerald-200/15 disabled:opacity-50"
+                              >
+                                {loginCaptureBusy ? 'Creating...' : 'Create phone link'}
+                              </button>
+                            </div>
+                            {connectForm.mobileHandoff ? (
+                              <div className="mt-4 grid gap-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-100/10 bg-black/20 px-3 py-2">
+                                  <span className="text-xs font-semibold text-emerald-50">
+                                    Status: {connectForm.mobileHandoff.handoff.status}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleCheckMobileHandoff()}
+                                    disabled={loginCaptureBusy}
+                                    className="rounded-md border border-emerald-100/15 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-emerald-50/80 transition hover:border-emerald-100/30 hover:text-emerald-50 disabled:opacity-50"
+                                  >
+                                    {loginCaptureBusy ? 'Checking...' : 'Check submission'}
+                                  </button>
+                                </div>
+                                <label className="space-y-1.5">
+                                  <span className="text-[0.65rem] font-bold uppercase tracking-wider text-emerald-50/70">Phone URL</span>
+                                  <input
+                                    readOnly
+                                    value={connectForm.mobileHandoff.submitUrl}
+                                    className="w-full bg-black/25 border border-emerald-100/15 rounded-lg px-3 py-2 text-xs text-emerald-50"
+                                  />
+                                </label>
+                                <p className="text-xs leading-5 text-emerald-50/70">
+                                  Expires {formatRelativeTime(connectForm.mobileHandoff.handoff.expiresAt)}. {connectForm.mobileHandoff.nextStep}
+                                </p>
+                                {connectForm.mobileHandoff.handoff.completedVerificationSummary ? (
+                                  <p className="rounded-lg border border-emerald-100/10 bg-emerald-200/10 px-3 py-2 text-xs leading-5 text-emerald-50">
+                                    {connectForm.mobileHandoff.handoff.completedVerificationSummary}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <label className="space-y-1.5">
+                          <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Cookie Source</span>
+                          <select
+                            value={connectForm.sourceKind}
+                            onChange={(e) =>
+                              setConnectForm((c) => ({
+                                ...c,
+                                sourceKind:
+                                  e.target.value === 'raw_cookie_header' ||
+                                  e.target.value === 'manual' ||
+                                  e.target.value === 'json_cookie_export' ||
+                                  e.target.value === 'browser_profile_import'
+                                    ? e.target.value
+                                    : 'netscape_cookies_txt'
+                              }))
+                            }
+                            className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                          >
+                            <option value="netscape_cookies_txt">cookies.txt</option>
+                            <option value="raw_cookie_header">Raw Cookie header</option>
+                            <option value="json_cookie_export">JSON export</option>
+                            <option value="manual">Manual</option>
+                          </select>
+                          {connectForm.method === 'mobile_session_import' ? (
+                            <span className="text-xs leading-5 text-[var(--shell-muted)]">
+                              Paste a copied Cookie header from the phone browser or a mobile cookie-export shortcut.
+                            </span>
+                          ) : null}
+                        </label>
+                        <label className="block space-y-1.5">
+                          <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Cookie Payload</span>
+                          <textarea
+                            value={connectForm.raw}
+                            onChange={(e) => setConnectForm((c) => ({ ...c, raw: e.target.value }))}
+                            rows={7}
+                            className="w-full resize-y bg-black/30 border border-white/10 rounded-lg px-3 py-2 font-mono text-xs text-white"
+                            placeholder="Paste exported cookies here"
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Notes</span>
+                      <textarea
+                        value={connectForm.notes}
+                        onChange={(e) => setConnectForm((c) => ({ ...c, notes: e.target.value }))}
+                        rows={2}
+                        className="w-full resize-y bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="Purpose, owner, reconnect hints"
+                      />
+                    </label>
+
                     <div className="flex flex-wrap gap-3 pt-4 border-t border-white/5">
                       <button
+                        type="button"
                         onClick={() => void handleConnectAccount()}
-                        disabled={connectBusy}
+                        disabled={
+                          connectBusy ||
+                          !connectForm.label.trim() ||
+                          (connectForm.method === 'browser_profile_import' && !connectForm.browserProfileId) ||
+                          ((connectForm.method === 'cookie_import' || connectForm.method === 'mobile_session_import') && !connectForm.raw.trim())
+                        }
                         className="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-white/90 disabled:opacity-50"
                       >
                         {connectBusy ? 'Connecting...' : 'Connect & Verify'}
                       </button>
                     </div>
+
+                    {lastConnectVerification ? (
+                      <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-4 text-xs leading-5 text-emerald-100">
+                        <p className="font-semibold text-white">Last verification</p>
+                        <p className="mt-1">{lastConnectVerification.summary ?? lastConnectVerification.run.status}</p>
+                      </div>
+                    ) : null}
                   </div>
                 </section>
 
                 <section className={`${PANEL_CLASS} p-6`}>
-                  <h2 className="text-lg font-medium text-white mb-6">Session Profiles</h2>
+                  <div className="mb-6 flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-medium text-white">Session Profiles</h2>
+                    <button
+                      type="button"
+                      onClick={() => void handleEnsureManagedProfile()}
+                      disabled={vaultBusy === 'ensure-managed-profile'}
+                      className="rounded-lg border border-white/10 px-3 py-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-white/70 hover:text-white disabled:opacity-50"
+                    >
+                      {vaultBusy === 'ensure-managed-profile' ? 'Creating' : 'Create managed'}
+                    </button>
+                  </div>
                   <div className="space-y-3">
                     {(vault?.sessionProfiles ?? []).length > 0 ? (
                       vault?.sessionProfiles.map((p) => (
                         <div key={p.id} className="p-4 rounded-xl border border-white/5 bg-white/[0.02]">
                           <div className="flex items-center justify-between gap-3 mb-3">
-                            <p className="text-sm font-medium text-white">{p.label}</p>
-                            <span className={`h-2 w-2 rounded-full ${p.lastVerificationStatus === 'connected' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                            <div>
+                              <p className="text-sm font-medium text-white">{p.label}</p>
+                              <p className="mt-1 text-[0.65rem] text-[var(--shell-muted)]">{p.isolationSummary}</p>
+                            </div>
+                            <span className={`h-2 w-2 rounded-full ${sessionProfileStatusDotClass(p)}`} />
+                          </div>
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            <span className={`rounded-full border px-2 py-1 text-[0.65rem] uppercase tracking-wider ${p.profileClass === 'managed' ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : p.profileClass === 'local_profile' ? 'border-amber-300/20 bg-amber-300/10 text-amber-100' : p.profileClass === 'auth_state' ? 'border-violet-300/20 bg-violet-300/10 text-violet-100' : 'border-sky-300/20 bg-sky-300/10 text-sky-100'}`}>
+                              {p.profileClass === 'managed' ? 'managed' : p.profileClass === 'local_profile' ? 'local import' : p.profileClass === 'auth_state' ? 'auth state' : 'real chrome'}
+                            </span>
+                            <span className="rounded-full border border-white/10 px-2 py-1 text-[0.65rem] uppercase tracking-wider text-white/55">
+                              {p.enabled ? 'enabled' : 'disabled'}
+                            </span>
                           </div>
                           <div className="flex items-center gap-2">
                             <button
+                              type="button"
                               onClick={() => void handleVerifySessionProfile(p.id)}
                               className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-accent)] hover:brightness-110"
                             >
@@ -2368,6 +3384,15 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                             </button>
                             <span className="text-white/10">|</span>
                             <button
+                              type="button"
+                              onClick={() => void handleSessionProfileAction(p, p.enabled ? 'disable' : 'enable')}
+                              className="text-[0.65rem] font-bold uppercase tracking-wider text-white/55 hover:text-white"
+                            >
+                              {p.enabled ? 'Disable' : 'Enable'}
+                            </button>
+                            <span className="text-white/10">|</span>
+                            <button
+                              type="button"
                               onClick={() => void handleSessionProfileAction(p, 'delete')}
                               className="text-[0.65rem] font-bold uppercase tracking-wider text-rose-400 hover:brightness-110"
                             >
@@ -2394,6 +3419,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                           <p className="text-[0.65rem] text-[var(--shell-muted)]">{jar.cookieCount} cookies</p>
                         </div>
                         <button
+                          type="button"
                           onClick={() => void handleRevokeCookieJar(jar.id)}
                           className="text-[0.65rem] font-bold uppercase tracking-wider text-white/40 hover:text-white"
                         >
@@ -2447,6 +3473,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                     </div>
                     <div className="pt-4 flex items-center gap-3">
                       <button
+                        type="button"
                         onClick={() => void handleTestRun()}
                         disabled={testRunning || !form.url.trim()}
                         className="rounded-lg bg-[var(--shell-accent)] px-4 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50"
@@ -2463,6 +3490,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                     {history?.rows.map((trace) => (
                       <button
                         key={trace.runId}
+                        type="button"
                         onClick={() => void loadRun(trace.runId)}
                         className={[
                           'w-full p-4 rounded-xl border transition-all text-left',
@@ -2501,6 +3529,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                         {selectedArtifact.contentPreview}
                       </pre>
                       <button
+                        type="button"
                         onClick={() => void handleDownloadArtifact()}
                         className="text-xs font-semibold text-[var(--shell-accent)] hover:underline"
                       >
@@ -2509,6 +3538,331 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                     </div>
                   ) : (
                     <p className="text-xs text-[var(--shell-muted)]">Select a trace to view artifacts.</p>
+                  )}
+                </section>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'live' && (
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+              <div className="space-y-6">
+                <section className={`${PANEL_CLASS} p-6`}>
+                  <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-medium text-white">Live Browser</h2>
+                      <p className="mt-1 text-xs leading-5 text-[var(--shell-muted)]">
+                        Persistent CDP session for click, type, read, screenshot, PDF, upload, download, scroll, and keypress actions.
+                      </p>
+                    </div>
+                    <span className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wider ${liveSession ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100' : 'border-white/10 bg-white/[0.04] text-white/55'}`}>
+                      {liveSession ? 'connected' : 'idle'}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block space-y-1.5 sm:col-span-2">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Live URL</span>
+                      <input
+                        value={liveForm.url}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, url: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="https://..."
+                      />
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Agent</span>
+                      <select
+                        value={liveForm.agentId}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, agentId: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none"
+                      >
+                        {enabledAgents.map((agent) => (
+                          <option key={agent.id} value={agent.id}>
+                            {agent.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Profile</span>
+                      <select
+                        value={liveForm.sessionProfileId}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, sessionProfileId: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none"
+                      >
+                        <option value="">Auto / none</option>
+                        {(vault?.sessionProfiles ?? []).map((profile) => (
+                          <option key={profile.id} value={profile.id}>
+                            {profile.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Source session</span>
+                      <select
+                        value={liveForm.sessionId}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, sessionId: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none"
+                      >
+                        <option value="">None</option>
+                        {connectableSessions.map((session) => (
+                          <option key={session.id} value={session.id}>
+                            {session.sessionKey}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Preview chars</span>
+                      <input
+                        value={liveForm.previewChars}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, previewChars: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        inputMode="numeric"
+                      />
+                    </label>
+
+                    <label className="block space-y-1.5 sm:col-span-2">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">CDP endpoint</span>
+                      <input
+                        value={liveForm.cdpEndpoint}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, cdpEndpoint: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="Optional admin-only http://127.0.0.1:9222"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-3 border-t border-white/5 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => void handleStartLiveBrowserSession()}
+                      disabled={liveBusy !== null || !liveForm.url.trim()}
+                      className="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-white/90 disabled:opacity-50"
+                    >
+                      {liveBusy === 'start' ? 'Starting...' : 'Start Live Browser'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCloseLiveBrowserSession()}
+                      disabled={liveBusy !== null || !liveSession}
+                      className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-white/70 hover:border-white/25 hover:text-white disabled:opacity-50"
+                    >
+                      {liveBusy === 'close' ? 'Closing...' : 'Close Live Browser'}
+                    </button>
+                  </div>
+                </section>
+
+                <section className={`${PANEL_CLASS} p-6`}>
+                  <h2 className="text-lg font-medium text-white mb-6">Action Console</h2>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Live action</span>
+                      <select
+                        value={liveForm.actionType}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({
+                            ...current,
+                            actionType: normalizeBrowserInteractiveActionType(value)
+                          }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none"
+                      >
+                        {LIVE_BROWSER_ACTION_OPTIONS.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Timeout ms</span>
+                      <input
+                        value={liveForm.timeoutMs}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, timeoutMs: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        inputMode="numeric"
+                      />
+                    </label>
+                    <label className="block space-y-1.5 sm:col-span-2">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Selector</span>
+                      <input
+                        value={liveForm.selector}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, selector: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="#search, input[name=q], button:has-text('Continue')"
+                      />
+                    </label>
+                    <label className="block space-y-1.5 sm:col-span-2">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Text</span>
+                      <textarea
+                        value={liveForm.text}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, text: value }));
+                        }}
+                        rows={3}
+                        className="w-full resize-y bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="Text for type or keypress actions"
+                      />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Action URL</span>
+                      <input
+                        value={liveForm.actionUrl}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, actionUrl: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="For open or direct download"
+                      />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Key</span>
+                      <input
+                        value={liveForm.key}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, key: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="Enter, Escape, Tab"
+                      />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">File path</span>
+                      <input
+                        value={liveForm.filePath}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, filePath: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        placeholder="/tmp/upload.png"
+                      />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Scroll Y</span>
+                      <input
+                        value={liveForm.deltaY}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLiveForm((current) => ({ ...current, deltaY: value }));
+                        }}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                        inputMode="numeric"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-3 border-t border-white/5 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => void handleRunLiveBrowserAction()}
+                      disabled={liveBusy !== null || !liveSession || !isLiveBrowserActionReady(liveForm)}
+                      className="rounded-lg bg-[var(--shell-accent)] px-4 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50"
+                    >
+                      {liveBusy === 'action' ? 'Running...' : 'Run Live Action'}
+                    </button>
+                  </div>
+                </section>
+              </div>
+
+              <div className="space-y-6">
+                <section className={`${PANEL_CLASS} p-6`}>
+                  <h2 className="text-lg font-medium text-white mb-6">Live State</h2>
+                  {liveSession ? (
+                    <div className="space-y-3">
+                      <InfoRow label="Session" value={liveSession.sessionId} />
+                      <InfoRow label="Provider" value={liveSession.provider} />
+                      <InfoRow label="Current URL" value={liveSession.currentUrl ?? liveSession.startedUrl} />
+                    </div>
+                  ) : (
+                    <p className="text-xs leading-5 text-[var(--shell-muted)]">No live browser session is active.</p>
+                  )}
+                  {liveRun ? (
+                    <div className="mt-4 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-xs leading-5 text-[var(--shell-muted)]">
+                      Last run: <span className="text-white">{liveRun.status}</span>
+                    </div>
+                  ) : null}
+                </section>
+
+                <section className={`${PANEL_CLASS} p-6`}>
+                  <h2 className="text-lg font-medium text-white mb-6">Last Result</h2>
+                  {liveControl ? (
+                    <div className="space-y-4">
+                      <div className={`rounded-xl border p-3 text-xs leading-5 ${liveControl.ok ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100' : 'border-rose-300/20 bg-rose-300/10 text-rose-100'}`}>
+                        {liveControl.ok ? 'Action batch completed.' : liveControl.error ?? 'Action batch failed.'}
+                      </div>
+                      <div className="space-y-2">
+                        {liveControl.actions.map((action) => (
+                          <div key={`${action.index}-${action.type}`} className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-medium text-white">{action.type}</p>
+                              <span className={action.ok ? 'text-xs text-emerald-200' : 'text-xs text-rose-200'}>
+                                {action.ok ? 'ok' : 'failed'}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-xs leading-5 text-[var(--shell-muted)]">{action.summary}</p>
+                            {action.textPreview ? (
+                              <pre className="mt-2 max-h-36 overflow-auto rounded-lg bg-black/30 p-2 text-[0.7rem] text-white">
+                                {action.textPreview}
+                              </pre>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                      {liveControl.artifacts.length > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--shell-muted)]">Artifacts</p>
+                          {liveControl.artifacts.map((artifact) => (
+                            <div key={artifact.id} className="rounded-xl border border-white/5 bg-black/20 p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-semibold text-white">{artifact.kind}</p>
+                                <p className="text-[0.65rem] text-[var(--shell-muted)]">{artifact.mimeType}</p>
+                              </div>
+                              <pre className="mt-2 max-h-40 overflow-auto text-[0.7rem] leading-5 text-white/80">
+                                {artifact.contentPreview}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-xs leading-5 text-[var(--shell-muted)]">Run a live action to see CDP results here.</p>
                   )}
                 </section>
               </div>

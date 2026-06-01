@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 
 import {
+  applyScheduleGuardrails,
   createSchedule,
   deleteSchedule,
   pauseSchedule,
@@ -28,6 +29,7 @@ import type {
   ScheduleConcurrencyPolicy,
   ScheduleDeliveryTarget,
   ScheduleDetailState,
+  ScheduleGuardrailStatus,
   ScheduleRow,
   ScheduleSessionTarget,
   SessionRow
@@ -239,7 +241,7 @@ const emptyForm = (): ScheduleFormState => ({
   metadata: {}
 });
 
-type ScheduleBusyState = 'refresh' | 'create' | 'save' | 'pause' | 'resume' | 'run' | 'delete' | null;
+type ScheduleBusyState = 'refresh' | 'create' | 'save' | 'pause' | 'resume' | 'run' | 'delete' | 'guardrails' | null;
 
 function canDeleteSchedule(schedule: ScheduleRow): boolean {
   return schedule.kind !== 'builtin';
@@ -299,6 +301,16 @@ function scheduleJobModeLabel(jobMode: string | null): string {
     return 'workflow';
   }
   return 'agent prompt';
+}
+
+function scheduleGuardrailTone(status: ScheduleGuardrailStatus): string {
+  if (status === 'fail') {
+    return 'border-rose-300/25 bg-rose-400/10 text-rose-100';
+  }
+  if (status === 'warn') {
+    return 'border-amber-300/25 bg-amber-300/10 text-amber-100';
+  }
+  return 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100';
 }
 
 const statusToneBySchedule = (schedule: ScheduleRow): CardMetric['tone'] => {
@@ -847,6 +859,27 @@ function useSchedulesPageModel() {
     [refreshScheduleReads, token]
   );
 
+  const handleApplyGuardrails = useCallback(
+    async (schedule: ScheduleRow): Promise<void> => {
+      if (!token) {
+        return;
+      }
+      setBusy('guardrails');
+      setMessage(null);
+      setError(null);
+      try {
+        await applyScheduleGuardrails(token, schedule.id);
+        await refreshScheduleReads(schedule.id);
+        setMessage(`Applied guardrails to ${schedule.label}.`);
+      } catch (cause) {
+        setError(getErrorMessage(cause, 'Failed to apply schedule guardrails.'));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [refreshScheduleReads, token]
+  );
+
   const handleDelete = useCallback(
     async (schedule: ScheduleRow): Promise<void> => {
       if (!token || schedule.kind === 'builtin') {
@@ -898,6 +931,7 @@ function useSchedulesPageModel() {
     handleRefresh,
     handleSave,
     handleRunNow,
+    handleApplyGuardrails,
     handlePauseToggle,
     handleDelete,
     handleDeleteMany
@@ -923,6 +957,7 @@ export function SchedulesPage() {
     handleRefresh,
     handleSave,
     handleRunNow,
+    handleApplyGuardrails,
     handlePauseToggle,
     handleDelete,
     handleDeleteMany
@@ -1024,6 +1059,7 @@ export function SchedulesPage() {
           sessionProfiles={sessionProfiles}
           onSave={handleSave}
           onRunNow={handleRunNow}
+          onApplyGuardrails={handleApplyGuardrails}
           onPauseToggle={handlePauseToggle}
           onDelete={handleDelete}
         />
@@ -1266,6 +1302,9 @@ function ScheduleRegistryCard({
                       <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-slate-300">
                         {scheduleJobModeLabel(schedule.jobMode)}
                       </span>
+                      <span className={`rounded-full border px-2 py-1 text-[10px] ${scheduleGuardrailTone(schedule.guardrails.status)}`}>
+                        guardrails {schedule.guardrails.status}
+                      </span>
                     </div>
                     <div className="mt-2 text-base font-semibold text-slate-50">{schedule.label}</div>
                     <div className="mt-1 text-sm text-slate-400">{schedule.cadence}</div>
@@ -1362,6 +1401,61 @@ function ScheduleRegistryCard({
   );
 }
 
+function ScheduleGuardrailPanel({
+  schedule,
+  busy,
+  token,
+  onApply
+}: {
+  schedule: ScheduleRow;
+  busy: ScheduleBusyState;
+  token: string | null;
+  onApply: (schedule: ScheduleRow) => Promise<void>;
+}) {
+  const guardrails = schedule.guardrails;
+  const actionCount = guardrails.checks.filter((check) => check.status !== 'pass').length;
+  return (
+    <div className={`rounded-[1.3rem] border p-4 ${scheduleGuardrailTone(guardrails.status)}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.2em] opacity-75">Schedule guardrails</div>
+          <div className="mt-2 text-sm font-medium">
+            {guardrails.status === 'pass'
+              ? 'Delivery and safety posture is clean.'
+              : `${actionCount} guardrail check${actionCount === 1 ? '' : 's'} need attention.`}
+          </div>
+          {guardrails.lastDelivery ? (
+            <div className="mt-1 text-xs opacity-75">
+              Last delivery: {guardrails.lastDelivery.reason} at {formatWhen(guardrails.lastDelivery.updatedAt)}
+            </div>
+          ) : (
+            <div className="mt-1 text-xs opacity-75">No delivery audit captured yet.</div>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={!token || busy === 'guardrails'}
+          onClick={() => void onApply(schedule)}
+          className="rounded-full border border-current/25 bg-black/10 px-3 py-1.5 text-xs transition hover:bg-black/20 disabled:opacity-60"
+        >
+          {busy === 'guardrails' ? 'Applying...' : 'Apply guardrails'}
+        </button>
+      </div>
+      <div className="mt-4 grid gap-2">
+        {guardrails.checks.map((check) => (
+          <div key={check.id} className="rounded-xl border border-current/15 bg-black/10 px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="font-medium">{check.label}</span>
+              <span className="uppercase tracking-[0.16em] opacity-70">{check.status}</span>
+            </div>
+            <div className="mt-1 text-xs leading-5 opacity-75">{check.summary}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ScheduleDetailCard({
   token,
   busy,
@@ -1371,6 +1465,7 @@ function ScheduleDetailCard({
   sessionProfiles,
   onSave,
   onRunNow,
+  onApplyGuardrails,
   onPauseToggle,
   onDelete
 }: {
@@ -1382,6 +1477,7 @@ function ScheduleDetailCard({
   sessionProfiles: BrowserSessionVaultState['sessionProfiles'];
   onSave: (schedule: ScheduleRow, form: ScheduleFormState) => Promise<void>;
   onRunNow: (schedule: ScheduleRow) => Promise<void>;
+  onApplyGuardrails: (schedule: ScheduleRow) => Promise<void>;
   onPauseToggle: (schedule: ScheduleRow) => Promise<void>;
   onDelete: (schedule: ScheduleRow) => Promise<void>;
 }) {
@@ -1462,6 +1558,13 @@ function ScheduleDetailCard({
             System jobs cannot be deleted. You can change their routing targets here and manage run state, but cadence, target agent, and prompt stay system-managed.
           </div>
         ) : null}
+
+        <ScheduleGuardrailPanel
+          schedule={selectedSchedule}
+          busy={busy}
+          token={token}
+          onApply={onApplyGuardrails}
+        />
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-[1.3rem] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-300">

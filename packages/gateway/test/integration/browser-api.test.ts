@@ -1,14 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createChromeLocalProfileFixture,
+  createEdgeLocalProfileFixture,
   createFirefoxLocalProfileFixture,
+  createZenLocalProfileFixture,
   installFakeOpenCommand
 } from './browser-local-profile-fixtures.js';
 import { createGatewayTestHarness, type GatewayTestHarness } from './test-harness.js';
+import type { BrowserInteractiveProvider } from '../../src/browser-interactive-service.js';
 
 function installFakeScraplingExecutable(root: string): string {
   const executablePath = path.join(root, 'fake-scrapling.mjs');
@@ -163,19 +166,112 @@ function installFakeScraplingExecutable(root: string): string {
   return executablePath;
 }
 
+function installFakePlaywrightCli(root: string): string {
+  const executablePath = path.join(root, 'fake-playwright-cli.mjs');
+  fs.writeFileSync(
+    executablePath,
+    [
+      '#!/usr/bin/env node',
+      'import fs from "node:fs";',
+      'import path from "node:path";',
+      '',
+      'const args = process.argv.slice(2);',
+      'const logPath = path.join(process.cwd(), "fake-playwright-cli.log");',
+      'fs.appendFileSync(logPath, `${args.join(" ")}\\n`);',
+      'if (args.includes("--help")) {',
+      '  process.stdout.write("fake playwright-cli\\n");',
+      '  process.exit(0);',
+      '}',
+      'if ((args[0] ?? "") === "open") {',
+      '  const profileArg = args.find((entry) => entry.startsWith("--profile="));',
+      '  if (profileArg) fs.mkdirSync(profileArg.slice("--profile=".length), { recursive: true });',
+      '  process.exit(0);',
+      '}',
+      'if ((args[0] ?? "") === "state-save") {',
+      '  const outputPath = args[1] ?? "";',
+      '  if (!outputPath) process.exit(2);',
+      '  fs.mkdirSync(path.dirname(outputPath), { recursive: true });',
+      '  fs.writeFileSync(outputPath, JSON.stringify({',
+      '    cookies: [{',
+      '      name: "sessionid",',
+      '      value: "playwright-session",',
+      '      domain: ".instagram.com",',
+      '      path: "/",',
+      '      expires: -1,',
+      '      httpOnly: true,',
+      '      secure: true,',
+      '      sameSite: "Lax"',
+      '    }],',
+      '    origins: [{',
+      '      origin: "https://www.instagram.com",',
+      '      localStorage: [{ name: "ig-session-check", value: "ready" }]',
+      '    }]',
+      '  }, null, 2));',
+      '  process.exit(0);',
+      '}',
+      'process.exit(1);'
+    ].join('\n'),
+    'utf8'
+  );
+  fs.chmodSync(executablePath, 0o755);
+  return executablePath;
+}
+
+function installFakeCdpStorageStateCapture(root: string): string {
+  const executablePath = path.join(root, 'fake-cdp-storage-state-capture.mjs');
+  fs.writeFileSync(
+    executablePath,
+    [
+      '#!/usr/bin/env node',
+      'import fs from "node:fs";',
+      'import path from "node:path";',
+      '',
+      'const outputPath = process.argv[3] ?? "";',
+      'const domains = JSON.parse(process.argv[4] ?? "[]");',
+      'if (!outputPath) process.exit(2);',
+      'const domain = domains.includes("www.pinterest.com") || domains.includes("pinterest.com") ? ".pinterest.com" : ".instagram.com";',
+      'fs.mkdirSync(path.dirname(outputPath), { recursive: true });',
+      'fs.writeFileSync(outputPath, JSON.stringify({',
+      '  cookies: [{',
+      '    name: "sessionid",',
+      '    value: "cdp-session",',
+      '    domain,',
+      '    path: "/",',
+      '    expires: -1,',
+      '    httpOnly: true,',
+      '    secure: true,',
+      '    sameSite: "Lax"',
+      '  }],',
+      '  origins: []',
+      '}, null, 2));',
+      'process.stdout.write(JSON.stringify({ cookieCount: 1 }));'
+    ].join('\n'),
+    'utf8'
+  );
+  fs.chmodSync(executablePath, 0o755);
+  return executablePath;
+}
+
 describe('gateway browser api integration', () => {
   const harnesses: GatewayTestHarness[] = [];
   const originalPath = process.env.PATH;
   const originalChromeProfileRoot = process.env.OPS_BROWSER_CHROME_PROFILE_ROOT;
+  const originalEdgeProfileRoot = process.env.OPS_BROWSER_EDGE_PROFILE_ROOT;
   const originalFirefoxProfileRoot = process.env.OPS_BROWSER_FIREFOX_PROFILE_ROOT;
+  const originalZenProfileRoot = process.env.OPS_BROWSER_ZEN_PROFILE_ROOT;
   const originalChromeBinary = process.env.OPS_BROWSER_VISIBLE_CHROME_BIN;
+  const originalEdgeBinary = process.env.OPS_BROWSER_VISIBLE_EDGE_BIN;
   const originalFirefoxBinary = process.env.OPS_BROWSER_VISIBLE_FIREFOX_BIN;
+  const originalZenBinary = process.env.OPS_BROWSER_VISIBLE_ZEN_BIN;
+  const originalPlaywrightCliBin = process.env.OPS_PLAYWRIGHT_CLI_BIN;
+  const originalCdpStorageStateCaptureBin = process.env.OPS_BROWSER_CDP_STORAGE_STATE_CAPTURE_BIN;
 
   const createHarness = async (
     label: string,
-    customize?: Parameters<typeof createGatewayTestHarness>[1]
+    customize?: Parameters<typeof createGatewayTestHarness>[1],
+    options?: Parameters<typeof createGatewayTestHarness>[2]
   ): Promise<GatewayTestHarness> => {
-    const harness = await createGatewayTestHarness(label, customize);
+    const harness = await createGatewayTestHarness(label, customize, options);
     harnesses.push(harness);
     return harness;
   };
@@ -187,24 +283,650 @@ describe('gateway browser api integration', () => {
     } else {
       process.env.OPS_BROWSER_CHROME_PROFILE_ROOT = originalChromeProfileRoot;
     }
+    if (originalEdgeProfileRoot === undefined) {
+      delete process.env.OPS_BROWSER_EDGE_PROFILE_ROOT;
+    } else {
+      process.env.OPS_BROWSER_EDGE_PROFILE_ROOT = originalEdgeProfileRoot;
+    }
     if (originalFirefoxProfileRoot === undefined) {
       delete process.env.OPS_BROWSER_FIREFOX_PROFILE_ROOT;
     } else {
       process.env.OPS_BROWSER_FIREFOX_PROFILE_ROOT = originalFirefoxProfileRoot;
+    }
+    if (originalZenProfileRoot === undefined) {
+      delete process.env.OPS_BROWSER_ZEN_PROFILE_ROOT;
+    } else {
+      process.env.OPS_BROWSER_ZEN_PROFILE_ROOT = originalZenProfileRoot;
     }
     if (originalChromeBinary === undefined) {
       delete process.env.OPS_BROWSER_VISIBLE_CHROME_BIN;
     } else {
       process.env.OPS_BROWSER_VISIBLE_CHROME_BIN = originalChromeBinary;
     }
+    if (originalEdgeBinary === undefined) {
+      delete process.env.OPS_BROWSER_VISIBLE_EDGE_BIN;
+    } else {
+      process.env.OPS_BROWSER_VISIBLE_EDGE_BIN = originalEdgeBinary;
+    }
     if (originalFirefoxBinary === undefined) {
       delete process.env.OPS_BROWSER_VISIBLE_FIREFOX_BIN;
     } else {
       process.env.OPS_BROWSER_VISIBLE_FIREFOX_BIN = originalFirefoxBinary;
     }
+    if (originalZenBinary === undefined) {
+      delete process.env.OPS_BROWSER_VISIBLE_ZEN_BIN;
+    } else {
+      process.env.OPS_BROWSER_VISIBLE_ZEN_BIN = originalZenBinary;
+    }
+    if (originalPlaywrightCliBin === undefined) {
+      delete process.env.OPS_PLAYWRIGHT_CLI_BIN;
+    } else {
+      process.env.OPS_PLAYWRIGHT_CLI_BIN = originalPlaywrightCliBin;
+    }
+    if (originalCdpStorageStateCaptureBin === undefined) {
+      delete process.env.OPS_BROWSER_CDP_STORAGE_STATE_CAPTURE_BIN;
+    } else {
+      process.env.OPS_BROWSER_CDP_STORAGE_STATE_CAPTURE_BIN = originalCdpStorageStateCaptureBin;
+    }
     while (harnesses.length > 0) {
       await harnesses.pop()!.close();
     }
+  });
+
+  it('runs typed interactive browser actions through an injected provider and session profile cookies', async () => {
+    const liveSessionId = 'test-live-session-1';
+    const provider: BrowserInteractiveProvider = {
+      run: vi.fn(async (input) => ({
+        schema: 'ops.browser-interactive-run.v1',
+        provider: 'test',
+        ok: true,
+        startedUrl: input.url,
+        finalUrl: input.url,
+        actions: input.actions.map((action, index) => ({
+          index,
+          type: action.type,
+          ok: true,
+          summary: `handled:${action.type}`,
+          selector: action.selector ?? null,
+          url: action.url ?? null,
+          textPreview: action.text ?? null,
+          error: null
+        })),
+        artifacts: [
+          {
+            id: 'interactive_artifact:0:read',
+            actionIndex: 0,
+            kind: 'read',
+            mimeType: 'text/plain',
+            sizeBytes: 12,
+            contentPreview: 'hello world',
+            contentBase64: Buffer.from('hello world', 'utf8').toString('base64')
+          },
+          {
+            id: 'interactive_artifact:1:snapshot',
+            actionIndex: 1,
+            kind: 'snapshot',
+            mimeType: 'text/plain',
+            sizeBytes: 42,
+            contentPreview: 'targets:\n- 1. button "Continue" selector=text=Continue',
+            contentBase64: Buffer.from('targets:\n- 1. button "Continue" selector=text=Continue', 'utf8').toString('base64')
+          },
+          {
+            id: 'interactive_artifact:3:screenshot',
+            actionIndex: 3,
+            kind: 'screenshot',
+            mimeType: 'image/png',
+            sizeBytes: 4,
+            contentPreview: '[png screenshot]',
+            contentBase64: Buffer.from('png', 'utf8').toString('base64')
+          },
+          {
+            id: 'interactive_artifact:4:download',
+            actionIndex: 4,
+            kind: 'download',
+            mimeType: 'text/plain',
+            sizeBytes: 14,
+            contentPreview: 'export payload',
+            contentBase64: Buffer.from('export payload', 'utf8').toString('base64')
+          }
+        ],
+        error: null
+      })),
+      startSession: vi.fn(async (input) => ({
+        schema: 'ops.browser-interactive-session-start.v1',
+        session: {
+          schema: 'ops.browser-interactive-session.v1',
+          provider: 'test',
+          sessionId: liveSessionId,
+          startedUrl: input.url,
+          currentUrl: input.url,
+          startedAt: '2026-05-31T10:00:00.000Z',
+          lastActivityAt: '2026-05-31T10:00:00.000Z',
+          expiresAt: null
+        },
+        control: {
+          schema: 'ops.browser-interactive-run.v1',
+          provider: 'test',
+          ok: true,
+          startedUrl: input.url,
+          finalUrl: input.url,
+          actions: [
+            {
+              index: 0,
+              type: 'open',
+              ok: true,
+              summary: `opened:${input.url}`,
+              selector: null,
+              url: input.url,
+              textPreview: null,
+              error: null
+            }
+          ],
+          artifacts: [],
+          error: null
+        }
+      })),
+      runSessionActions: vi.fn(async (input) => ({
+        schema: 'ops.browser-interactive-session-action.v1',
+        session: {
+          schema: 'ops.browser-interactive-session.v1',
+          provider: 'test',
+          sessionId: input.sessionId,
+          startedUrl: 'https://example.com/app',
+          currentUrl: 'https://example.com/app#after-live-action',
+          startedAt: '2026-05-31T10:00:00.000Z',
+          lastActivityAt: '2026-05-31T10:00:01.000Z',
+          expiresAt: null
+        },
+        control: {
+          schema: 'ops.browser-interactive-run.v1',
+          provider: 'test',
+          ok: true,
+          startedUrl: 'https://example.com/app',
+          finalUrl: 'https://example.com/app#after-live-action',
+          actions: input.actions.map((action, index) => ({
+            index,
+            type: action.type,
+            ok: true,
+            summary: `live:${action.type}`,
+            selector: action.selector ?? null,
+            url: action.url ?? null,
+            textPreview: action.text ?? null,
+            error: null
+          })),
+          artifacts: [
+            {
+              id: 'interactive_artifact:1:snapshot',
+              actionIndex: 1,
+              kind: 'snapshot',
+              mimeType: 'text/plain',
+              sizeBytes: 38,
+              contentPreview: 'targets:\n- 1. textbox "Search" selector=aria=Search',
+              contentBase64: Buffer.from('targets:\n- 1. textbox "Search" selector=aria=Search', 'utf8').toString('base64')
+            },
+            {
+              id: 'interactive_artifact:2:read',
+              actionIndex: 2,
+              kind: 'read',
+              mimeType: 'text/plain',
+              sizeBytes: 16,
+              contentPreview: 'live page result',
+              contentBase64: Buffer.from('live page result', 'utf8').toString('base64')
+            },
+            {
+              id: 'interactive_artifact:3:download',
+              actionIndex: 3,
+              kind: 'download',
+              mimeType: 'text/plain',
+              sizeBytes: 19,
+              contentPreview: 'live export payload',
+              contentBase64: Buffer.from('live export payload', 'utf8').toString('base64')
+            }
+          ],
+          error: null
+        }
+      })),
+      closeSession: vi.fn(async (sessionId) => ({
+        schema: 'ops.browser-interactive-session-close.v1',
+        provider: 'test',
+        sessionId,
+        closed: true,
+        finalUrl: 'https://example.com/app#after-live-action',
+        error: null
+      }))
+    };
+    const harness = await createHarness(
+      'browser-interactive-control',
+      (config) => {
+        config.browser.enabled = true;
+        config.browser.allowedAgents = ['interactive-browser-test'];
+      },
+      {
+        buildOptions: {
+          interactiveBrowserProvider: provider
+        }
+      }
+    );
+    const adminHeaders = {
+      Authorization: `Bearer ${harness.config.server.apiToken}`,
+      'x-ops-role': 'admin'
+    };
+
+    const onboarding = await harness.inject({
+      method: 'POST',
+      url: '/api/onboarding/ceo-baseline',
+      headers: adminHeaders,
+      payload: {
+        actor: 'browser-interactive-test'
+      }
+    });
+    expect(onboarding.statusCode).toBe(200);
+
+    const cookieImport = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/cookie-jars/import',
+      headers: adminHeaders,
+      payload: {
+        label: 'Interactive Example cookies',
+        domains: ['example.com'],
+        sourceKind: 'raw_cookie_header',
+        raw: 'sid=interactive-session'
+      }
+    });
+    expect(cookieImport.statusCode).toBe(200);
+    const cookieBody = cookieImport.json() as { cookieJar: { id: string } };
+
+    const profileResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/session-profiles/upsert',
+      headers: adminHeaders,
+      payload: {
+        label: 'Interactive Example session',
+        domains: ['example.com'],
+        cookieJarId: cookieBody.cookieJar.id,
+        enabled: true
+      }
+    });
+    expect(profileResponse.statusCode).toBe(200);
+    const profileBody = profileResponse.json() as { sessionProfile: { id: string } };
+
+    const agentResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/agents/profiles',
+      headers: adminHeaders,
+      payload: {
+        id: 'interactive-browser-test',
+        name: 'Interactive Browser Test',
+        title: 'Browser Operator',
+        parentAgentId: null,
+        systemPrompt: 'Run governed browser control tests.',
+        defaultRuntime: 'process',
+        allowedRuntimes: ['process'],
+        skills: ['browser-ops'],
+        tools: ['runtime:process', 'browser:scrapling'],
+        enabled: true
+      }
+    });
+    expect(agentResponse.statusCode).toBe(201);
+
+    const interactiveResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/interactive/run',
+      headers: adminHeaders,
+      payload: {
+        agentId: 'interactive-browser-test',
+        url: 'https://example.com/app',
+        sessionProfileId: profileBody.sessionProfile.id,
+        actions: [
+          { type: 'read' },
+          { type: 'snapshot' },
+          { type: 'click', selector: '#continue' },
+          { type: 'type', selector: '#search', text: 'instagram reels' },
+          { type: 'upload', selector: '#avatar', filePath: '/tmp/ops-avatar.png' },
+          { type: 'download', selector: '#export', timeoutMs: 750 },
+          { type: 'scroll', selector: '#feed', deltaY: 640 },
+          { type: 'keypress', key: 'Enter' },
+          { type: 'screenshot' },
+          { type: 'pdf' }
+        ]
+      }
+    });
+    expect(interactiveResponse.statusCode).toBe(200);
+    const interactiveBody = interactiveResponse.json() as {
+      run: { status: string };
+      control: {
+        ok: boolean;
+        provider: string;
+        actions: Array<{ type: string; ok: boolean }>;
+        artifacts: Array<{ kind: string }>;
+      };
+    };
+    expect(interactiveBody.run.status).toBe('completed');
+    expect(interactiveBody.control.ok).toBe(true);
+    expect(interactiveBody.control.provider).toBe('test');
+    expect(interactiveBody.control.actions.map((action) => action.type)).toEqual([
+      'read',
+      'snapshot',
+      'click',
+      'type',
+      'upload',
+      'download',
+      'scroll',
+      'keypress',
+      'screenshot',
+      'pdf'
+    ]);
+    expect(interactiveBody.control.artifacts.map((artifact) => artifact.kind)).toEqual([
+      'read',
+      'snapshot',
+      'screenshot',
+      'download'
+    ]);
+    expect(provider.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://example.com/app',
+        cookies: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'sid',
+            value: 'interactive-session'
+          })
+        ]),
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'upload',
+            selector: '#avatar',
+            filePath: '/tmp/ops-avatar.png'
+          }),
+          expect.objectContaining({
+            type: 'download',
+            selector: '#export',
+            timeoutMs: 750
+          }),
+          expect.objectContaining({
+            type: 'scroll',
+            selector: '#feed',
+            deltaY: 640
+          }),
+          expect.objectContaining({
+            type: 'keypress',
+            key: 'Enter'
+          })
+        ])
+      })
+    );
+
+    const liveStartResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/interactive/sessions',
+      headers: adminHeaders,
+      payload: {
+        agentId: 'interactive-browser-test',
+        url: 'https://example.com/app',
+        sessionProfileId: profileBody.sessionProfile.id
+      }
+    });
+    expect(liveStartResponse.statusCode).toBe(200);
+    const liveStartBody = liveStartResponse.json() as {
+      liveSession: { sessionId: string; currentUrl: string | null };
+      run: { status: string };
+    };
+    expect(liveStartBody.run.status).toBe('completed');
+    expect(liveStartBody.liveSession.sessionId).toBe(liveSessionId);
+    expect(provider.startSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://example.com/app',
+        cookies: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'sid',
+            value: 'interactive-session'
+          })
+        ])
+      })
+    );
+
+    const liveActionResponse = await harness.inject({
+      method: 'POST',
+      url: `/api/browser/interactive/sessions/${encodeURIComponent(liveSessionId)}/actions`,
+      headers: adminHeaders,
+      payload: {
+        actions: [
+          { type: 'click', selector: '#continue' },
+          { type: 'snapshot' },
+          { type: 'type', selector: '#search', text: 'live instagram reels' },
+          { type: 'upload', selector: '#avatar', filePaths: ['/tmp/live-avatar.png'] },
+          { type: 'download', selector: '#export', timeoutMs: 750 },
+          { type: 'scroll', selector: '#feed', deltaY: 720 },
+          { type: 'keypress', key: 'Escape' },
+          { type: 'read' }
+        ]
+      }
+    });
+    expect(liveActionResponse.statusCode).toBe(200);
+    const liveActionBody = liveActionResponse.json() as {
+      liveSession: { sessionId: string; currentUrl: string | null };
+      control: { ok: boolean; actions: Array<{ type: string }>; artifacts: Array<{ kind: string }> };
+      run: { status: string };
+    };
+    expect(liveActionBody.run.status).toBe('completed');
+    expect(liveActionBody.liveSession.sessionId).toBe(liveSessionId);
+    expect(liveActionBody.control.ok).toBe(true);
+    expect(liveActionBody.control.actions.map((action) => action.type)).toEqual([
+      'click',
+      'snapshot',
+      'type',
+      'upload',
+      'download',
+      'scroll',
+      'keypress',
+      'read'
+    ]);
+    expect(liveActionBody.control.artifacts.map((artifact) => artifact.kind)).toEqual(['snapshot', 'read', 'download']);
+    expect(provider.runSessionActions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: liveSessionId,
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'type',
+            selector: '#search',
+            text: 'live instagram reels'
+          }),
+          expect.objectContaining({
+            type: 'upload',
+            selector: '#avatar',
+            filePaths: ['/tmp/live-avatar.png']
+          }),
+          expect.objectContaining({
+            type: 'download',
+            selector: '#export',
+            timeoutMs: 750
+          }),
+          expect.objectContaining({
+            type: 'scroll',
+            selector: '#feed',
+            deltaY: 720
+          }),
+          expect.objectContaining({
+            type: 'keypress',
+            key: 'Escape'
+          })
+        ])
+      })
+    );
+
+    const liveCloseResponse = await harness.inject({
+      method: 'DELETE',
+      url: `/api/browser/interactive/sessions/${encodeURIComponent(liveSessionId)}`,
+      headers: adminHeaders
+    });
+    expect(liveCloseResponse.statusCode).toBe(200);
+    const liveCloseBody = liveCloseResponse.json() as {
+      closed: { closed: boolean; sessionId: string };
+      run: { status: string };
+    };
+    expect(liveCloseBody.run.status).toBe('completed');
+    expect(liveCloseBody.closed).toEqual(
+      expect.objectContaining({
+        closed: true,
+        sessionId: liveSessionId
+      })
+    );
+    expect(provider.closeSession).toHaveBeenCalledWith(liveSessionId);
+
+    const storageStateResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/storage-states/upsert',
+      headers: adminHeaders,
+      payload: {
+        label: 'Instagram storage state',
+        domains: ['instagram.com'],
+        storageState: {
+          cookies: [
+            {
+              name: 'mid',
+              value: 'storage-mid',
+              domain: '.instagram.com',
+              path: '/',
+              expires: -1,
+              httpOnly: true,
+              secure: true,
+              sameSite: 'Lax'
+            }
+          ],
+          origins: [
+            {
+              origin: 'https://www.instagram.com',
+              localStorage: [
+                {
+                  name: 'ig-session-check',
+                  value: 'ready'
+                }
+              ]
+            }
+          ]
+        }
+      }
+    });
+    expect(storageStateResponse.statusCode).toBe(200);
+    const storageStateBody = storageStateResponse.json();
+    const storageStateId = typeof storageStateBody.storageState?.id === 'string' ? storageStateBody.storageState.id : '';
+    expect(storageStateId).toBeTruthy();
+
+    const instagramCookieImport = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/cookie-jars/import',
+      headers: adminHeaders,
+      payload: {
+        label: 'Instagram interactive cookies',
+        domains: ['instagram.com', 'www.instagram.com'],
+        sourceKind: 'raw_cookie_header',
+        raw: 'sessionid=ig-interactive'
+      }
+    });
+    expect(instagramCookieImport.statusCode).toBe(200);
+    const instagramCookieBody = instagramCookieImport.json();
+    const instagramCookieJarId =
+      typeof instagramCookieBody.cookieJar?.id === 'string' ? instagramCookieBody.cookieJar.id : '';
+    expect(instagramCookieJarId).toBeTruthy();
+
+    const interactiveProfileResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/session-profiles/upsert',
+      headers: adminHeaders,
+      payload: {
+        label: 'Instagram signed-in Playwright profile',
+        domains: ['instagram.com', 'www.instagram.com'],
+        cookieJarId: instagramCookieJarId,
+        storageStateId,
+        siteKey: 'instagram',
+        browserKind: 'chrome',
+        browserProfileName: 'Profile 7',
+        browserProfilePath: path.join(harness.root, 'Chrome', 'Profile 7'),
+        cdpEndpoint: 'http://127.0.0.1:9444',
+        useRealChrome: true,
+        enabled: true,
+        lastVerificationStatus: 'connected',
+        lastVerifiedAt: '2026-05-31T12:00:00.000Z'
+      }
+    });
+    expect(interactiveProfileResponse.statusCode).toBe(200);
+
+    const sourceSessionResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: adminHeaders,
+      payload: {
+        label: 'Social interactive source',
+        agentId: 'interactive-browser-test',
+        runtime: 'process'
+      }
+    });
+    expect(sourceSessionResponse.statusCode).toBe(201);
+    const sourceSessionBody = sourceSessionResponse.json();
+    const sourceSessionId = typeof sourceSessionBody.session?.id === 'string' ? sourceSessionBody.session.id : '';
+    expect(sourceSessionId).toBeTruthy();
+
+    const autoInteractiveResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/interactive/run',
+      headers: adminHeaders,
+      payload: {
+        agentId: 'interactive-browser-test',
+        sessionId: sourceSessionId,
+        siteKey: 'instagram',
+        prompt: 'Open Instagram with the signed-in browser profile and read the page.',
+        actions: [{ type: 'read' }]
+      }
+    });
+    expect(autoInteractiveResponse.statusCode).toBe(200);
+    const autoInteractiveBody = autoInteractiveResponse.json();
+    expect(autoInteractiveBody.control?.ok).toBe(true);
+    expect(provider.run).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        url: 'https://www.instagram.com/',
+        cookies: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'sessionid',
+            value: 'ig-interactive'
+          })
+        ]),
+        storageState: expect.objectContaining({
+          cookies: expect.arrayContaining([
+            expect.objectContaining({
+              name: 'mid',
+              value: 'storage-mid'
+            })
+          ]),
+          origins: expect.arrayContaining([
+            expect.objectContaining({
+              origin: 'https://www.instagram.com'
+            })
+          ])
+        }),
+        browserProfile: expect.objectContaining({
+          browserKind: 'chrome',
+          browserProfileName: 'Profile 7',
+          cdpEndpoint: 'http://127.0.0.1:9444',
+          useRealChrome: true
+        })
+      })
+    );
+
+    const autoRunId = typeof autoInteractiveBody.run?.id === 'string' ? autoInteractiveBody.run.id : '';
+    expect(autoRunId).toBeTruthy();
+    const timelineResponse = await harness.inject({
+      method: 'GET',
+      url: `/api/runs/${encodeURIComponent(autoRunId)}/timeline`,
+      headers: adminHeaders
+    });
+    expect(timelineResponse.statusCode).toBe(200);
+    const timelineBody = timelineResponse.json();
+    const timelineEntries = Array.isArray(timelineBody.timeline) ? timelineBody.timeline : [];
+    const authEvent = timelineEntries.find((entry) => entry.type === 'browser.auth_profile.resolved');
+    expect(authEvent).toBeDefined();
+    const authPayload = JSON.parse(String(authEvent?.payloadJson ?? '{}'));
+    expect(authPayload.source).toBe('auto_site');
+    expect(authPayload.siteKey).toBe('instagram');
+    expect(authPayload.targetUrl).toBe('https://www.instagram.com/');
   });
 
   it('exposes browser status, doctor, test, history, and artifact inspection through typed endpoints', async () => {
@@ -833,6 +1555,374 @@ describe('gateway browser api integration', () => {
     expect(verifyBody.verification.trace?.selectedTool).toBe('fetch');
   });
 
+  it('guides Playwright auth capture into storage state and routes Scrapling with saved cookies', async () => {
+    const harness = await createHarness('browser-playwright-auth-capture', (config) => {
+      const root = path.dirname(config.persistence.sqlitePath);
+      process.env.OPS_PLAYWRIGHT_CLI_BIN = installFakePlaywrightCli(root);
+      config.browser.enabled = true;
+      config.browser.transport = 'stdio';
+      config.browser.executable = installFakeScraplingExecutable(root);
+      config.browser.policy.allowStealth = true;
+      config.browser.policy.requireApprovalForStealth = false;
+    });
+
+    const onboardingResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/onboarding/ceo-baseline',
+      payload: {
+        actor: 'browser-playwright-auth-test'
+      }
+    });
+    expect(onboardingResponse.statusCode).toBe(200);
+    const localAdminHeaders = {
+      Authorization: `Bearer ${harness.config.server.apiToken}`,
+      host: '127.0.0.1:8788',
+      'x-ops-role': 'admin'
+    };
+
+    const startResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/playwright-auth/start',
+      headers: localAdminHeaders,
+      payload: {
+        siteKey: 'instagram',
+        label: 'Instagram guided login',
+        browserKind: 'chrome'
+      }
+    });
+    expect(startResponse.statusCode).toBe(200);
+    const startBody = startResponse.json();
+    expect(startBody.capture?.id).toContain('playwright_auth:');
+    expect(startBody.capture?.verifyUrl).toBe('https://www.instagram.com/');
+
+    const saveResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/playwright-auth/save',
+      headers: localAdminHeaders,
+      payload: {
+        captureId: startBody.capture.id,
+        label: 'Instagram Playwright auth state',
+        ownerLabel: 'operator',
+        visibility: 'shared',
+        verifyUrl: 'https://www.instagram.com/session-profile-proof'
+      }
+    });
+    expect(saveResponse.statusCode).toBe(200);
+    const saveBody = saveResponse.json();
+    expect(saveBody.storageState?.cookieCount).toBe(1);
+    expect(saveBody.sessionProfile).toMatchObject({
+      label: 'Instagram Playwright auth state',
+      siteKey: 'instagram',
+      storageStateId: saveBody.storageState.id,
+      useRealChrome: false,
+      profileClass: 'auth_state',
+      browserKind: 'chrome',
+      browserProfilePath: startBody.capture.profileDir,
+      lastVerificationStatus: 'connected'
+    });
+    expect(saveBody.sessionProfile.isolationSummary).toContain('saved authenticated cookie/storage-state');
+
+    const routedTestResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/test',
+      payload: {
+        agentId: 'software-engineer',
+        url: 'https://www.instagram.com/dynamic-session-profile-proof',
+        sessionProfileId: saveBody.sessionProfile.id,
+        intent: 'monitor',
+        dynamicLikely: true,
+        mainContentOnly: true,
+        previewChars: 400
+      }
+    });
+    expect(routedTestResponse.statusCode).toBe(200);
+    const routedTestBody = routedTestResponse.json();
+    expect(routedTestBody.test.selectedTool).toBe('fetch');
+    expect(routedTestBody.test.artifacts[0]?.previewText).toContain('CookieKeys: sessionid');
+    expect(routedTestBody.test.artifacts[0]?.previewText).toContain('SessionCookie: playwright-session');
+    expect(routedTestBody.test.artifacts[0]?.previewText).toContain('RealChrome: false');
+  });
+
+  it('saves the current Playwright CLI session as Scrapling auth state without requiring file paths', async () => {
+    const harness = await createHarness('browser-playwright-current-auth', (config) => {
+      const root = path.dirname(config.persistence.sqlitePath);
+      process.env.OPS_PLAYWRIGHT_CLI_BIN = installFakePlaywrightCli(root);
+      config.browser.enabled = true;
+      config.browser.transport = 'stdio';
+      config.browser.executable = installFakeScraplingExecutable(root);
+      config.browser.policy.allowStealth = true;
+      config.browser.policy.requireApprovalForStealth = false;
+    });
+
+    const onboardingResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/onboarding/ceo-baseline',
+      payload: {
+        actor: 'browser-playwright-current-auth-test'
+      }
+    });
+    expect(onboardingResponse.statusCode).toBe(200);
+    const localAdminHeaders = {
+      Authorization: `Bearer ${harness.config.server.apiToken}`,
+      host: '127.0.0.1:8788',
+      'x-ops-role': 'admin'
+    };
+
+    const saveResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/playwright-auth/save-current',
+      headers: localAdminHeaders,
+      payload: {
+        siteKey: 'instagram',
+        label: 'Instagram current Playwright login',
+        ownerLabel: 'operator',
+        browserKind: 'chrome',
+        verifyUrl: 'https://www.instagram.com/session-profile-proof'
+      }
+    });
+    expect(saveResponse.statusCode).toBe(200);
+    const saveBody = saveResponse.json();
+    expect(saveBody.storageStatePath).toContain('storage-state.json');
+    expect(saveBody.storageState?.cookieCount).toBe(1);
+    expect(saveBody.sessionProfile).toMatchObject({
+      label: 'Instagram current Playwright login',
+      siteKey: 'instagram',
+      storageStateId: saveBody.storageState.id,
+      profileClass: 'auth_state',
+      lastVerificationStatus: 'connected'
+    });
+    expect(saveBody.verification?.trace?.selectedTool).toBe('fetch');
+  });
+
+  it('imports a mobile handoff cookie payload into a verified Scrapling session profile', async () => {
+    const harness = await createHarness('browser-mobile-session-handoff', (config) => {
+      const root = path.dirname(config.persistence.sqlitePath);
+      config.browser.enabled = true;
+      config.browser.transport = 'stdio';
+      config.browser.executable = installFakeScraplingExecutable(root);
+      config.browser.policy.allowStealth = true;
+      config.browser.policy.requireApprovalForStealth = false;
+    });
+
+    const onboardingResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/onboarding/ceo-baseline',
+      payload: {
+        actor: 'browser-mobile-handoff-test'
+      }
+    });
+    expect(onboardingResponse.statusCode).toBe(200);
+    const localAdminHeaders = {
+      Authorization: `Bearer ${harness.config.server.apiToken}`,
+      host: '127.0.0.1:8788',
+      'x-ops-role': 'admin'
+    };
+
+    const connectResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/connect-account',
+      headers: localAdminHeaders,
+      payload: {
+        siteKey: 'tiktok',
+        method: 'mobile_session_import',
+        label: 'TikTok mobile handoff',
+        ownerLabel: 'operator-phone',
+        domains: ['www.tiktok.com', 'tiktok.com'],
+        verifyUrl: 'https://www.tiktok.com/session-profile-proof',
+        sourceKind: 'raw_cookie_header',
+        raw: 'sessionid=mobile-tiktok-session'
+      }
+    });
+    expect(connectResponse.statusCode).toBe(200);
+    const connectBody = connectResponse.json();
+    expect(connectBody.cookieJar?.sourceKind).toBe('raw_cookie_header');
+    expect(connectBody.sessionProfile).toMatchObject({
+      label: 'TikTok mobile handoff',
+      siteKey: 'tiktok',
+      ownerLabel: 'operator-phone',
+      profileClass: 'auth_state',
+      lastVerificationStatus: 'connected'
+    });
+    expect(connectBody.verification?.trace?.artifacts[0]?.previewText).toContain('CookieKeys: sessionid');
+    expect(connectBody.verification?.trace?.artifacts[0]?.previewText).toContain('SessionCookie: mobile-tiktok-session');
+  });
+
+  it('creates a one-time mobile browser handoff URL that imports and verifies phone cookies without API auth on the phone', async () => {
+    const harness = await createHarness('browser-mobile-session-url-handoff', (config) => {
+      const root = path.dirname(config.persistence.sqlitePath);
+      config.browser.enabled = true;
+      config.browser.transport = 'stdio';
+      config.browser.executable = installFakeScraplingExecutable(root);
+      config.browser.policy.allowStealth = true;
+      config.browser.policy.requireApprovalForStealth = false;
+    });
+
+    const onboardingResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/onboarding/ceo-baseline',
+      payload: {
+        actor: 'browser-mobile-url-handoff-test'
+      }
+    });
+    expect(onboardingResponse.statusCode).toBe(200);
+    const localAdminHeaders = {
+      Authorization: `Bearer ${harness.config.server.apiToken}`,
+      host: '127.0.0.1:8788',
+      'x-ops-role': 'admin'
+    };
+
+    const startResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/mobile-handoff/start',
+      headers: localAdminHeaders,
+      payload: {
+        siteKey: 'tiktok',
+        label: 'TikTok phone login',
+        ownerLabel: 'operator-phone',
+        domains: ['www.tiktok.com', 'tiktok.com'],
+        verifyUrl: 'https://www.tiktok.com/session-profile-proof',
+        sourceKind: 'raw_cookie_header'
+      }
+    });
+    expect(startResponse.statusCode).toBe(200);
+    const startBody = startResponse.json();
+    expect(startBody.handoff?.status).toBe('pending');
+    expect(startBody.submitUrl).toContain('/mobile-browser-handoff/mobile_handoff%3A');
+
+    const handoffPagePath = new URL(String(startBody.submitUrl)).pathname;
+    const pageResponse = await harness.inject({
+      method: 'GET',
+      url: handoffPagePath
+    });
+    expect(pageResponse.statusCode).toBe(200);
+    expect(pageResponse.body).toContain('TikTok phone login mobile handoff');
+    expect(pageResponse.body).toContain('Choose export format');
+    expect(pageResponse.body).toContain('Submit mobile session');
+
+    const pendingStatusResponse = await harness.inject({
+      method: 'GET',
+      url: `/api/browser/mobile-handoff/${encodeURIComponent(String(startBody.handoff.id))}/status`,
+      headers: localAdminHeaders
+    });
+    expect(pendingStatusResponse.statusCode).toBe(200);
+    expect(pendingStatusResponse.json().handoff?.status).toBe('pending');
+
+    const completeResponse = await harness.inject({
+      method: 'POST',
+      url: `/api/mobile-browser-handoff/${encodeURIComponent(String(startBody.handoff.id))}/complete`,
+      payload: {
+        raw: 'sessionid=phone-tiktok-session',
+        sourceKind: 'raw_cookie_header'
+      }
+    });
+    expect(completeResponse.statusCode).toBe(200);
+    const completeBody = completeResponse.json();
+    expect(completeBody.cookieJar?.sourceKind).toBe('raw_cookie_header');
+    expect(completeBody.sessionProfile).toMatchObject({
+      label: 'TikTok phone login',
+      siteKey: 'tiktok',
+      ownerLabel: 'operator-phone',
+      profileClass: 'auth_state',
+      lastVerificationStatus: 'connected'
+    });
+    expect(completeBody.handoff?.completedSessionProfileId).toBe(completeBody.sessionProfile?.id);
+    expect(completeBody.verification?.method).toBe('mobile_session_import');
+    expect(completeBody.verification?.trace?.artifacts[0]?.previewText).toContain('SessionCookie: phone-tiktok-session');
+
+    const submittedStatusResponse = await harness.inject({
+      method: 'GET',
+      url: `/api/browser/mobile-handoff/${encodeURIComponent(String(startBody.handoff.id))}/status`,
+      headers: localAdminHeaders
+    });
+    expect(submittedStatusResponse.statusCode).toBe(200);
+    const submittedStatusBody = submittedStatusResponse.json();
+    expect(submittedStatusBody.handoff?.status).toBe('submitted');
+    expect(submittedStatusBody.sessionProfile?.id).toBe(completeBody.sessionProfile?.id);
+    expect(submittedStatusBody.handoff?.completedVerificationSummary).toBe(completeBody.verification?.summary);
+    expect(submittedStatusBody.verification?.summary).toBe(completeBody.verification?.summary);
+
+    const replayResponse = await harness.inject({
+      method: 'POST',
+      url: `/api/mobile-browser-handoff/${encodeURIComponent(String(startBody.handoff.id))}/complete`,
+      payload: {
+        raw: 'sessionid=replay'
+      }
+    });
+    expect(replayResponse.statusCode).toBe(410);
+  });
+
+  it('saves a live CDP browser session metadata file as filtered Scrapling auth state', async () => {
+    const harness = await createHarness('browser-playwright-cdp-auth', (config) => {
+      const root = path.dirname(config.persistence.sqlitePath);
+      process.env.OPS_BROWSER_CDP_STORAGE_STATE_CAPTURE_BIN = installFakeCdpStorageStateCapture(root);
+      config.browser.enabled = true;
+      config.browser.transport = 'stdio';
+      config.browser.executable = installFakeScraplingExecutable(root);
+      config.browser.policy.allowStealth = true;
+      config.browser.policy.requireApprovalForStealth = false;
+    });
+
+    const onboardingResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/onboarding/ceo-baseline',
+      payload: {
+        actor: 'browser-playwright-cdp-auth-test'
+      }
+    });
+    expect(onboardingResponse.statusCode).toBe(200);
+    const root = path.dirname(harness.config.persistence.sqlitePath);
+    const profileDir = path.join(root, 'live-ai-chrome-browser-profile');
+    const sessionPath = path.join(root, 'live-ai-browser-session.json');
+    fs.mkdirSync(profileDir, { recursive: true });
+    fs.writeFileSync(
+      sessionPath,
+      JSON.stringify(
+        {
+          browserTarget: 'chrome',
+          cdpEndpoint: 'http://127.0.0.1:9339',
+          profileDir
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+    const localAdminHeaders = {
+      Authorization: `Bearer ${harness.config.server.apiToken}`,
+      host: '127.0.0.1:8788',
+      'x-ops-role': 'admin'
+    };
+
+    const saveResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/playwright-auth/save-current',
+      headers: localAdminHeaders,
+      payload: {
+        siteKey: 'pinterest',
+        label: 'Pinterest live CDP login',
+        ownerLabel: 'operator',
+        playwrightSessionPath: sessionPath,
+        verifyUrl: 'https://www.pinterest.com/session-profile-proof'
+      }
+    });
+    expect(saveResponse.statusCode).toBe(200);
+    const saveBody = saveResponse.json();
+    expect(saveBody.storageState?.cookieCount).toBe(1);
+    expect(saveBody.sessionProfile).toMatchObject({
+      label: 'Pinterest live CDP login',
+      siteKey: 'pinterest',
+      storageStateId: saveBody.storageState.id,
+      profileClass: 'auth_state',
+      browserKind: 'chrome',
+      browserProfilePath: profileDir,
+      cdpEndpoint: 'http://127.0.0.1:9339',
+      lastVerificationStatus: 'connected'
+    });
+    expect(saveBody.verification?.source).toBe('cdp');
+    expect(saveBody.verification?.trace?.selectedTool).toBe('fetch');
+    expect(saveBody.verification?.trace?.artifacts[0]?.previewText).toContain('SessionCookie: cdp-session');
+  });
+
   it('lists local browser profiles, supports visible login launch, and imports profile cookies into verified session profiles', async () => {
     const harness = await createHarness('browser-profile-import', (config) => {
       const root = path.dirname(config.persistence.sqlitePath);
@@ -841,8 +1931,16 @@ describe('gateway browser api integration', () => {
         sessionCookie: 'chrome-profile-session',
         domain: '.example.com'
       });
+      createEdgeLocalProfileFixture(localProfileHome, {
+        sessionCookie: 'edge-profile-session',
+        domain: '.example.com'
+      });
       createFirefoxLocalProfileFixture(localProfileHome, {
         sessionCookie: 'firefox-profile-session',
+        domain: '.example.com'
+      });
+      createZenLocalProfileFixture(localProfileHome, {
+        sessionCookie: 'zen-profile-session',
         domain: '.example.com'
       });
       const fakeOpen = installFakeOpenCommand(root);
@@ -853,14 +1951,23 @@ describe('gateway browser api integration', () => {
         'Google',
         'Chrome'
       );
+      process.env.OPS_BROWSER_EDGE_PROFILE_ROOT = path.join(
+        localProfileHome,
+        'Library',
+        'Application Support',
+        'Microsoft Edge'
+      );
       process.env.OPS_BROWSER_FIREFOX_PROFILE_ROOT = path.join(
         localProfileHome,
         'Library',
         'Application Support',
         'Firefox'
       );
+      process.env.OPS_BROWSER_ZEN_PROFILE_ROOT = path.join(localProfileHome, 'Library', 'Application Support', 'zen');
       process.env.OPS_BROWSER_VISIBLE_CHROME_BIN = path.join(root, 'missing-chrome');
+      process.env.OPS_BROWSER_VISIBLE_EDGE_BIN = path.join(root, 'missing-edge');
       process.env.OPS_BROWSER_VISIBLE_FIREFOX_BIN = path.join(root, 'missing-firefox');
+      process.env.OPS_BROWSER_VISIBLE_ZEN_BIN = path.join(root, 'missing-zen');
       process.env.PATH = `${fakeOpen.binDir}:${process.env.PATH ?? ''}`;
       config.browser.enabled = true;
       config.browser.transport = 'stdio';
@@ -890,7 +1997,7 @@ describe('gateway browser api integration', () => {
     const vaultBody = vaultResponse.json() as {
       localProfiles: Array<{
         id: string;
-        browserKind: 'chrome' | 'firefox';
+        browserKind: 'chrome' | 'edge' | 'firefox';
         label: string;
         profileName: string;
       }>;
@@ -903,16 +2010,30 @@ describe('gateway browser api integration', () => {
           profileName: 'Default'
         }),
         expect.objectContaining({
+          browserKind: 'edge',
+          label: 'Personal Edge',
+          profileName: 'Default'
+        }),
+        expect.objectContaining({
           browserKind: 'firefox',
           label: 'Personal Firefox',
           profileName: 'Personal Firefox'
+        }),
+        expect.objectContaining({
+          browserKind: 'firefox',
+          label: 'Zen Default (release)',
+          profileName: 'Default (release)'
         })
       ])
     );
     const chromeProfileId = vaultBody.localProfiles.find((profile) => profile.browserKind === 'chrome')?.id;
-    const firefoxProfileId = vaultBody.localProfiles.find((profile) => profile.browserKind === 'firefox')?.id;
+    const edgeProfileId = vaultBody.localProfiles.find((profile) => profile.browserKind === 'edge')?.id;
+    const firefoxProfileId = vaultBody.localProfiles.find((profile) => profile.label === 'Personal Firefox')?.id;
+    const zenProfileId = vaultBody.localProfiles.find((profile) => profile.label === 'Zen Default (release)')?.id;
     expect(chromeProfileId).toBeTruthy();
+    expect(edgeProfileId).toBeTruthy();
     expect(firefoxProfileId).toBeTruthy();
+    expect(zenProfileId).toBeTruthy();
 
     const launchResponse = await harness.inject({
       method: 'POST',
@@ -927,7 +2048,7 @@ describe('gateway browser api integration', () => {
     expect(launchResponse.statusCode).toBe(200);
     const launchBody = launchResponse.json() as {
       launched: {
-        browserKind: 'chrome' | 'firefox';
+        browserKind: 'chrome' | 'edge' | 'firefox';
         url: string;
         browserProfile: {
           id: string;
@@ -948,6 +2069,50 @@ describe('gateway browser api integration', () => {
     expect(fakeOpenLog).toContain('-a');
     expect(fakeOpenLog).toContain('Google Chrome');
     expect(fakeOpenLog).toContain('https://www.reddit.com/');
+
+    const edgeLaunchResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/login-capture/start',
+      headers: localAdminHeaders,
+      payload: {
+        siteKey: 'pinterest',
+        browserKind: 'edge',
+        browserProfileId: edgeProfileId
+      }
+    });
+    expect(edgeLaunchResponse.statusCode).toBe(200);
+    await harness.waitForCondition(
+      'fake open edge launch log',
+      async () =>
+        fs.existsSync(fakeOpenLogPath) && fs.readFileSync(fakeOpenLogPath, 'utf8').includes('https://www.pinterest.com/'),
+      5_000
+    );
+    const fakeOpenAfterEdge = fs.readFileSync(fakeOpenLogPath, 'utf8');
+    expect(fakeOpenAfterEdge).toContain('-a');
+    expect(fakeOpenAfterEdge).toContain('Microsoft Edge');
+    expect(fakeOpenAfterEdge).toContain('https://www.pinterest.com/');
+
+    const zenLaunchResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/login-capture/start',
+      headers: localAdminHeaders,
+      payload: {
+        siteKey: 'instagram',
+        browserKind: 'firefox',
+        browserProfileId: zenProfileId
+      }
+    });
+    expect(zenLaunchResponse.statusCode).toBe(200);
+    await harness.waitForCondition(
+      'fake open zen launch log',
+      async () =>
+        fs.existsSync(fakeOpenLogPath) && fs.readFileSync(fakeOpenLogPath, 'utf8').includes('https://www.instagram.com/'),
+      5_000
+    );
+    const fakeOpenAfterZen = fs.readFileSync(fakeOpenLogPath, 'utf8');
+    expect(fakeOpenAfterZen).toContain('-a');
+    expect(fakeOpenAfterZen).toContain('Zen');
+    expect(fakeOpenAfterZen).toContain('https://www.instagram.com/');
 
     const connectResponse = await harness.inject({
       method: 'POST',
@@ -972,7 +2137,7 @@ describe('gateway browser api integration', () => {
         sourceKind: string;
       } | null;
       sessionProfile: {
-        browserKind: 'chrome' | 'firefox' | null;
+        browserKind: 'chrome' | 'edge' | 'firefox' | null;
         browserProfileName: string | null;
         ownerLabel: string | null;
         useRealChrome: boolean;
@@ -1000,6 +2165,65 @@ describe('gateway browser api integration', () => {
     expect(connectBody.verification.trace?.selectedTool).toBe('fetch');
     expect(connectBody.verification.trace?.artifacts[0]?.previewText).toContain('SessionCookie: firefox-profile-session');
     expect(connectBody.verification.trace?.artifacts[0]?.previewText).toContain('RealChrome: false');
+  });
+
+  it('returns a controlled error when local browser cookie import fails', async () => {
+    const harness = await createHarness('browser-profile-import-controlled-failure', (config) => {
+      const root = path.dirname(config.persistence.sqlitePath);
+      const localProfileHome = path.join(root, 'local-browser-home');
+      const chromeRoot = path.join(localProfileHome, 'Library', 'Application Support', 'Google', 'Chrome');
+      const profilePath = path.join(chromeRoot, 'Default');
+      fs.mkdirSync(profilePath, { recursive: true });
+      fs.writeFileSync(
+        path.join(chromeRoot, 'Local State'),
+        JSON.stringify({
+          profile: {
+            info_cache: {
+              Default: {
+                name: 'Broken Chrome'
+              }
+            }
+          }
+        }),
+        'utf8'
+      );
+      fs.writeFileSync(path.join(profilePath, 'Cookies'), 'not a sqlite database', 'utf8');
+      process.env.OPS_BROWSER_CHROME_PROFILE_ROOT = chromeRoot;
+    });
+
+    const localAdminHeaders = {
+      Authorization: `Bearer ${harness.config.server.apiToken}`,
+      host: '127.0.0.1:8788',
+      'x-ops-role': 'admin'
+    };
+
+    const vaultResponse = await harness.inject({
+      method: 'GET',
+      url: '/api/browser/session-vault',
+      headers: localAdminHeaders
+    });
+    expect(vaultResponse.statusCode).toBe(200);
+    const vaultBody = vaultResponse.json();
+    const brokenChromeProfile = vaultBody.localProfiles.find((profile: { label: string }) => profile.label === 'Broken Chrome');
+    expect(brokenChromeProfile?.id).toBeTruthy();
+
+    const connectResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/browser/connect-account',
+      headers: localAdminHeaders,
+      payload: {
+        label: 'Broken Chrome imported session',
+        siteKey: 'generic',
+        method: 'browser_profile_import',
+        browserKind: 'chrome',
+        browserProfileId: brokenChromeProfile.id,
+        domains: ['example.com']
+      }
+    });
+    expect(connectResponse.statusCode).toBe(409);
+    const connectBody = connectResponse.json();
+    expect(connectBody.error).toContain('Failed to import cookies from Broken Chrome');
+    expect(connectBody.details.reason).toBe('browser_profile_cookie_import_failed');
   });
 
   it('imports cookie JSON and enforces session-scoped sticky profile selection plus lifecycle actions', async () => {

@@ -17,6 +17,21 @@ export interface StartupSmokeResult {
   detail: string;
 }
 
+export type TelegramProbeClassification =
+  | 'ok'
+  | 'invalid_token'
+  | 'network_unreachable'
+  | 'timeout'
+  | 'fetch_unavailable'
+  | 'http_error'
+  | 'unknown_error';
+
+interface TelegramProbeResult {
+  ok: boolean;
+  classification: TelegramProbeClassification;
+  detail: string;
+}
+
 export interface StartupHealerRunResult {
   ok: boolean;
   degraded: boolean;
@@ -57,10 +72,41 @@ function commandExists(command: string): boolean {
   return result.status === 0;
 }
 
-async function telegramGetMe(botToken: string): Promise<{ ok: boolean; detail: string }> {
+function classifyTelegramProbeError(error: unknown): TelegramProbeResult {
+  const detail = error instanceof Error ? error.message : String(error);
+  if (error instanceof Error && error.name === 'AbortError') {
+    return {
+      ok: false,
+      classification: 'timeout',
+      detail: detail || 'Telegram getMe probe timed out.'
+    };
+  }
+  if (/timeout|timed out/i.test(detail)) {
+    return {
+      ok: false,
+      classification: 'timeout',
+      detail
+    };
+  }
+  if (/fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENETUNREACH/i.test(detail)) {
+    return {
+      ok: false,
+      classification: 'network_unreachable',
+      detail
+    };
+  }
+  return {
+    ok: false,
+    classification: 'unknown_error',
+    detail
+  };
+}
+
+async function telegramGetMe(botToken: string): Promise<TelegramProbeResult> {
   if (typeof fetch !== 'function') {
     return {
       ok: false,
+      classification: 'fetch_unavailable',
       detail: 'Fetch API unavailable in current runtime.'
     };
   }
@@ -71,27 +117,33 @@ async function telegramGetMe(botToken: string): Promise<{ ok: boolean; detail: s
       method: 'GET',
       signal: controller.signal
     });
-    const payload = (await response.json().catch(() => null)) as
-      | {
-          ok?: boolean;
-          description?: string;
-        }
-      | null;
-    if (!response.ok || !payload?.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    const payloadOk =
+      payload && typeof payload === 'object' && 'ok' in payload && typeof payload.ok === 'boolean'
+        ? payload.ok
+        : undefined;
+    const payloadDescription =
+      payload && typeof payload === 'object' && 'description' in payload && typeof payload.description === 'string'
+        ? payload.description
+        : undefined;
+    if (!response.ok || payloadOk !== true) {
+      const invalidToken =
+        response.status === 401 ||
+        response.status === 404 ||
+        Boolean(payloadDescription && /unauthorized|not found|token/i.test(payloadDescription));
       return {
         ok: false,
-        detail: payload?.description ?? `HTTP ${response.status}`
+        classification: invalidToken ? 'invalid_token' : 'http_error',
+        detail: payloadDescription ?? `HTTP ${response.status}`
       };
     }
     return {
       ok: true,
+      classification: 'ok',
       detail: 'Telegram getMe probe succeeded.'
     };
   } catch (error) {
-    return {
-      ok: false,
-      detail: error instanceof Error ? error.message : String(error)
-    };
+    return classifyTelegramProbeError(error);
   } finally {
     clearTimeout(timeout);
   }
@@ -199,7 +251,15 @@ export class StartupHealer {
       finishedAt
     };
 
-    input.emitAudit?.(result.ok ? 'ok' : 'degraded', result as unknown as Record<string, unknown>);
+    input.emitAudit?.(result.ok ? 'ok' : 'degraded', {
+      ok: result.ok,
+      degraded: result.degraded,
+      appliedPatches: result.appliedPatches,
+      skippedPatches: result.skippedPatches,
+      smoke: result.smoke,
+      startedAt: result.startedAt,
+      finishedAt: result.finishedAt
+    });
 
     if (input.notifyOnFailure !== false && hasCritical) {
       const summary = smoke
@@ -275,11 +335,12 @@ export class StartupHealer {
       const tokenForProbe = options.resolvedTelegramToken.trim();
       if (tokenForProbe) {
         const probe = await telegramGetMe(tokenForProbe);
+        const level = probe.ok ? 'info' : probe.classification === 'invalid_token' ? 'error' : 'warn';
         checks.push({
           name: 'telegram_bot_probe',
           ok: probe.ok,
-          level: probe.ok ? 'info' : 'error',
-          detail: probe.detail
+          level,
+          detail: `${probe.classification}: ${probe.detail}`
         });
       } else if (
         isIndirectSecretReference(configuredToken) ||
@@ -301,7 +362,8 @@ export class StartupHealer {
       }
     }
 
-    (['codex', 'claude', 'gemini'] as const).forEach((runtime) => {
+    const runtimeProbeKinds: Array<'codex' | 'claude' | 'gemini'> = ['codex', 'claude', 'gemini'];
+    runtimeProbeKinds.forEach((runtime) => {
       const command = config.runtime.adapters[runtime].command;
       const installed = commandExists(command);
       checks.push({

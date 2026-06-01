@@ -315,4 +315,76 @@ describe('browser capability service', () => {
     expect(attempts).toBe(3);
     db.close();
   });
+
+  it('marks JavaScript interstitial captures as requiring rendered browser fallback after all Scrapling tools fail', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-browser-render-required-'));
+    const db = new ControlPlaneDatabase(path.join(root, 'state.db'));
+    db.migrate();
+
+    const config = loadConfig({
+      cwd: root,
+      env: {
+        OPS_API_TOKEN: 'test-token-12345',
+        OPS_TELEGRAM_ENABLED: 'false',
+        OPS_BROWSER_ENABLED: 'true'
+      }
+    });
+    config.browser.allowedAgents = ['software-engineer'];
+
+    const session = db.upsertSessionByKey({
+      sessionKey: 'browser:test:session:5',
+      channel: 'internal',
+      chatType: 'internal',
+      agentId: 'software-engineer'
+    });
+    db.createRun({
+      id: 'run-browser-5',
+      sessionId: session.id,
+      runtime: 'process',
+      prompt: 'Browser dynamic render required test',
+      status: 'running'
+    });
+
+    let attempts = 0;
+    const service = new BrowserCapabilityService(config, db, {
+      commandExists: () => true,
+      commandRunner: async () => {
+        attempts += 1;
+        return {
+          exitCode: 0,
+          stdout: [
+            '(2) Home / X',
+            'JavaScript is not available.',
+            'Please enable JavaScript or switch to a supported browser to continue using x.com.'
+          ].join('\n'),
+          stderr: ''
+        };
+      }
+    });
+
+    const result = await service.execute({
+      runId: 'run-browser-5',
+      sessionId: session.id,
+      agentId: 'software-engineer',
+      agentTools: ['browser:scrapling'],
+      workspacePath: root,
+      request: {
+        url: 'https://x.com/home',
+        intent: 'monitor',
+        dynamicLikely: true
+      }
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.selectedTool).toBe('stealthy_fetch');
+    expect(result.blockedReason).toBe('dynamic_render_required');
+    expect(result.error).toContain('interactive browser fallback');
+    expect(result.summary).toBeNull();
+    expect(result.artifacts[0]?.previewText).toContain('JavaScript is not available');
+    expect(attempts).toBe(3);
+
+    const timeline = db.listRunTimeline('run-browser-5');
+    expect(timeline.some((entry) => entry.type === 'browser.dynamic_render_required')).toBe(true);
+    db.close();
+  });
 });

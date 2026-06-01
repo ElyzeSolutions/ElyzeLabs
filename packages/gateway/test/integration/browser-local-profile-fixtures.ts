@@ -8,6 +8,8 @@ const { DatabaseSync } = require('node:sqlite') as typeof import('node:sqlite');
 type LocalProfileFixtureOptions = {
   sessionCookie?: string;
   domain?: string;
+  expirySeconds?: number;
+  chromeExpiresUtc?: number | string;
 };
 
 export function createChromeLocalProfileFixture(homeDir: string, options?: LocalProfileFixtureOptions): { profilePath: string } {
@@ -45,8 +47,53 @@ export function createChromeLocalProfileFixture(homeDir: string, options?: Local
   const insert = db.prepare(
     'INSERT INTO cookies (host_key, name, value, encrypted_value, path, expires_utc, is_httponly, is_secure, samesite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
-  insert.run(domain, 'sessionid', options?.sessionCookie ?? 'chrome-session', new Uint8Array(), '/', 2_200_000_000_000_000, 1, 1, 2);
-  insert.run(domain, 'csrftoken', 'csrf-token', new Uint8Array(), '/', 2_200_000_000_000_000, 0, 1, 2);
+  const expiresUtc = options?.chromeExpiresUtc ?? 2_200_000_000_000_000;
+  insert.run(domain, 'sessionid', options?.sessionCookie ?? 'chrome-session', new Uint8Array(), '/', expiresUtc, 1, 1, 2);
+  insert.run(domain, 'csrftoken', 'csrf-token', new Uint8Array(), '/', expiresUtc, 0, 1, 2);
+  db.close();
+  return {
+    profilePath
+  };
+}
+
+export function createEdgeLocalProfileFixture(homeDir: string, options?: LocalProfileFixtureOptions): { profilePath: string } {
+  const edgeRoot = path.join(homeDir, 'Library', 'Application Support', 'Microsoft Edge');
+  const profilePath = path.join(edgeRoot, 'Default');
+  const domain = options?.domain ?? '.example.com';
+  fs.mkdirSync(profilePath, { recursive: true });
+  fs.writeFileSync(
+    path.join(edgeRoot, 'Local State'),
+    JSON.stringify({
+      profile: {
+        info_cache: {
+          Default: {
+            name: 'Personal Edge'
+          }
+        }
+      }
+    }),
+    'utf8'
+  );
+  const db = new DatabaseSync(path.join(profilePath, 'Cookies'));
+  db.exec(`
+    CREATE TABLE cookies (
+      host_key TEXT,
+      name TEXT,
+      value TEXT,
+      encrypted_value BLOB,
+      path TEXT,
+      expires_utc INTEGER,
+      is_httponly INTEGER,
+      is_secure INTEGER,
+      samesite INTEGER
+    );
+  `);
+  const insert = db.prepare(
+    'INSERT INTO cookies (host_key, name, value, encrypted_value, path, expires_utc, is_httponly, is_secure, samesite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  );
+  const expiresUtc = options?.chromeExpiresUtc ?? 2_200_000_000_000_000;
+  insert.run(domain, 'sessionid', options?.sessionCookie ?? 'edge-session', new Uint8Array(), '/', expiresUtc, 1, 1, 2);
+  insert.run(domain, 'csrftoken', 'csrf-token', new Uint8Array(), '/', expiresUtc, 0, 1, 2);
   db.close();
   return {
     profilePath
@@ -80,8 +127,45 @@ export function createFirefoxLocalProfileFixture(homeDir: string, options?: Loca
   const insert = db.prepare(
     'INSERT INTO moz_cookies (host, name, value, path, expiry, isHttpOnly, isSecure, sameSite) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   );
-  insert.run(domain, 'sessionid', options?.sessionCookie ?? 'firefox-session', '/', 2_200_000_000, 1, 1, 1);
-  insert.run(domain, 'csrftoken', 'csrf-token', '/', 2_200_000_000, 0, 1, 1);
+  const expirySeconds = options?.expirySeconds ?? 2_200_000_000;
+  insert.run(domain, 'sessionid', options?.sessionCookie ?? 'firefox-session', '/', expirySeconds, 1, 1, 1);
+  insert.run(domain, 'csrftoken', 'csrf-token', '/', expirySeconds, 0, 1, 1);
+  db.close();
+  return {
+    profilePath
+  };
+}
+
+export function createZenLocalProfileFixture(homeDir: string, options?: LocalProfileFixtureOptions): { profilePath: string } {
+  const zenRoot = path.join(homeDir, 'Library', 'Application Support', 'zen');
+  const profileRelativePath = path.join('Profiles', 'pcfv9k7s.Default (release)');
+  const profilePath = path.join(zenRoot, profileRelativePath);
+  const domain = options?.domain ?? '.example.com';
+  fs.mkdirSync(profilePath, { recursive: true });
+  fs.writeFileSync(
+    path.join(zenRoot, 'profiles.ini'),
+    ['[Profile0]', 'Name=Default (release)', `Path=${profileRelativePath}`, 'IsRelative=1', 'Default=1', ''].join('\n'),
+    'utf8'
+  );
+  const db = new DatabaseSync(path.join(profilePath, 'cookies.sqlite'));
+  db.exec(`
+    CREATE TABLE moz_cookies (
+      host TEXT,
+      name TEXT,
+      value TEXT,
+      path TEXT,
+      expiry INTEGER,
+      isHttpOnly INTEGER,
+      isSecure INTEGER,
+      sameSite INTEGER
+    );
+  `);
+  const insert = db.prepare(
+    'INSERT INTO moz_cookies (host, name, value, path, expiry, isHttpOnly, isSecure, sameSite) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  );
+  const expirySeconds = options?.expirySeconds ?? 2_200_000_000;
+  insert.run(domain, 'sessionid', options?.sessionCookie ?? 'zen-session', '/', expirySeconds, 1, 1, 1);
+  insert.run(domain, 'csrftoken', 'csrf-token', '/', expirySeconds, 0, 1, 1);
   db.close();
   return {
     profilePath

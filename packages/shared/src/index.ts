@@ -874,7 +874,7 @@ export type BrowserCookieSourceKind =
   | 'browser_profile_import';
 
 export type BrowserSessionProfileVisibility = 'shared' | 'session_only';
-export type BrowserLocalProfileKind = 'chrome' | 'firefox';
+export type BrowserLocalProfileKind = 'chrome' | 'edge' | 'firefox';
 
 export interface BrowserCookieJarRecord {
   id: string;
@@ -937,6 +937,7 @@ export interface BrowserSessionProfileRecord {
   browserKind: BrowserLocalProfileKind | null;
   browserProfileName: string | null;
   browserProfilePath: string | null;
+  cdpEndpoint: string | null;
   locale: string | null;
   countryCode: string | null;
   timezoneId: string | null;

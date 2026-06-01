@@ -1,0 +1,398 @@
+{
+  "schema": "ops.best-in-class-capability-matrix.v1",
+  "version": 1,
+  "updatedAt": "2026-05-31",
+  "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
+  "statusDefinitions": {
+    "ahead": "ElyzeLabs has stronger current behavior with local evidence and verification.",
+    "parity": "ElyzeLabs has comparable behavior with local evidence and verification.",
+    "partial": "ElyzeLabs has meaningful implementation, but remaining gaps prevent a best-in-class claim.",
+    "missing": "The capability is not implemented in a product-grade way.",
+    "defer": "The capability is intentionally not part of the current best-in-class bar."
+  },
+  "competitors": [
+    {
+      "id": "hermes-agent",
+      "label": "Hermes Agent",
+      "path": "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent",
+      "focus": [
+        "prompt layering",
+        "skill curation",
+        "scheduled automation discipline",
+        "multi-channel operations",
+        "terminal ergonomics"
+      ]
+    },
+    {
+      "id": "NemoClaw",
+      "label": "NemoClaw",
+      "path": "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw",
+      "focus": [
+        "sandbox policy tiers",
+        "deny-by-default egress",
+        "endpoint groups",
+        "blueprint lifecycle",
+        "operator approval loops"
+      ]
+    },
+    {
+      "id": "openclaw",
+      "label": "OpenClaw",
+      "path": "/Users/p4r4disi4c/Documents/ROADMAP/openclaw",
+      "focus": [
+        "device/node gateway protocol",
+        "channel routing",
+        "DM pairing",
+        "managed browser profile",
+        "doctor/onboarding breadth",
+        "model failover"
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "prompt_source_authority",
+      "area": "system_prompt",
+      "priority": "P0",
+      "requiredForBestInClass": true,
+      "status": "ahead",
+      "requirement": "Prompts must declare authority order, quote untrusted transcript/memory evidence, scan suspicious context files, and expose prompt assembly metadata to runtime and Doctor surfaces.",
+      "referenceSignals": [
+        "Hermes separates stable prompt policy, context files, memory, and session state.",
+        "OpenClaw exposes pluggable context and memory prompt-section contracts.",
+        "NemoClaw keeps managed tool selection explicit in onboarding paths."
+      ],
+      "elyzeEvidence": [
+        "packages/gateway/src/prompt-governance.ts",
+        "packages/gateway/src/context-assembly.ts",
+        "packages/gateway/src/server.ts",
+        "packages/runtime/src/manager.ts",
+        "docs/system-prompt-comparison.md"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/agent/system_prompt.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/agent/prompt_builder.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/context-engine/types.ts"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/prompt-governance.test.ts packages/gateway/test/unit/context-assembly.test.ts packages/runtime/test/unit/runtime-manager.test.ts"
+        ],
+        "testPaths": [
+          "packages/gateway/test/unit/prompt-governance.test.ts",
+          "packages/gateway/test/unit/context-assembly.test.ts",
+          "packages/runtime/test/unit/runtime-manager.test.ts"
+        ]
+      },
+      "remainingGaps": []
+    },
+    {
+      "id": "memory_write_governance",
+      "area": "memory",
+      "priority": "P0",
+      "requiredForBestInClass": true,
+      "status": "ahead",
+      "requirement": "Durable memory must reject credential-like or prompt-control writes before markdown, daily, structured, imported, or compacted trajectory persistence.",
+      "referenceSignals": [
+        "Hermes treats durable memory as declarative facts rather than instruction authority.",
+        "OpenClaw allows memory providers to contribute bounded prompt sections.",
+        "NemoClaw keeps credentials outside worker execution boundaries."
+      ],
+      "elyzeEvidence": [
+        "packages/memory/src/service.ts",
+        "packages/memory/src/index.ts",
+        "packages/gateway/src/server.ts",
+        "docs/system-prompt-comparison.md"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/agent/memory_manager.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/memory/prompt-section.ts"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts packages/memory/test/unit/memory-service.test.ts packages/gateway/test/integration/telegram-prompt-governance.test.ts"
+        ],
+        "testPaths": [
+          "packages/memory/test/unit/memory-service.test.ts",
+          "packages/gateway/test/integration/telegram-prompt-governance.test.ts"
+        ]
+      },
+      "remainingGaps": []
+    },
+    {
+      "id": "telegram_live_smoke",
+      "area": "telegram",
+      "priority": "P0",
+      "requiredForBestInClass": true,
+      "status": "parity",
+      "requirement": "Telegram must support governed ingress, prompt-injection-safe memory behavior, bot identity validation, and an operator-triggered outbound smoke test with redacted evidence.",
+      "referenceSignals": [
+        "NemoClaw soft-fails optional Telegram reachability instead of blocking unrelated setup.",
+        "OpenClaw doctor/onboarding surfaces risky channel and pairing policy.",
+        "Hermes treats channel delivery as a first-class operational concern."
+      ],
+      "elyzeEvidence": [
+        "packages/gateway/src/server.ts",
+        "packages/gateway/test/integration/telegram-prompt-governance.test.ts",
+        "packages/gateway/test/integration/telegram-smoke-test.test.ts",
+        "docs/api-contract.md"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/src/lib/onboard/telegram-reachability.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/channels/channel-routing.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/gateway/doctor.md"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/telegram-smoke-test.test.ts packages/gateway/test/integration/telegram-prompt-governance.test.ts"
+        ],
+        "testPaths": [
+          "packages/gateway/test/integration/telegram-smoke-test.test.ts",
+          "packages/gateway/test/integration/telegram-prompt-governance.test.ts"
+        ]
+      },
+      "remainingGaps": [
+        "A live operator-run smoke test with real Telegram credentials still needs to be executed outside mocked integration tests."
+      ]
+    },
+    {
+      "id": "sandbox_policy_profiles",
+      "area": "sandbox",
+      "priority": "P0",
+      "requiredForBestInClass": true,
+      "status": "parity",
+      "requirement": "Execution policy must expose understandable sandbox tiers, enforce network/filesystem/process/credential boundaries, and preserve approval evidence across all execution lanes.",
+      "referenceSignals": [
+        "NemoClaw defines restricted, balanced, and open policy profiles with endpoint groups.",
+        "NemoClaw separates host credentials from sandbox egress.",
+        "OpenClaw device permissions and scopes make runtime authority visible."
+      ],
+      "elyzeEvidence": [
+        "packages/config/src/schema.ts",
+        "packages/config/src/loader.ts",
+        "packages/gateway/src/sandbox-policy.ts",
+        "packages/gateway/src/server.ts",
+        "packages/runtime/src/adapters.ts",
+        "packages/runtime/test/unit/runtime-manager.test.ts",
+        "dashboard/src/pages/DoctorCenterPage.tsx"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/schemas/sandbox-policy.schema.json",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/skills/nemoclaw-user-reference/references/network-policies.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/gateway/protocol.md"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/sandbox-policy.test.ts packages/config/test/unit/config.test.ts packages/gateway/test/integration/doctor-center.test.ts packages/runtime/test/unit/runtime-manager.test.ts"
+        ],
+        "testPaths": [
+          "packages/gateway/test/unit/sandbox-policy.test.ts",
+          "packages/config/test/unit/config.test.ts",
+          "packages/gateway/test/integration/doctor-center.test.ts",
+          "packages/runtime/test/unit/runtime-manager.test.ts"
+        ]
+      },
+      "remainingGaps": []
+    },
+    {
+      "id": "tool_skill_lifecycle",
+      "area": "tools_skills",
+      "priority": "P1",
+      "requiredForBestInClass": true,
+      "status": "parity",
+      "requirement": "Tools and skills must have explicit authority boundaries, lifecycle states, review/curation, usage evidence, and conflict/permission diagnostics.",
+      "referenceSignals": [
+        "Hermes has a skill curator loop that pins, archives, consolidates, patches, and reviews skills.",
+        "Hermes cron paths disable protected toolsets and scan loaded skill content.",
+        "OpenClaw plugin SDK registration clarifies provider/channel/tool extension boundaries."
+      ],
+      "elyzeEvidence": [
+        "packages/skills/src/registry.ts",
+        "packages/gateway/src/prompt-governance.ts",
+        "packages/gateway/src/server.ts",
+        "packages/gateway/test/integration/doctor-center.test.ts",
+        "dashboard/src/pages/SkillsPage.tsx"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/agent/curator.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/cron/scheduler.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/plugins/building-plugins.md"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts packages/skills/test/unit/registry.test.ts packages/gateway/test/integration/skill-lifecycle.test.ts packages/gateway/test/integration/doctor-center.test.ts packages/gateway/test/unit/prompt-governance.test.ts"
+        ],
+        "testPaths": [
+          "packages/skills/test/unit/registry.test.ts",
+          "packages/gateway/test/integration/skill-lifecycle.test.ts",
+          "packages/gateway/test/integration/doctor-center.test.ts",
+          "packages/gateway/test/unit/prompt-governance.test.ts"
+        ]
+      },
+      "remainingGaps": []
+    },
+    {
+      "id": "api_route_contract_governance",
+      "area": "api_governance",
+      "priority": "P0",
+      "requiredForBestInClass": true,
+      "status": "parity",
+      "requirement": "The control-plane API surface must be discoverable, documented, and drift-checked before new features are claimed as productized.",
+      "referenceSignals": [
+        "OpenClaw documents gateway protocols and channel routing contracts.",
+        "NemoClaw ships schemas for sandbox policies and blueprint lifecycle.",
+        "Hermes keeps operational CLI/TUI behavior explicit."
+      ],
+      "elyzeEvidence": [
+        "scripts/runtime/route-inventory.ts",
+        "docs/generated/api-route-inventory.md",
+        "docs/generated/api-route-inventory.json",
+        "docs/api-contract.md"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/gateway/protocol.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/channels/channel-routing.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/schemas/sandbox-policy.schema.json"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm api:inventory:check",
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/route-inventory.test.ts"
+        ],
+        "testPaths": [
+          "packages/gateway/test/unit/route-inventory.test.ts"
+        ]
+      },
+      "remainingGaps": []
+    },
+    {
+      "id": "channel_adapter_abstraction",
+      "area": "channels",
+      "priority": "P1",
+      "requiredForBestInClass": true,
+      "status": "parity",
+      "requirement": "Channels should share a deterministic adapter contract for account, peer, thread, agent, session key, pairing policy, inbound normalization, outbound delivery, and audit.",
+      "referenceSignals": [
+        "OpenClaw has deterministic account/peer/guild/channel/agent/session routing.",
+        "Hermes supports many channel backends through extension-style platform handling.",
+        "OpenClaw pairs unknown DMs before processing."
+      ],
+      "elyzeEvidence": [
+        "packages/gateway/src/channel-adapter.ts",
+        "packages/gateway/src/server.ts",
+        "packages/gateway/test/unit/channel-adapter.test.ts",
+        "packages/gateway/test/integration/telegram-smoke-test.test.ts",
+        "docs/competitor-feature-analysis.md"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/channels/index.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/channels/channel-routing.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/gateway/platform_registry.py"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/channel-adapter.test.ts packages/gateway/test/integration/telegram-smoke-test.test.ts"
+        ],
+        "testPaths": [
+          "packages/gateway/test/unit/channel-adapter.test.ts",
+          "packages/gateway/test/integration/telegram-smoke-test.test.ts"
+        ]
+      },
+      "remainingGaps": []
+    },
+    {
+      "id": "managed_browser_profile",
+      "area": "browser",
+      "priority": "P1",
+      "requiredForBestInClass": true,
+      "status": "parity",
+      "requirement": "Browser automation should have agent-only managed profiles, optional user-profile attach, deterministic tab/action controls, artifact preview, and policy-diff approvals.",
+      "referenceSignals": [
+        "OpenClaw separates agent-managed browser profiles from real-user Chrome profile attachment.",
+        "OpenClaw documents deterministic tab/click/type/screenshot/PDF browser tools."
+      ],
+      "elyzeEvidence": [
+        "packages/gateway/src/browser-service.ts",
+        "packages/gateway/src/server.ts",
+        "dashboard/src/pages/BrowserPage.tsx",
+        "packages/gateway/test/unit/browser-service.test.ts",
+        "packages/gateway/test/integration/browser-api.test.ts",
+        "packages/gateway/test/integration/browser-managed-profiles.test.ts"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/tools/browser.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/start/wizard.md"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/browser-service.test.ts packages/gateway/test/integration/browser-api.test.ts packages/gateway/test/integration/browser-managed-profiles.test.ts dashboard/src/pages/BrowserPage.test.tsx"
+        ],
+        "testPaths": [
+          "packages/gateway/test/unit/browser-service.test.ts",
+          "packages/gateway/test/integration/browser-api.test.ts",
+          "packages/gateway/test/integration/browser-managed-profiles.test.ts",
+          "dashboard/src/pages/BrowserPage.test.tsx"
+        ]
+      },
+      "remainingGaps": []
+    },
+    {
+      "id": "model_failover_profiles",
+      "area": "llm_routing",
+      "priority": "P2",
+      "requiredForBestInClass": true,
+      "status": "parity",
+      "requirement": "LLM routing should support provider auth profiles, fallback chains, cooldowns, session stickiness, billing-disabled state, and audit explaining selected model/profile.",
+      "referenceSignals": [
+        "OpenClaw documents auth profile rotation, model fallback, round-robin, session stickiness, cooldowns, and billing-disable behavior."
+      ],
+      "elyzeEvidence": [
+        "packages/gateway/src/llm-failover-profiles.ts",
+        "packages/gateway/src/server.ts",
+        "packages/runtime/src/adapters.ts",
+        "packages/runtime/src/types.ts",
+        "dashboard/src/pages/CostControlPage.tsx",
+        "docs/api-contract.md"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/concepts/model-failover.md"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/model-routing.test.ts"
+        ],
+        "testPaths": [
+          "packages/gateway/test/integration/model-routing.test.ts"
+        ]
+      },
+      "remainingGaps": []
+    },
+    {
+      "id": "device_node_protocol",
+      "area": "realtime_gateway",
+      "priority": "P2",
+      "requiredForBestInClass": false,
+      "status": "defer",
+      "requirement": "A typed WebSocket device/node protocol should exist only after route/module boundaries are cleaner.",
+      "referenceSignals": [
+        "OpenClaw has a gateway device/node protocol with handshake, roles, scopes, capabilities, and device tokens."
+      ],
+      "elyzeEvidence": [
+        "docs/competitor-feature-analysis.md",
+        "packages/gateway/src/server.ts"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/gateway/protocol.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/concepts/architecture.md"
+      ],
+      "verification": {
+        "commands": [],
+        "testPaths": []
+      },
+      "remainingGaps": [
+        "Current SSE/event surfaces should be stabilized before adding a node protocol.",
+        "Device token lifecycle is not yet implemented."
+      ]
+    }
+  ]
+}

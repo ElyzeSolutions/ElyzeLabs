@@ -15,6 +15,7 @@ import {
   fetchBrowserStatus,
   fetchChats,
   fetchCronStatus,
+  fetchDoctorCenter,
   fetchHousekeeping,
   fetchImprovementLearnings,
   fetchImprovementProposals,
@@ -197,6 +198,7 @@ const browserVaultSessionKey = (token?: string, sessionId?: string) =>
 const chatsKey = (token?: string) => [...rootKey(token), 'chats'] as const;
 const configKey = (token?: string) => [...rootKey(token), 'config'] as const;
 const cronStatusKey = (token?: string) => [...rootKey(token), 'cronStatus'] as const;
+const doctorCenterKey = (token?: string) => [...rootKey(token), 'doctorCenter'];
 const housekeepingKey = (token?: string) => [...rootKey(token), 'housekeeping'] as const;
 const improvementLearningsKey = (token?: string) => [...rootKey(token), 'improvementLearnings'] as const;
 const improvementLearningsListKey = (
@@ -311,6 +313,7 @@ export const dashboardQueryKeys = {
   chats: chatsKey,
   config: configKey,
   cronStatus: cronStatusKey,
+  doctorCenter: doctorCenterKey,
   housekeeping: housekeepingKey,
   improvementLearnings: improvementLearningsKey,
   improvementLearningsList: improvementLearningsListKey,
@@ -676,6 +679,15 @@ export function readinessQueryOptions(token?: string) {
     token,
     queryKey: dashboardQueryKeys.readiness(token),
     queryFn: fetchReadiness,
+    staleTime: 15_000
+  });
+}
+
+export function doctorCenterQueryOptions(token?: string) {
+  return authenticatedQueryOptions({
+    token,
+    queryKey: dashboardQueryKeys.doctorCenter(token),
+    queryFn: fetchDoctorCenter,
     staleTime: 15_000
   });
 }

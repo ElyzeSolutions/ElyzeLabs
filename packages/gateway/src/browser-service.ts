@@ -613,6 +613,26 @@ export class BrowserCapabilityService {
         requiresApproval
       });
     }
+    const selectedArtifacts = artifacts.filter((artifact) => artifact.tool === selectedTool);
+    const dynamicRenderBarrierArtifacts = selectedArtifacts.length > 0 ? selectedArtifacts : artifacts;
+    const dynamicRenderBarrierDetected =
+      !hasSubstantiveStructuredSummary(summary) &&
+      dynamicRenderBarrierArtifacts.length > 0 &&
+      dynamicRenderBarrierArtifacts.every((artifact) => isDynamicRenderBarrierCapture(artifact.previewText));
+    if (!blockedReason && dynamicRenderBarrierDetected) {
+      blockedReason = 'dynamic_render_required';
+      summary = null;
+      error = 'Scrapling reached a JavaScript-required page; use the interactive browser fallback for rendered content.';
+      this.appendRunEvent(input, 'browser.dynamic_render_required', 'Browser capture requires rendered JavaScript content', {
+        provider: 'scrapling',
+        transport: status.transport,
+        healthState: status.healthState,
+        selectedTool,
+        attemptedTools,
+        blockedReason,
+        fallbackReason: route.fallbackReason
+      });
+    }
 
     this.appendRunEvent(input, 'browser.result', 'Browser execution completed', {
       provider: 'scrapling',
@@ -626,7 +646,8 @@ export class BrowserCapabilityService {
       blockedReason,
       requiresApproval,
       summary,
-      cacheHitCount
+      cacheHitCount,
+      error
     });
 
     return {
@@ -779,8 +800,7 @@ function isThinDynamicCapture(content: string): boolean {
 function isBlockedDynamicCapture(content: string): boolean {
   const normalized = content.toLowerCase();
   return (
-    normalized.includes('javascript is not available') ||
-    normalized.includes('please enable javascript') ||
+    isDynamicRenderBarrierCapture(content) ||
     normalized.includes('login wall') ||
     normalized.includes('sign in to continue') ||
     normalized.includes('log in to continue') ||
@@ -788,6 +808,28 @@ function isBlockedDynamicCapture(content: string): boolean {
     normalized.includes("something went wrong, but don't fret") ||
     normalized.includes('try again')
   );
+}
+
+function isDynamicRenderBarrierCapture(content: string): boolean {
+  const normalized = content.toLowerCase();
+  return (
+    normalized.includes('javascript is not available') ||
+    normalized.includes('please enable javascript') ||
+    normalized.includes('enable javascript or switch to a supported browser') ||
+    normalized.includes('unsupported browser')
+  );
+}
+
+function hasSubstantiveStructuredSummary(summary: BrowserStructuredSummary | null): boolean {
+  if (!summary?.summary || summary.extractorId === 'generic' || summary.fields.length === 0) {
+    return false;
+  }
+  if (summary.extractorId === 'x_profile' || summary.extractorId === 'tiktok_profile' || summary.extractorId === 'tiktok_video') {
+    return summary.fields.some((field) =>
+      ['followers', 'following', 'likes', 'posts', 'comments', 'shares'].includes(field.key)
+    );
+  }
+  return true;
 }
 
 function parseTimelinePayload(event: TimelineEvent | null): Record<string, unknown> {

@@ -376,6 +376,19 @@ const CONFIG_SECTIONS: ConfigSectionSpec[] = [
         kind: 'number',
         min: 1,
         step: 1
+      },
+      {
+        path: 'policy.sandbox.enabled',
+        label: 'Sandbox Enabled',
+        description: 'Expose the active sandbox policy profile to runs, skills, and Doctor Center.',
+        kind: 'boolean'
+      },
+      {
+        path: 'policy.sandbox.activeProfile',
+        label: 'Sandbox Profile',
+        description: 'Default execution boundary profile.',
+        kind: 'select',
+        options: ['balanced', 'restricted', 'trusted_local', 'open']
       }
     ]
   },

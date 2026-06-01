@@ -45,10 +45,12 @@ coverage/
 .grepai/
 .pnpm-store/
 .desloppify/
+.playwright-mcp/
 
 # Runtime data
 .ops/
 backups/
 .agents/
+outputs/
 MEMORY.md
 memory.md
