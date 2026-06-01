@@ -2397,6 +2397,12 @@ export async function createBacklogItem(
     labels?: string[];
     projectId?: string | null;
     repoRoot?: string | null;
+    metadata?: {
+      githubRepoHint?: {
+        owner: string;
+        repo: string;
+      };
+    };
     source?: string;
   }
 ): Promise<BacklogItemRow> {

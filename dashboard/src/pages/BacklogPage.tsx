@@ -142,6 +142,35 @@ function resolveRepoLabel(repoRoot: string | null, metadata?: Record<string, unk
   return null;
 }
 
+function cleanGithubRepoSegment(value: string): string {
+  return value.replace(/\.git$/i, '').trim();
+}
+
+function parseGithubRepoHintInput(value: string): { owner: string; repo: string } | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const httpsMatch = trimmed.match(/^https?:\/\/(?:www\.)?github\.com\/([^/\s]+)\/([^/\s?#]+).*$/i);
+  const sshMatch = trimmed.match(/^git@github\.com:([^/\s]+)\/([^/\s?#]+).*$/i);
+  const bareMatch = trimmed.match(/^(?:www\.)?github\.com\/([^/\s]+)\/([^/\s?#]+).*$/i);
+  const ownerRepoMatch = trimmed.match(/^([^/\s]+)\/([^/\s?#]+)$/);
+  const match = httpsMatch ?? sshMatch ?? bareMatch ?? ownerRepoMatch;
+  const owner = match?.[1]?.trim() ?? '';
+  const repo = cleanGithubRepoSegment(match?.[2] ?? '');
+
+  if (!owner || !repo) {
+    return null;
+  }
+  return { owner, repo };
+}
+
+function buildTelegramTaskCommand(title: string): string {
+  const normalized = title.trim().replace(/\s+/g, ' ');
+  return normalized ? `/task ${normalized}` : '/task <title>';
+}
+
 function describeScope(scope: BacklogProjectScopeRow, selectedProject: ProjectScopeOption | null, selectedRepo: BacklogScopeSummaryRow | null): string {
   if (scope.unscopedOnly) {
     return 'Unscoped intake';
@@ -961,9 +990,11 @@ function CreateBacklogTaskPanel({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [labels, setLabels] = useState('');
+  const [repoHint, setRepoHint] = useState('');
   const [priority, setPriority] = useState('70');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const telegramCommand = useMemo(() => buildTelegramTaskCommand(title), [title]);
 
   const createTask = useCallback(async (): Promise<void> => {
     const trimmedTitle = title.trim();
@@ -973,6 +1004,11 @@ function CreateBacklogTaskPanel({
     }
     if (!token) {
       setError('Save API token in Settings first.');
+      return;
+    }
+    const parsedRepoHint = parseGithubRepoHintInput(repoHint);
+    if (repoHint.trim() && !parsedRepoHint) {
+      setError('GitHub repo must look like owner/repo or a GitHub URL.');
       return;
     }
     setBusy(true);
@@ -989,11 +1025,19 @@ function CreateBacklogTaskPanel({
           .filter((entry) => entry.length > 0),
         projectId: scope.unscopedOnly ? null : scope.projectId,
         repoRoot: scope.unscopedOnly ? null : scope.repoRoot,
+        ...(parsedRepoHint
+          ? {
+              metadata: {
+                githubRepoHint: parsedRepoHint
+              }
+            }
+          : {}),
         source: 'dashboard'
       });
       setTitle('');
       setDescription('');
       setLabels('');
+      setRepoHint('');
       await onCreated();
       toast.success('Backlog task created.');
     } catch (cause) {
@@ -1001,11 +1045,11 @@ function CreateBacklogTaskPanel({
     } finally {
       setBusy(false);
     }
-  }, [description, labels, onCreated, priority, scope.projectId, scope.repoRoot, scope.unscopedOnly, title, token]);
+  }, [description, labels, onCreated, priority, repoHint, scope.projectId, scope.repoRoot, scope.unscopedOnly, title, token]);
 
   return (
     <section className="shell-panel-soft rounded-3xl p-4">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_120px_auto]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,0.8fr)_120px_auto]">
         <label className="min-w-0 space-y-1.5">
           <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">New Task</span>
           <input
@@ -1021,6 +1065,15 @@ function CreateBacklogTaskPanel({
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             placeholder="Acceptance notes or source context"
+            className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
+          />
+        </label>
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">GitHub Repo</span>
+          <input
+            value={repoHint}
+            onChange={(event) => setRepoHint(event.target.value)}
+            placeholder="owner/repo or GitHub URL"
             className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
           />
         </label>
@@ -1044,15 +1097,26 @@ function CreateBacklogTaskPanel({
           </button>
         </div>
       </div>
-      <label className="mt-3 block space-y-1.5">
-        <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Labels</span>
-        <input
-          value={labels}
-          onChange={(event) => setLabels(event.target.value)}
-          placeholder="browser, github, telegram"
-          className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
-        />
-      </label>
+      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Labels</span>
+          <input
+            value={labels}
+            onChange={(event) => setLabels(event.target.value)}
+            placeholder="browser, github, telegram"
+            className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
+          />
+        </label>
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Telegram Handoff</span>
+          <input
+            aria-label="Telegram task command"
+            readOnly
+            value={telegramCommand}
+            className="shell-field w-full rounded-2xl px-3 py-2.5 font-mono text-xs text-slate-200"
+          />
+        </label>
+      </div>
       {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
     </section>
   );

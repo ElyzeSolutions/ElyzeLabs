@@ -231,6 +231,40 @@ describe('BacklogPage', () => {
     );
   });
 
+  it('guides Telegram task handoff and attaches GitHub repo hints', async () => {
+    renderDashboardPage(<BacklogPage />, { path: '/backlog' });
+
+    fireEvent.change(await screen.findByLabelText('New Task'), {
+      target: { value: 'Sync Pinterest auth captures' }
+    });
+    fireEvent.change(screen.getByLabelText('GitHub Repo'), {
+      target: { value: 'https://github.com/example/elyze.git' }
+    });
+
+    expect(screen.getByLabelText('Telegram task command')).toHaveValue('/task Sync Pinterest auth captures');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() =>
+      expect(apiMocks.createBacklogItem).toHaveBeenCalledWith('token-123', {
+        title: 'Sync Pinterest auth captures',
+        description: 'Sync Pinterest auth captures',
+        state: 'planned',
+        priority: 70,
+        labels: [],
+        projectId: null,
+        repoRoot: null,
+        metadata: {
+          githubRepoHint: {
+            owner: 'example',
+            repo: 'elyze'
+          }
+        },
+        source: 'dashboard'
+      })
+    );
+  });
+
   it('surfaces delivery state and syncs GitHub issues from task details', async () => {
     const backlogItem = {
       id: 'backlog-item-2',
