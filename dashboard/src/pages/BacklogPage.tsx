@@ -26,8 +26,10 @@ import { toast } from 'sonner';
 
 import {
   cleanupBacklog,
+  createBacklogItem,
   deleteBacklogItem,
   overrideBacklogItem,
+  syncBacklogIssue,
   tickBacklogOrchestration,
   transitionBacklogItem
 } from '../app/api';
@@ -91,6 +93,14 @@ const FILTER_PRESETS: Array<{ id: string; label: string; states: BacklogState[] 
   { id: 'archived', label: 'Archived', states: ['archived'] }
 ];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isBacklogState(value: string): value is BacklogState {
+  return COLUMN_ORDER.some((state) => state === value);
+}
+
 type ProjectScopeOption = {
   projectId: string;
   label: string;
@@ -98,6 +108,8 @@ type ProjectScopeOption = {
   activeCount: number;
   blockedCount: number;
 };
+
+type BacklogTransitionItem = Pick<BacklogItemRow, 'id' | 'state'>;
 
 function prettifyProjectLabel(value: string | null): string | null {
   if (!value) {
@@ -116,8 +128,8 @@ function resolveRepoLabel(repoRoot: string | null, metadata?: Record<string, unk
     return segments.length > 0 ? segments[segments.length - 1] : repoRoot;
   }
   const repoHint = metadata?.githubRepoHint;
-  if (repoHint && typeof repoHint === 'object') {
-    const repoHintRecord = repoHint as Record<string, unknown>;
+  if (isRecord(repoHint)) {
+    const repoHintRecord = repoHint;
     const owner = typeof repoHintRecord.owner === 'string' ? repoHintRecord.owner : '';
     const repo = typeof repoHintRecord.repo === 'string' ? repoHintRecord.repo : null;
     if (owner && repo) {
@@ -128,6 +140,79 @@ function resolveRepoLabel(repoRoot: string | null, metadata?: Record<string, unk
     }
   }
   return null;
+}
+
+function cleanGithubRepoSegment(value: string): string {
+  return value.replace(/\.git$/i, '').trim();
+}
+
+function parseGithubRepoHintInput(value: string): { owner: string; repo: string } | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const httpsMatch = trimmed.match(/^https?:\/\/(?:www\.)?github\.com\/([^/\s]+)\/([^/\s?#]+).*$/i);
+  const sshMatch = trimmed.match(/^git@github\.com:([^/\s]+)\/([^/\s?#]+).*$/i);
+  const bareMatch = trimmed.match(/^(?:www\.)?github\.com\/([^/\s]+)\/([^/\s?#]+).*$/i);
+  const ownerRepoMatch = trimmed.match(/^([^/\s]+)\/([^/\s?#]+)$/);
+  const match = httpsMatch ?? sshMatch ?? bareMatch ?? ownerRepoMatch;
+  const owner = match?.[1]?.trim() ?? '';
+  const repo = cleanGithubRepoSegment(match?.[2] ?? '');
+
+  if (!owner || !repo) {
+    return null;
+  }
+  return { owner, repo };
+}
+
+type TelegramTaskCommandOptions = {
+  labels?: string;
+  repoHint?: string;
+  priority?: string;
+  scope?: BacklogProjectScopeRow;
+};
+
+function parseLabelInput(value: string): string[] {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function quoteTelegramDirectiveValue(value: string): string {
+  const trimmed = value.trim();
+  if (/^[^\s"']+$/u.test(trimmed)) {
+    return trimmed;
+  }
+  return `"${trimmed.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`;
+}
+
+function buildTelegramTaskCommand(title: string, options: TelegramTaskCommandOptions = {}): string {
+  const normalized = title.trim().replace(/\s+/g, ' ');
+  const parts = [normalized ? `/task ${normalized}` : '/task <title>'];
+  const repoInput = options.repoHint?.trim() ?? '';
+  if (repoInput) {
+    const parsedRepo = parseGithubRepoHintInput(repoInput);
+    parts.push(`repo=${quoteTelegramDirectiveValue(parsedRepo ? `${parsedRepo.owner}/${parsedRepo.repo}` : repoInput)}`);
+  }
+  const labels = parseLabelInput(options.labels ?? '');
+  if (labels.length > 0) {
+    parts.push(`labels=${quoteTelegramDirectiveValue(labels.join(','))}`);
+  }
+  const priority = Number(options.priority ?? '');
+  if (Number.isFinite(priority) && priority !== 70) {
+    parts.push(`priority=${String(Math.round(priority))}`);
+  }
+  if (options.scope && !options.scope.unscopedOnly) {
+    if (options.scope.projectId) {
+      parts.push(`project=${quoteTelegramDirectiveValue(options.scope.projectId)}`);
+    }
+    if (options.scope.repoRoot) {
+      parts.push(`root=${quoteTelegramDirectiveValue(options.scope.repoRoot)}`);
+    }
+  }
+  return parts.join(' ');
 }
 
 function describeScope(scope: BacklogProjectScopeRow, selectedProject: ProjectScopeOption | null, selectedRepo: BacklogScopeSummaryRow | null): string {
@@ -162,16 +247,16 @@ function allowedTransitions(contract: Record<string, unknown> | null, state: Bac
     return [];
   }
   const transitions = contract.transitions;
-  if (!transitions || typeof transitions !== 'object') {
+  if (!isRecord(transitions)) {
     return [];
   }
-  const row = (transitions as Record<string, unknown>)[state];
+  const row = transitions[state];
   if (!Array.isArray(row)) {
     return [];
   }
   return row
     .map((entry) => String(entry).trim())
-    .filter((entry): entry is BacklogState => COLUMN_ORDER.includes(entry as BacklogState));
+    .filter(isBacklogState);
 }
 
 function resolveEvidenceChip(item: BacklogItemRow): { label: string; tone: string } | null {
@@ -196,6 +281,43 @@ function resolveEvidenceChip(item: BacklogItemRow): { label: string; tone: strin
     return { label: 'Evidence Missing', tone: 'text-rose-300 border-rose-500/30 bg-rose-500/10' };
   }
   return null;
+}
+
+function resolveDeliveryChip(item: BacklogItemRow): { label: string; tone: string } | null {
+  const delivery = item.delivery;
+  if (!delivery) {
+    return null;
+  }
+  const githubState = delivery.githubState?.replace(/_/g, ' ') ?? null;
+  if (githubState) {
+    const critical = delivery.githubState === 'checks_failed' || delivery.githubState === 'blocked';
+    const ready = delivery.githubState === 'ready_to_merge' || delivery.githubState === 'merged';
+    return {
+      label: githubState,
+      tone: critical
+        ? 'text-rose-200 border-rose-500/30 bg-rose-500/10'
+        : ready
+          ? 'text-emerald-200 border-emerald-500/30 bg-emerald-500/10'
+          : 'text-sky-200 border-sky-500/30 bg-sky-500/10'
+    };
+  }
+  return {
+    label: delivery.status.replace(/_/g, ' '),
+    tone: 'text-slate-200 border-white/10 bg-white/[0.04]'
+  };
+}
+
+function readGithubIssueMetadata(item: BacklogItemRow): { number: number | null; url: string | null; state: string | null } | null {
+  const issue = item.delivery?.metadata?.githubIssue;
+  if (!isRecord(issue)) {
+    return null;
+  }
+  const numberValue = Number(issue.number);
+  return {
+    number: Number.isFinite(numberValue) ? Math.floor(numberValue) : null,
+    url: typeof issue.url === 'string' ? issue.url : null,
+    state: typeof issue.state === 'string' ? issue.state : null
+  };
 }
 
 type BacklogOrchestrationState = {
@@ -623,7 +745,7 @@ function useBacklogPageController(token?: string) {
   );
 
   const performTransition = useCallback(
-    async (item: BacklogItemRow, toState: BacklogState, reason: string): Promise<void> => {
+    async (item: BacklogTransitionItem, toState: BacklogState, reason: string): Promise<void> => {
       if (!token) {
         setErrorBanner({
           itemId: item.id,
@@ -670,7 +792,7 @@ function useBacklogPageController(token?: string) {
   );
 
   const handleDrop = useCallback(
-    async (item: BacklogItemRow, toState: BacklogState): Promise<void> => {
+    async (item: BacklogTransitionItem, toState: BacklogState): Promise<void> => {
       setDragOverState(null);
       if (item.state === toState) {
         return;
@@ -737,6 +859,7 @@ function useBacklogPageController(token?: string) {
 
   return {
     columns,
+    contracts,
     decisions,
     deliveryContract,
     dragOverState,
@@ -778,6 +901,7 @@ export function BacklogPage() {
   const token = useAppStore((state) => state.token);
   const {
     columns,
+    contracts,
     decisions,
     deliveryContract,
     dragOverState,
@@ -844,6 +968,13 @@ export function BacklogPage() {
           onToggleStateFilter={toggleStateFilter}
         />
 
+        <CreateBacklogTaskPanel
+          token={token}
+          scope={scope}
+          currentScopeLabel={currentScopeLabel}
+          onCreated={load}
+        />
+
         <section className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[1fr_320px]">
           <div className="min-h-0 overflow-visible pb-4 md:overflow-x-auto">
             <div className="flex min-h-full flex-col items-stretch gap-4 md:inline-flex md:flex-row md:items-start md:pr-4">
@@ -852,6 +983,7 @@ export function BacklogPage() {
                   key={state}
                   state={state}
                   items={columns[state] ?? []}
+                  contracts={contracts}
                   dragOverState={dragOverState}
                   loading={loading}
                   onDragOverState={setDragOverState}
@@ -885,6 +1017,152 @@ export function BacklogPage() {
         />
       </div>
     </LazyMotion>
+  );
+}
+
+function CreateBacklogTaskPanel({
+  token,
+  scope,
+  currentScopeLabel,
+  onCreated
+}: {
+  token: string;
+  scope: BacklogProjectScopeRow;
+  currentScopeLabel: string;
+  onCreated: () => Promise<void>;
+}) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [labels, setLabels] = useState('');
+  const [repoHint, setRepoHint] = useState('');
+  const [priority, setPriority] = useState('70');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const telegramCommand = useMemo(
+    () => buildTelegramTaskCommand(title, { labels, priority, repoHint, scope }),
+    [labels, priority, repoHint, scope, title]
+  );
+
+  const createTask = useCallback(async (): Promise<void> => {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setError('Title is required.');
+      return;
+    }
+    if (!token) {
+      setError('Save API token in Settings first.');
+      return;
+    }
+    const parsedRepoHint = parseGithubRepoHintInput(repoHint);
+    if (repoHint.trim() && !parsedRepoHint) {
+      setError('GitHub repo must look like owner/repo or a GitHub URL.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await createBacklogItem(token, {
+        title: trimmedTitle,
+        description: description.trim() || trimmedTitle,
+        state: 'planned',
+        priority: Number.isFinite(Number(priority)) ? Number(priority) : 70,
+        labels: parseLabelInput(labels),
+        projectId: scope.unscopedOnly ? null : scope.projectId,
+        repoRoot: scope.unscopedOnly ? null : scope.repoRoot,
+        ...(parsedRepoHint
+          ? {
+              metadata: {
+                githubRepoHint: parsedRepoHint
+              }
+            }
+          : {}),
+        source: 'dashboard'
+      });
+      setTitle('');
+      setDescription('');
+      setLabels('');
+      setRepoHint('');
+      await onCreated();
+      toast.success('Backlog task created.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to create backlog task.');
+    } finally {
+      setBusy(false);
+    }
+  }, [description, labels, onCreated, priority, repoHint, scope.projectId, scope.repoRoot, scope.unscopedOnly, title, token]);
+
+  return (
+    <section className="shell-panel-soft rounded-3xl p-4">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,0.8fr)_120px_auto]">
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">New Task</span>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={`Add to ${currentScopeLabel}`}
+            className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
+          />
+        </label>
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Description</span>
+          <input
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Acceptance notes or source context"
+            className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
+          />
+        </label>
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">GitHub Repo</span>
+          <input
+            value={repoHint}
+            onChange={(event) => setRepoHint(event.target.value)}
+            placeholder="owner/repo or GitHub URL"
+            className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
+          />
+        </label>
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Priority</span>
+          <input
+            value={priority}
+            onChange={(event) => setPriority(event.target.value)}
+            inputMode="numeric"
+            className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
+          />
+        </label>
+        <div className="flex items-end">
+          <button
+            type="button"
+            onClick={() => void createTask()}
+            disabled={busy}
+            className="shell-button-accent w-full rounded-2xl px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.14em] disabled:opacity-60 lg:w-auto"
+          >
+            {busy ? 'Creating' : 'Create'}
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Labels</span>
+          <input
+            value={labels}
+            onChange={(event) => setLabels(event.target.value)}
+            placeholder="browser, github, telegram"
+            className="shell-field w-full rounded-2xl px-3 py-2.5 text-sm"
+          />
+        </label>
+        <label className="min-w-0 space-y-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Telegram Handoff</span>
+          <input
+            aria-label="Telegram task command"
+            readOnly
+            value={telegramCommand}
+            className="shell-field w-full rounded-2xl px-3 py-2.5 font-mono text-xs text-slate-200"
+          />
+        </label>
+      </div>
+      {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
+    </section>
   );
 }
 
@@ -1256,6 +1534,7 @@ function ScopeStatChip({
 const BoardColumn = memo(function BoardColumn({
   state,
   items,
+  contracts,
   dragOverState,
   loading,
   onDragOverState,
@@ -1265,18 +1544,26 @@ const BoardColumn = memo(function BoardColumn({
 }: {
   state: BacklogState;
   items: BacklogItemRow[];
+  contracts: Record<string, unknown> | null;
   dragOverState: BacklogState | null;
   loading: boolean;
   onDragOverState: (state: BacklogState | null) => void;
-  onDrop: (item: BacklogItemRow, toState: BacklogState) => Promise<void>;
+  onDrop: (item: BacklogTransitionItem, toState: BacklogState) => Promise<void>;
   onSelect: (id: string) => void;
-  onTransition: (item: BacklogItemRow, toState: BacklogState, reason: string) => Promise<void>;
+  onTransition: (item: BacklogTransitionItem, toState: BacklogState, reason: string) => Promise<void>;
 }) {
   const meta = COLUMN_META[state];
   const Icon = meta.icon as React.ElementType;
   const parseDraggedItem = (raw: string): { id: string; state: BacklogState } | null => {
     try {
-      return JSON.parse(raw) as { id: string; state: BacklogState };
+      const parsed: unknown = JSON.parse(raw);
+      if (!isRecord(parsed) || typeof parsed.id !== 'string' || typeof parsed.state !== 'string' || !isBacklogState(parsed.state)) {
+        return null;
+      }
+      return {
+        id: parsed.id,
+        state: parsed.state
+      };
     } catch {
       return null;
     }
@@ -1284,6 +1571,7 @@ const BoardColumn = memo(function BoardColumn({
 
   return (
     <div
+      data-testid={`backlog-column-${state}`}
       onDragOver={(event: DragEvent<HTMLDivElement>) => {
         event.preventDefault();
         onDragOverState(state);
@@ -1301,7 +1589,7 @@ const BoardColumn = memo(function BoardColumn({
           return;
         }
         const found = items.find((item) => item.id === parsed.id);
-        const sourceItem = found ?? ({ id: parsed.id, state: parsed.state } as BacklogItemRow);
+        const sourceItem = found ?? { id: parsed.id, state: parsed.state };
         if (sourceItem.id && sourceItem.state !== state) {
           void onDrop(sourceItem, state);
         }
@@ -1330,6 +1618,7 @@ const BoardColumn = memo(function BoardColumn({
           <TaskCard
             key={item.id}
             item={item}
+            contracts={contracts}
             onSelect={onSelect}
             onTransition={onTransition}
           />
@@ -1348,19 +1637,27 @@ const BoardColumn = memo(function BoardColumn({
 
 function TaskCard({
   item,
+  contracts,
   onSelect,
   onTransition
 }: {
   item: BacklogItemRow;
+  contracts: Record<string, unknown> | null;
   onSelect: (id: string) => void;
-  onTransition: (item: BacklogItemRow, toState: BacklogState, reason: string) => Promise<void>;
+  onTransition: (item: BacklogTransitionItem, toState: BacklogState, reason: string) => Promise<void>;
 }) {
   const evidence = resolveEvidenceChip(item);
+  const delivery = resolveDeliveryChip(item);
   const unresolvedDeps = item.unresolvedDependencies?.length ?? 0;
   const projectLabel = prettifyProjectLabel(item.projectId);
   const repoLabel = resolveRepoLabel(item.repoRoot, item.metadata);
+  const contractTargets = allowedTransitions(contracts, item.state).filter((target) => target !== item.state);
+  const sequentialTarget = COLUMN_ORDER[COLUMN_ORDER.indexOf(item.state) + 1] ?? null;
+  const primaryTarget = contractTargets[0] ?? sequentialTarget;
+  const visibleTargets = contractTargets.slice(0, 3);
   return (
     <article
+      data-testid={`backlog-card-${item.id}`}
       draggable
       onDragStart={(event: DragEvent<HTMLElement>) => {
         event.dataTransfer.setData('application/x-backlog-item', JSON.stringify({ id: item.id, state: item.state }));
@@ -1387,13 +1684,13 @@ function TaskCard({
         <button
           onClick={(event) => {
             event.stopPropagation();
-            const index = COLUMN_ORDER.indexOf(item.state);
-            const next = COLUMN_ORDER[Math.min(index + 1, COLUMN_ORDER.length - 1)];
-            if (next && next !== item.state) {
-              void onTransition(item, next, `quick_transition:${item.state}->${next}`);
+            if (primaryTarget && primaryTarget !== item.state) {
+              void onTransition(item, primaryTarget, `quick_transition:${item.state}->${primaryTarget}`);
             }
           }}
+          disabled={!primaryTarget || primaryTarget === item.state}
           className="shell-button-ghost rounded-lg p-1.5 text-slate-300 transition hover:border-[color:var(--shell-accent-border)] hover:text-[var(--shell-accent)]"
+          aria-label={`Move ${item.title} forward`}
         >
           <CaretRight size={12} weight="bold" />
         </button>
@@ -1420,12 +1717,40 @@ function TaskCard({
         {evidence && (
           <span className={`rounded-full border px-2 py-0.5 text-[10px] ${evidence.tone}`}>{evidence.label}</span>
         )}
+        {delivery && (
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] capitalize ${delivery.tone}`}>{delivery.label}</span>
+        )}
+        {item.originChannel === 'telegram' && (
+          <span className="rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-100">
+            Telegram
+          </span>
+        )}
         {item.execution?.runStatus === 'running' && (
           <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-200">
             Streaming
           </span>
         )}
       </div>
+
+      {visibleTargets.length > 0 && (
+        <div className="mt-3 grid gap-1.5">
+          {visibleTargets.map((target) => (
+            <button
+              key={target}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                void onTransition(item, target, `button_transition:${item.state}->${target}`);
+              }}
+              className="flex items-center justify-between rounded-lg border border-white/8 bg-white/[0.025] px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-300 transition hover:border-[color:var(--shell-accent-border)] hover:text-white"
+              aria-label={`Move ${item.title} to ${COLUMN_META[target].label}`}
+            >
+              <span>{COLUMN_META[target].label}</span>
+              <CaretRight size={11} weight="bold" />
+            </button>
+          ))}
+        </div>
+      )}
     </article>
   );
 }
@@ -1541,6 +1866,11 @@ function TaskDetailPanel({
   const [overrideBusy, setOverrideBusy] = useState(false);
   const [overrideError, setOverrideError] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [issueBusy, setIssueBusy] = useState(false);
+  const [issueError, setIssueError] = useState<string | null>(null);
+  const [issueResult, setIssueResult] = useState<{ number: number | null; url: string | null; state: string | null } | null>(null);
+  const githubIssue = issueResult ?? readGithubIssueMetadata(task);
+  const hasGithubIssueSyncTarget = Boolean(task.delivery?.repoConnectionId || isRecord(task.metadata.githubRepoHint));
 
   const runOverride = useCallback(
     async (action: 'block' | 'requeue' | 'close' | 'force_delegate') => {
@@ -1581,6 +1911,28 @@ function TaskDetailPanel({
     },
     [onRefresh, task.assignedAgentId, task.id, token]
   );
+
+  const runIssueSync = useCallback(async (): Promise<void> => {
+    if (issueBusy) {
+      return;
+    }
+    setIssueBusy(true);
+    setIssueError(null);
+    try {
+      const result = await syncBacklogIssue(token, task.id);
+      setIssueResult({
+        number: result.issue.number,
+        url: result.issue.url,
+        state: result.issue.state
+      });
+      await onRefresh();
+      toast.success(result.issue.number ? `GitHub issue #${result.issue.number} synced.` : 'GitHub issue synced.');
+    } catch (error) {
+      setIssueError(error instanceof Error ? error.message : 'GitHub issue sync failed.');
+    } finally {
+      setIssueBusy(false);
+    }
+  }, [issueBusy, onRefresh, task.id, token]);
 
   const runDelete = useCallback(async (): Promise<void> => {
     if (deleteBusy) {
@@ -1636,6 +1988,33 @@ function TaskDetailPanel({
             token={token}
             onRefresh={onRefresh}
           />
+        )}
+
+        {hasGithubIssueSyncTarget && (
+          <section className="shell-panel-soft rounded-2xl p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h4 className="text-xs uppercase tracking-[0.16em] text-slate-500">GitHub Issue</h4>
+                <p className="mt-1 text-sm text-slate-300">
+                  {githubIssue?.number ? `#${githubIssue.number} ${githubIssue.state ?? ''}` : 'No linked issue yet.'}
+                </p>
+                {githubIssue?.url ? (
+                  <a href={githubIssue.url} target="_blank" rel="noreferrer" className="mt-1 block break-all text-xs text-[var(--shell-accent)]">
+                    {githubIssue.url}
+                  </a>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                disabled={issueBusy}
+                onClick={() => void runIssueSync()}
+                className="shell-button-ghost rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 hover:border-[color:var(--shell-accent-border)] disabled:opacity-60"
+              >
+                {issueBusy ? 'Syncing' : 'Sync Issue'}
+              </button>
+            </div>
+            {issueError ? <p className="mt-3 text-xs text-rose-300">{issueError}</p> : null}
+          </section>
         )}
 
         <section className="shell-panel-soft rounded-2xl p-4">

@@ -38,4 +38,29 @@ describe('SkillsPage', () => {
       })
     );
   });
+
+  it('runs the skill curator and updates lifecycle state', async () => {
+    renderDashboardPage(<SkillsPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Run curator' }));
+
+    await waitFor(() =>
+      expect(apiMocks.runSkillCurator).toHaveBeenCalledWith('token-123', {
+        apply: true
+      })
+    );
+
+    fireEvent.change(await screen.findByLabelText('Lifecycle'), {
+      target: {
+        value: 'pinned'
+      }
+    });
+
+    await waitFor(() =>
+      expect(apiMocks.updateSkillLifecycle).toHaveBeenCalledWith('token-123', 'browser-use', {
+        state: 'pinned',
+        note: 'Marked pinned from Skills page.'
+      })
+    );
+  });
 });

@@ -18,6 +18,19 @@ export interface RuntimeManagerOptions {
 
 type RuntimeCommand = 'launch' | 'send' | 'resume';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function promptAssemblyLifecycleData(metadata: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!metadata || !isRecord(metadata.promptAssembly)) {
+    return {};
+  }
+  return {
+    promptAssembly: metadata.promptAssembly
+  };
+}
+
 export class RuntimeManager {
   private readonly adapters: Record<RuntimeKind, RuntimeAdapter>;
   private readonly defaultRuntime: RuntimeKind;
@@ -50,7 +63,8 @@ export class RuntimeManager {
 
     this.emitLifecycle(request, runtime, 'accepted');
     this.emitLifecycle(request, runtime, 'running', {
-      workspacePath: request.workspacePath
+      workspacePath: request.workspacePath,
+      ...promptAssemblyLifecycleData(request.metadata)
     });
 
     return this.runAdapterCommand({
@@ -188,6 +202,7 @@ export class RuntimeManager {
         error: response.error,
         waitingPrompt: response.waitingPrompt,
         usage: response.usage,
+        ...promptAssemblyLifecycleData(input.request.metadata),
         ...(input.eventData ?? {})
       });
       return this.toExecutionResult(response);

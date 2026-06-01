@@ -5,6 +5,100 @@ const runTerminalStatusSchema = z.enum(['completed', 'failed', 'aborted']);
 const browserTransportSchema = z.enum(['stdio', 'http']);
 const browserExtractionSchema = z.enum(['markdown', 'html', 'text']);
 const browserPromptInjectionEscalationSchema = z.enum(['annotate', 'require_confirmation', 'block']);
+export const sandboxProfileKeySchema = z.enum(['trusted_local', 'restricted', 'balanced', 'open']);
+const sandboxFilesystemPolicySchema = z.enum(['none', 'read_workspace', 'write_workspace', 'full']);
+const sandboxProcessPolicySchema = z.enum(['none', 'approved_only', 'allowed_commands', 'unrestricted']);
+const sandboxNetworkPolicySchema = z.enum(['deny_all', 'allowlisted', 'approval_required', 'allow_all']);
+const sandboxCredentialPolicySchema = z.enum(['none', 'brokered', 'direct']);
+const sandboxBrowserPolicySchema = z.enum(['disabled', 'approved', 'isolated', 'user_profile_allowed']);
+const sandboxDownloadPolicySchema = z.enum(['disabled', 'approved', 'workspace']);
+const sandboxEndpointIntentSchema = z.enum(['read', 'write', 'read_write']);
+
+const sandboxEndpointGroupSchema = z
+  .object({
+    id: z.string().min(1),
+    description: z.string().default(''),
+    endpoints: z.array(z.string().min(1)).default([]),
+    binaries: z.array(z.string().min(1)).default([]),
+    protocols: z.array(z.string().min(1)).default([]),
+    ports: z.array(z.number().int().min(1).max(65_535)).default([]),
+    intent: sandboxEndpointIntentSchema.default('read')
+  })
+  .strict();
+
+const sandboxProfileSchema = z
+  .object({
+    description: z.string().default(''),
+    filesystem: sandboxFilesystemPolicySchema.default('read_workspace'),
+    process: sandboxProcessPolicySchema.default('approved_only'),
+    network: sandboxNetworkPolicySchema.default('approval_required'),
+    credentials: sandboxCredentialPolicySchema.default('brokered'),
+    browser: sandboxBrowserPolicySchema.default('isolated'),
+    downloads: sandboxDownloadPolicySchema.default('approved'),
+    endpointGroups: z.array(sandboxEndpointGroupSchema).default([]),
+    requireApprovalForPolicyEscalation: z.boolean().default(true)
+  })
+  .strict();
+
+const sandboxProfilesSchema = z
+  .object({
+    trusted_local: sandboxProfileSchema.default({
+      description: 'Trusted local operator profile with workspace writes, allowlisted local egress, and brokered credentials.',
+      filesystem: 'write_workspace',
+      process: 'allowed_commands',
+      network: 'allowlisted',
+      credentials: 'brokered',
+      browser: 'isolated',
+      downloads: 'workspace',
+      endpointGroups: [
+        {
+          id: 'local-dev',
+          description: 'Local development and dashboard endpoints.',
+          endpoints: ['localhost', '127.0.0.1', '::1'],
+          binaries: ['node', 'pnpm', 'git'],
+          protocols: ['http', 'https', 'ws'],
+          ports: [3000, 4173, 8788],
+          intent: 'read_write'
+        }
+      ],
+      requireApprovalForPolicyEscalation: true
+    }),
+    restricted: sandboxProfileSchema.default({
+      description: 'Deny-by-default profile for untrusted or exploratory work.',
+      filesystem: 'read_workspace',
+      process: 'approved_only',
+      network: 'deny_all',
+      credentials: 'brokered',
+      browser: 'disabled',
+      downloads: 'disabled',
+      endpointGroups: [],
+      requireApprovalForPolicyEscalation: true
+    }),
+    balanced: sandboxProfileSchema.default({
+      description: 'Default operator profile: workspace writes, approved process execution, brokered credentials, and approval-gated egress.',
+      filesystem: 'write_workspace',
+      process: 'approved_only',
+      network: 'approval_required',
+      credentials: 'brokered',
+      browser: 'isolated',
+      downloads: 'approved',
+      endpointGroups: [],
+      requireApprovalForPolicyEscalation: true
+    }),
+    open: sandboxProfileSchema.default({
+      description: 'Open local profile for explicitly trusted maintenance windows.',
+      filesystem: 'full',
+      process: 'unrestricted',
+      network: 'allow_all',
+      credentials: 'direct',
+      browser: 'user_profile_allowed',
+      downloads: 'workspace',
+      endpointGroups: [],
+      requireApprovalForPolicyEscalation: false
+    })
+  })
+  .strict()
+  .prefault({});
 
 const retrySchema = z
   .object({
@@ -242,6 +336,14 @@ export const controlPlaneConfigSchema = z
             timeoutMs: z.number().int().min(1000).max(60_000).default(12_000),
             maxTargets: z.number().int().min(1).max(8).default(3)
           })
+          .prefault({}),
+        sandbox: z
+          .object({
+            enabled: z.boolean().default(true),
+            activeProfile: sandboxProfileKeySchema.default('balanced'),
+            profiles: sandboxProfilesSchema
+          })
+          .strict()
           .prefault({})
       })
       .strict(),
@@ -341,3 +443,4 @@ export const controlPlaneConfigSchema = z
   });
 
 export type ControlPlaneConfig = z.infer<typeof controlPlaneConfigSchema>;
+export type SandboxProfileKey = z.infer<typeof sandboxProfileKeySchema>;

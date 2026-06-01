@@ -12,6 +12,7 @@ import {
   inferDomainsFromCookies,
   parseCookieHeader,
   parseCookieJson,
+  parseStorageStateCookies,
   parseNetscapeCookies
 } from '../../src/browser-session-vault.js';
 
@@ -102,7 +103,14 @@ describe('browser session vault', () => {
       label: 'TikTok state',
       domains: ['tiktok.com'],
       storageState: {
-        cookies: []
+        cookies: [
+          {
+            name: 'tt_chain_token',
+            value: 'storage-cookie-1',
+            domain: '.tiktok.com',
+            path: '/'
+          }
+        ]
       }
     });
 
@@ -148,7 +156,41 @@ describe('browser session vault', () => {
     });
     expect(resolved.cookies).toEqual([
       expect.objectContaining({ name: 'sid_tt', value: 'cookie-1' }),
+      expect.objectContaining({ name: 'tt_chain_token', value: 'storage-cookie-1' }),
       expect.objectContaining({ name: 'sessionid', value: 'override-session' })
+    ]);
+  });
+
+  it('parses Playwright storageState cookies for Scrapling-compatible session reuse', () => {
+    const cookies = parseStorageStateCookies({
+      cookies: [
+        {
+          name: 'sessionid',
+          value: 'playwright-session',
+          domain: '.instagram.com',
+          path: '/',
+          httpOnly: true,
+          secure: true,
+          sameSite: 'Lax'
+        }
+      ],
+      origins: [
+        {
+          origin: 'https://www.instagram.com',
+          localStorage: [{ name: 'ig', value: 'ready' }]
+        }
+      ]
+    });
+
+    expect(cookies).toEqual([
+      expect.objectContaining({
+        name: 'sessionid',
+        value: 'playwright-session',
+        domain: '.instagram.com',
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Lax'
+      })
     ]);
   });
 });

@@ -55,6 +55,146 @@ describe('runtime manager', () => {
     expect(heartbeat).toBe('unknown');
   });
 
+  it('brokers provider credentials out of spawned runtime environments', async () => {
+    const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
+    const originalGoogleApiKey = process.env.GOOGLE_API_KEY;
+    const originalCustomProfileKey = process.env.OPS_LLM_TEST_API_KEY;
+
+    process.env.OPENROUTER_API_KEY = 'test-openrouter-secret';
+    process.env.GOOGLE_API_KEY = 'test-google-secret';
+    process.env.OPS_LLM_TEST_API_KEY = 'test-profile-secret';
+
+    try {
+      const manager = new RuntimeManager({
+        defaultRuntime: 'process',
+        adapters: createDefaultAdapters({
+          codex: { command: '', args: [] },
+          claude: { command: '', args: [] },
+          gemini: { command: '', args: [] },
+          process: {
+            command: process.execPath,
+            args: [
+              '-e',
+              [
+                "const keys=['OPENROUTER_API_KEY','GOOGLE_API_KEY','OPS_LLM_TEST_API_KEY'];",
+                "for (const key of keys) console.log(`${key}=${process.env[key]?'set':'missing'}`);",
+                "console.log(`BOUNDARY=${process.env.OPS_SANDBOX_CREDENTIAL_BOUNDARY||'missing'}`);",
+                "console.log(`REMOVED=${process.env.OPS_SANDBOX_CREDENTIAL_KEYS_REMOVED||''}`);"
+              ].join('')
+            ]
+          }
+        })
+      });
+
+      const response = await manager.execute({
+        runtime: 'process',
+        runId: 'run-sandbox-credential-boundary',
+        sessionId: 'session-sandbox-credential-boundary',
+        prompt: 'print credential boundary state',
+        workspacePath: process.cwd(),
+        metadata: {
+          processCommandFallbackAllowed: true
+        }
+      });
+
+      expect(response.finalStatus).toBe('completed');
+      expect(response.summary).toContain('OPENROUTER_API_KEY=missing');
+      expect(response.summary).toContain('GOOGLE_API_KEY=missing');
+      expect(response.summary).toContain('OPS_LLM_TEST_API_KEY=missing');
+      expect(response.summary).toContain('BOUNDARY=brokered');
+      expect(response.summary).toContain('OPENROUTER_API_KEY');
+      expect(response.summary).toContain('OPS_LLM_TEST_API_KEY');
+    } finally {
+      if (originalOpenRouterApiKey === undefined) {
+        delete process.env.OPENROUTER_API_KEY;
+      } else {
+        process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+      }
+      if (originalGoogleApiKey === undefined) {
+        delete process.env.GOOGLE_API_KEY;
+      } else {
+        process.env.GOOGLE_API_KEY = originalGoogleApiKey;
+      }
+      if (originalCustomProfileKey === undefined) {
+        delete process.env.OPS_LLM_TEST_API_KEY;
+      } else {
+        process.env.OPS_LLM_TEST_API_KEY = originalCustomProfileKey;
+      }
+    }
+  });
+
+  it('carries prompt assembly diagnostics through lifecycle events', async () => {
+    const events: Array<{ status: string; data: Record<string, unknown> }> = [];
+    const adapter: RuntimeAdapter = {
+      kind: 'process',
+      async launch() {
+        return {
+          status: 'completed',
+          summary: 'done'
+        };
+      },
+      async send() {
+        return {
+          status: 'completed',
+          summary: 'sent'
+        };
+      },
+      async abort() {
+        return;
+      },
+      async heartbeat() {
+        return 'completed';
+      },
+      async resume() {
+        return {
+          status: 'completed',
+          summary: 'resumed'
+        };
+      }
+    };
+    const manager = new RuntimeManager({
+      defaultRuntime: 'process',
+      adapters: {
+        codex: adapter,
+        claude: adapter,
+        gemini: adapter,
+        process: adapter
+      },
+      onEvent: (event) => {
+        events.push({
+          status: event.status,
+          data: event.data
+        });
+      }
+    });
+    const promptAssembly = {
+      schema: 'ops.prompt-assembly-runtime-metadata.v1',
+      sourceAuthorityIncluded: true,
+      promptCacheTiers: [
+        {
+          id: 'stable_policy',
+          estimatedTokens: 12,
+          components: ['source_authority']
+        }
+      ]
+    };
+
+    const response = await manager.execute({
+      runtime: 'process',
+      runId: 'run-prompt-diag',
+      sessionId: 'session-prompt-diag',
+      prompt: 'hello',
+      workspacePath: process.cwd(),
+      metadata: {
+        promptAssembly
+      }
+    });
+
+    expect(response.finalStatus).toBe('completed');
+    expect(events.some((event) => event.status === 'running' && event.data.promptAssembly === promptAssembly)).toBe(true);
+    expect(events.some((event) => event.status === 'completed' && event.data.promptAssembly === promptAssembly)).toBe(true);
+  });
+
   it('maps adapter responses through one shared execution-result path', async () => {
     const calls: string[] = [];
     const adapter: RuntimeAdapter = {

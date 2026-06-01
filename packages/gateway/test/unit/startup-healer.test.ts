@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ControlPlaneConfig } from '@ops/config';
 
@@ -133,6 +133,10 @@ function createConfig(): ControlPlaneConfig {
 }
 
 describe('startup healer telegram probe', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('skips hard failure when token is supplied via fallback source', async () => {
     const healer = new StartupHealer({ patches: [] });
     const result = await healer.run({
@@ -156,5 +160,51 @@ describe('startup healer telegram probe', () => {
     expect(telegramProbe?.ok).toBe(false);
     expect(telegramProbe?.level).toBe('error');
     expect(result.ok).toBe(false);
+  });
+
+  it('treats invalid telegram credentials as a hard failure', async () => {
+    const config = createConfig();
+    config.channel.telegram.botToken = 'bad-token';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ ok: false, description: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+    );
+
+    const healer = new StartupHealer({ patches: [] });
+    const result = await healer.run({ config });
+
+    const telegramProbe = result.smoke.find((entry) => entry.name === 'telegram_bot_probe');
+    expect(telegramProbe).toBeDefined();
+    expect(telegramProbe?.ok).toBe(false);
+    expect(telegramProbe?.level).toBe('error');
+    expect(telegramProbe?.detail).toContain('invalid_token');
+    expect(result.ok).toBe(false);
+  });
+
+  it('treats transient telegram network failures as degraded startup', async () => {
+    const config = createConfig();
+    config.channel.telegram.botToken = '123456:test-token';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('fetch failed');
+      })
+    );
+
+    const healer = new StartupHealer({ patches: [] });
+    const result = await healer.run({ config });
+
+    const telegramProbe = result.smoke.find((entry) => entry.name === 'telegram_bot_probe');
+    expect(telegramProbe).toBeDefined();
+    expect(telegramProbe?.ok).toBe(false);
+    expect(telegramProbe?.level).toBe('warn');
+    expect(telegramProbe?.detail).toContain('network_unreachable');
+    expect(result.ok).toBe(true);
+    expect(result.degraded).toBe(true);
   });
 });

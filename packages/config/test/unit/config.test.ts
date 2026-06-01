@@ -473,4 +473,24 @@ describe('config loader', () => {
     expect(loaded.skills.installer.installRoot).toBe('.ops/skills');
   });
 
+  it('loads NemoClaw-style sandbox policy profiles with env-selectable active profile', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-config-sandbox-policy-'));
+    const loaded = loadConfig({
+      cwd: directory,
+      env: {
+        OPS_API_TOKEN: 'test-token-12345',
+        OPS_TELEGRAM_ENABLED: 'false',
+        OPS_SANDBOX_ENABLED: 'true',
+        OPS_SANDBOX_PROFILE: 'restricted'
+      }
+    });
+
+    expect(loaded.policy.sandbox.enabled).toBe(true);
+    expect(loaded.policy.sandbox.activeProfile).toBe('restricted');
+    expect(loaded.policy.sandbox.profiles.restricted.network).toBe('deny_all');
+    expect(loaded.policy.sandbox.profiles.balanced.network).toBe('approval_required');
+    expect(loaded.policy.sandbox.profiles.open.credentials).toBe('direct');
+    expect(loaded.policy.sandbox.profiles.trusted_local.endpointGroups[0]?.id).toBe('local-dev');
+  });
+
 });

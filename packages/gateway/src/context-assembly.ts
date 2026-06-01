@@ -1,6 +1,17 @@
 import type { MemorySearchResult } from '@ops/memory';
 import type { MessageRecord } from '@ops/shared';
 
+import {
+  estimatePromptCacheTiers,
+  PROMPT_SOURCE_AUTHORITY_SECTION,
+  quotePromptEvidence,
+  renderPromptThreatFindings,
+  scanPromptThreats,
+  summarizePromptThreatFindings,
+  type PromptCacheTierUsage,
+  type PromptThreatFinding
+} from './prompt-governance.js';
+
 export interface ContextAssemblyPolicy {
   enabled: boolean;
   totalTokenBudget: number;
@@ -34,6 +45,8 @@ export interface PromptAssemblyResult {
   overflowReason: string | null;
   segments: PromptAssemblySegmentUsage[];
   droppedSegments: Array<{ id: string; reason: string; estimatedTokens: number }>;
+  promptThreatFindings: PromptThreatFinding[];
+  promptCacheTiers: PromptCacheTierUsage[];
   continuityCoverage: {
     transcriptMessagesSelected: number;
     transcriptTurnsSelected: number;
@@ -43,6 +56,11 @@ export interface PromptAssemblyResult {
     scope: string;
     continuitySummaryIncluded: boolean;
     compactionMode: string | null;
+    sourceAuthorityIncluded: boolean;
+    untrustedTranscriptQuoted: boolean;
+    memoryRecallQuoted: boolean;
+    promptThreatFindings: string[];
+    promptCacheTiers: PromptCacheTierUsage[];
   };
 }
 
@@ -207,7 +225,7 @@ function renderTranscript(messages: MessageRecord[]): string {
     .map((message) => {
       const timestamp = message.createdAt.slice(11, 19);
       const source = `${message.source}/${message.direction}`;
-      return `[${timestamp}] ${source} ${message.sender}: ${message.content.trim()}`;
+      return `[${timestamp}] ${source} sender=${quotePromptEvidence(message.sender)} content=${quotePromptEvidence(message.content)}`;
     })
     .join('\n');
 }
@@ -236,7 +254,7 @@ function renderMemoryRecall(memoryRows: MemorySearchResult[], memoryMinScore: nu
     .map((row, index) => {
       const snippet = row.item.content.replace(/\s+/g, ' ').trim().slice(0, 320);
       const citations = row.citations.length > 0 ? ` citations=${row.citations.slice(0, 3).join(',')}` : '';
-      return `${index + 1}. score=${row.combinedScore.toFixed(3)}${citations} :: ${snippet}`;
+      return `${index + 1}. score=${row.combinedScore.toFixed(3)} source=${row.item.source}${citations} content=${quotePromptEvidence(snippet)}`;
     })
     .join('\n');
 
@@ -269,14 +287,34 @@ function normalizeReserves(policy: ContextAssemblyPolicy): ContextAssemblyPolicy
   };
 }
 
+function collectPromptThreatFindings(segments: SegmentState[]): PromptThreatFinding[] {
+  const findings: PromptThreatFinding[] = [];
+  for (const segment of segments) {
+    if (!segment.included || !segment.text.trim()) {
+      continue;
+    }
+    if (segment.id === 'recent_transcript' || segment.id === 'memory_recall') {
+      findings.push(...scanPromptThreats(segment.text, segment.id, 'quoted_evidence'));
+      continue;
+    }
+    findings.push(...scanPromptThreats(segment.text, segment.id, 'trusted_warning'));
+  }
+  return findings;
+}
+
 function renderPrompt(segments: SegmentState[]): string {
   const byId = new Map(segments.map((segment) => [segment.id, segment]));
-  const sections: string[] = [];
+  const promptThreatFindings = collectPromptThreatFindings(segments);
+  const promptThreatSection = renderPromptThreatFindings(promptThreatFindings);
+  const sections: string[] = [PROMPT_SOURCE_AUTHORITY_SECTION];
   const instructions = byId.get('instructions');
   const transcript = byId.get('recent_transcript');
   const memory = byId.get('memory_recall');
   const task = byId.get('task');
 
+  if (promptThreatSection) {
+    sections.push(promptThreatSection);
+  }
   if (instructions?.included && instructions.text.trim()) {
     sections.push(`INSTRUCTIONS:\n${instructions.text.trim()}`);
   }
@@ -292,6 +330,22 @@ function renderPrompt(segments: SegmentState[]): string {
   return sections.join('\n\n').trim();
 }
 
+function promptCacheTiersForSegments(segments: SegmentState[]): PromptCacheTierUsage[] {
+  const byId = new Map(segments.map((segment) => [segment.id, segment]));
+  const textFor = (id: SegmentState['id']): string => {
+    const segment = byId.get(id);
+    return segment?.included ? segment.text : '';
+  };
+  return estimatePromptCacheTiers({
+    estimateTokens,
+    sourceAuthority: PROMPT_SOURCE_AUTHORITY_SECTION,
+    instructions: textFor('instructions'),
+    transcript: textFor('recent_transcript'),
+    memoryRecall: textFor('memory_recall'),
+    task: textFor('task')
+  });
+}
+
 export function buildPromptAssembly(input: {
   basePrompt: string;
   messages: MessageRecord[];
@@ -305,6 +359,15 @@ export function buildPromptAssembly(input: {
   const policy = input.policy;
   if (!policy.enabled) {
     const prompt = input.basePrompt.trim();
+    const promptThreatFindings = scanPromptThreats(prompt, 'base_prompt', 'trusted_warning');
+    const promptCacheTiers = estimatePromptCacheTiers({
+      estimateTokens,
+      sourceAuthority: '',
+      instructions: '',
+      transcript: '',
+      memoryRecall: '',
+      task: prompt
+    });
     return {
       prompt,
       contextLimit: Number.MAX_SAFE_INTEGER,
@@ -318,6 +381,8 @@ export function buildPromptAssembly(input: {
         { id: 'memory_recall', estimatedTokens: 0, budgetTokens: 0, included: false, droppedReason: 'disabled' }
       ],
       droppedSegments: [],
+      promptThreatFindings,
+      promptCacheTiers,
       continuityCoverage: {
         transcriptMessagesSelected: 0,
         transcriptTurnsSelected: 0,
@@ -326,7 +391,12 @@ export function buildPromptAssembly(input: {
         latestInboundDeduped: false,
         scope: input.scope ?? 'operator',
         continuitySummaryIncluded: input.continuitySummaryIncluded === true,
-        compactionMode: input.compactionMode ?? null
+        compactionMode: input.compactionMode ?? null,
+        sourceAuthorityIncluded: false,
+        untrustedTranscriptQuoted: false,
+        memoryRecallQuoted: false,
+        promptThreatFindings: summarizePromptThreatFindings(promptThreatFindings),
+        promptCacheTiers
       }
     };
   }
@@ -410,15 +480,20 @@ export function buildPromptAssembly(input: {
     overflowReason = overflowed ? 'budget_exhausted_after_shrink' : null;
   }
 
-  const droppedSegments = segments
-    .filter((segment) => !segment.included && segment.droppedReason)
-    .map((segment) => ({
+  const droppedSegments = segments.flatMap((segment) => {
+    if (segment.included || !segment.droppedReason) {
+      return [];
+    }
+    return [{
       id: segment.id,
-      reason: segment.droppedReason as string,
+      reason: segment.droppedReason,
       estimatedTokens: estimateTokens(segment.text)
-    }));
+    }];
+  });
 
   const prompt = renderPrompt(segments);
+  const promptThreatFindings = collectPromptThreatFindings(segments);
+  const promptCacheTiers = promptCacheTiersForSegments(segments);
   totalEstimatedTokens = estimateTokens(prompt);
   overflowed = totalEstimatedTokens > contextLimit;
   if (overflowed && !overflowReason) {
@@ -439,6 +514,8 @@ export function buildPromptAssembly(input: {
       droppedReason: segment.droppedReason
     })),
     droppedSegments,
+    promptThreatFindings,
+    promptCacheTiers,
     continuityCoverage: {
       transcriptMessagesSelected: transcriptSelection.selected.length,
       transcriptTurnsSelected: transcriptSelection.turns,
@@ -447,7 +524,12 @@ export function buildPromptAssembly(input: {
       latestInboundDeduped: transcriptSelection.latestInboundDeduped,
       scope: input.scope ?? 'operator',
       continuitySummaryIncluded: input.continuitySummaryIncluded === true,
-      compactionMode: input.compactionMode ?? null
+      compactionMode: input.compactionMode ?? null,
+      sourceAuthorityIncluded: true,
+      untrustedTranscriptQuoted: transcriptSelection.selected.length > 0,
+      memoryRecallQuoted: memoryRendered.selectedCount > 0,
+      promptThreatFindings: summarizePromptThreatFindings(promptThreatFindings),
+      promptCacheTiers
     }
   };
 }

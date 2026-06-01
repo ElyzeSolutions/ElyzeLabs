@@ -666,6 +666,7 @@ interface BrowserSessionProfileUpsertInput {
   browserKind?: BrowserSessionProfileRecord['browserKind'];
   browserProfileName?: string | null;
   browserProfilePath?: string | null;
+  cdpEndpoint?: string | null;
   locale?: string | null;
   countryCode?: string | null;
   timezoneId?: string | null;
@@ -1745,16 +1746,10 @@ export class ControlPlaneDatabase {
     const transaction = this.db.transaction(() => {
       let llmUsagePrunedBySessionPrune = 0;
       let llmUsagePrunedByRunPrune = 0;
-      let llmUsagePrunedByAge = 0;
       let realtimePrunedBySessionPrune = 0;
       let realtimePrunedByRunPrune = 0;
-      let realtimePrunedByAge = 0;
       let officePresencePrunedBySessionPrune = 0;
-      let officePresencePrunedByAge = 0;
-      let messagesPrunedByAge = 0;
       let runsPrunedByAge = 0;
-      let memoryPrunedByAge = 0;
-      let auditLogsPrunedByAge = 0;
 
       if (staleSessionIds.length > 0) {
         llmUsagePrunedBySessionPrune = this.db
@@ -1821,27 +1816,27 @@ export class ControlPlaneDatabase {
           .run(...expiredTerminalRunFilter.params);
       }
 
-      messagesPrunedByAge = this.db
+      const messagesPrunedByAge = this.db
         .prepare('DELETE FROM messages WHERE created_at < ?')
         .run(input.messageRetentionCutoff).changes;
 
-      realtimePrunedByAge = this.db
+      const realtimePrunedByAge = this.db
         .prepare('DELETE FROM realtime_events WHERE ts < ?')
         .run(input.realtimeRetentionCutoff).changes;
 
-      officePresencePrunedByAge = this.db
+      const officePresencePrunedByAge = this.db
         .prepare('DELETE FROM office_presence WHERE updated_at < ?')
         .run(input.officePresenceRetentionCutoff).changes;
 
-      llmUsagePrunedByAge = this.db
+      const llmUsagePrunedByAge = this.db
         .prepare('DELETE FROM llm_usage_events WHERE day_utc < ?')
         .run(input.llmUsageRetentionDayCutoff).changes;
 
-      memoryPrunedByAge = this.db
+      const memoryPrunedByAge = this.db
         .prepare('DELETE FROM memory_items WHERE created_at < ?')
         .run(input.memoryRetentionCutoff).changes;
 
-      auditLogsPrunedByAge = this.db
+      const auditLogsPrunedByAge = this.db
         .prepare('DELETE FROM audit_logs WHERE ts < ?')
         .run(input.auditRetentionCutoff).changes;
 
@@ -2153,6 +2148,15 @@ export class ControlPlaneDatabase {
     if (!existing) {
       throw new Error(`Run not found: ${input.runId}`);
     }
+    const nextEffectiveRuntime = Object.prototype.hasOwnProperty.call(input, 'effectiveRuntime')
+      ? input.effectiveRuntime
+      : input.runtime;
+    const nextEffectiveModel = Object.prototype.hasOwnProperty.call(input, 'effectiveModel')
+      ? input.effectiveModel
+      : existing.effectiveModel;
+    const nextEffectiveReasoningEffort = Object.prototype.hasOwnProperty.call(input, 'effectiveReasoningEffort')
+      ? input.effectiveReasoningEffort
+      : existing.effectiveReasoningEffort;
 
     this.db
       .prepare(
@@ -2162,9 +2166,9 @@ export class ControlPlaneDatabase {
       )
       .run(
         input.runtime,
-        input.effectiveRuntime ?? input.runtime,
-        input.effectiveModel ?? existing.effectiveModel,
-        input.effectiveReasoningEffort ?? existing.effectiveReasoningEffort,
+        nextEffectiveRuntime,
+        nextEffectiveModel,
+        nextEffectiveReasoningEffort,
         utcNow(),
         input.runId
       );
@@ -2415,16 +2419,20 @@ export class ControlPlaneDatabase {
     const leaseExpiry = new Date(Date.now() + input.leaseMs).toISOString();
 
     for (const row of rows) {
+      const queueItemId = typeof row.id === 'string' ? row.id : '';
+      if (!queueItemId) {
+        continue;
+      }
       const changed = this.db
         .prepare(
           `UPDATE queue_items
            SET status = 'processing', lease_expires_at = ?, updated_at = ?
            WHERE id = ? AND status = 'queued'`
         )
-        .run(leaseExpiry, now, row.id as string);
+        .run(leaseExpiry, now, queueItemId);
 
       if (changed.changes > 0) {
-        const fresh = this.getQueueItemById(row.id as string);
+        const fresh = this.getQueueItemById(queueItemId);
         if (fresh) {
           reserved.push(fresh);
         }
@@ -5856,10 +5864,10 @@ export class ControlPlaneDatabase {
         `INSERT INTO browser_session_profiles (
           id, label, domains_json, cookie_jar_id, headers_profile_id, proxy_profile_id, storage_state_id,
           use_real_chrome, owner_label, visibility, allowed_session_ids_json, site_key,
-          browser_kind, browser_profile_name, browser_profile_path,
+          browser_kind, browser_profile_name, browser_profile_path, cdp_endpoint,
           locale, country_code, timezone_id, notes, enabled,
           last_verified_at, last_verification_status, last_verification_summary, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           label = excluded.label,
           domains_json = excluded.domains_json,
@@ -5875,6 +5883,7 @@ export class ControlPlaneDatabase {
           browser_kind = excluded.browser_kind,
           browser_profile_name = excluded.browser_profile_name,
           browser_profile_path = excluded.browser_profile_path,
+          cdp_endpoint = excluded.cdp_endpoint,
           locale = excluded.locale,
           country_code = excluded.country_code,
           timezone_id = excluded.timezone_id,
@@ -5901,6 +5910,7 @@ export class ControlPlaneDatabase {
         input.browserKind ?? null,
         input.browserProfileName ?? null,
         input.browserProfilePath ?? null,
+        input.cdpEndpoint ?? null,
         input.locale ?? null,
         input.countryCode ?? null,
         input.timezoneId ?? null,
@@ -7887,13 +7897,14 @@ export class ControlPlaneDatabase {
       allowedSessionIdsJson: String(row.allowed_session_ids_json ?? '[]'),
       siteKey: row.site_key === null || row.site_key === undefined ? null : String(row.site_key),
       browserKind:
-        row.browser_kind === 'chrome' || row.browser_kind === 'firefox'
+        row.browser_kind === 'chrome' || row.browser_kind === 'edge' || row.browser_kind === 'firefox'
           ? row.browser_kind
           : null,
       browserProfileName:
         row.browser_profile_name === null || row.browser_profile_name === undefined ? null : String(row.browser_profile_name),
       browserProfilePath:
         row.browser_profile_path === null || row.browser_profile_path === undefined ? null : String(row.browser_profile_path),
+      cdpEndpoint: row.cdp_endpoint === null || row.cdp_endpoint === undefined ? null : String(row.cdp_endpoint),
       locale: row.locale === null || row.locale === undefined ? null : String(row.locale),
       countryCode: row.country_code === null || row.country_code === undefined ? null : String(row.country_code),
       timezoneId: row.timezone_id === null || row.timezone_id === undefined ? null : String(row.timezone_id),

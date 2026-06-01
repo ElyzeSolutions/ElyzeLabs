@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { ControlPlaneDatabase } from '@ops/db';
 
-import { buildGatewayApp } from '../../src/server.js';
+import { buildGatewayApp, type BuildGatewayAppOptions } from '../../src/server.js';
 import { installPortableRuntimeBinaryShims } from './runtime-binary-shims.js';
 
 type GatewayApp = Awaited<ReturnType<typeof buildGatewayApp>>;
@@ -367,7 +367,7 @@ function createRunWaiters(
 export async function createGatewayTestHarness(
   label: string,
   customize?: (config: ReturnType<typeof createBaseConfig>) => void,
-  options?: { installRuntimeShims?: boolean }
+  options?: { installRuntimeShims?: boolean; buildOptions?: BuildGatewayAppOptions }
 ): Promise<GatewayTestHarness> {
   const restoreRuntimeBinaryShims =
     options?.installRuntimeShims === false ? () => {} : installPortableRuntimeBinaryShims(`ops-gateway-${label}`);
@@ -376,7 +376,7 @@ export async function createGatewayTestHarness(
   fs.mkdirSync(config.runtime.workspaceRoot, { recursive: true });
   customize?.(config);
 
-  const app = await buildGatewayApp(config);
+  const app = await buildGatewayApp(config, options?.buildOptions);
   ensureRuntimeBinaryToolsInstalled(config.persistence.sqlitePath);
   const inject = createInject(app, config);
   const waitForCondition = createWaitForCondition();

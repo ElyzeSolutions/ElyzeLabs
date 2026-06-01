@@ -37,7 +37,7 @@ export interface MemoryServiceOptions {
     excludeAgents: string[];
   };
   onTelemetry?: (event: {
-    category: 'embedding' | 'retrieval' | 'auto_remember';
+    category: 'embedding' | 'retrieval' | 'auto_remember' | 'memory_write';
     status: string;
     details?: Record<string, unknown>;
   }) => void;
@@ -64,10 +64,42 @@ export interface AutoRememberDecision {
     | 'duplicate'
     | 'cooldown'
     | 'empty'
+    | 'memory_policy_blocked'
     | 'remember_failed';
   significance: number;
   entryChars: number;
   rowId?: string;
+}
+
+export interface MemoryWritePolicyFinding {
+  kind: 'prompt_control' | 'secret_like';
+  pattern: string;
+  severity: 'medium' | 'high';
+}
+
+export interface MemoryWritePolicyResult {
+  schema: 'ops.memory-write-governance.v1';
+  allowed: boolean;
+  blockedReason: 'prompt_control' | 'secret_like' | null;
+  sanitizedContent: string;
+  findings: MemoryWritePolicyFinding[];
+}
+
+export interface MemoryRememberResult {
+  memoryFilePath: string;
+  dailyFilePath: string;
+  row?: MemoryRecord;
+  policy: MemoryWritePolicyResult;
+}
+
+export class MemoryWritePolicyError extends Error {
+  readonly policy: MemoryWritePolicyResult;
+
+  constructor(policy: MemoryWritePolicyResult) {
+    super(`memory_write_blocked:${policy.blockedReason ?? 'policy'}`);
+    this.name = 'MemoryWritePolicyError';
+    this.policy = policy;
+  }
 }
 
 export interface EmbeddingBackendStatus {
@@ -84,6 +116,104 @@ export interface EmbeddingBackendStatus {
     annErrorStreak: number;
     lastSwitchAt: string | null;
     lastSwitchReason: string | null;
+  };
+}
+
+const MEMORY_PROMPT_CONTROL_PATTERNS: Array<{
+  pattern: string;
+  expression: RegExp;
+  severity: MemoryWritePolicyFinding['severity'];
+}> = [
+  {
+    pattern: 'ignore_previous_instructions',
+    expression: /\bignore (?:all )?(?:previous|prior|above) instructions?\b/i,
+    severity: 'high'
+  },
+  {
+    pattern: 'reveal_hidden_prompt',
+    expression: /\b(?:reveal|show|print|dump|expose)\b.{0,48}\b(?:system|developer|hidden) prompt\b/i,
+    severity: 'high'
+  },
+  {
+    pattern: 'execution_context_exfiltration',
+    expression: /\b(?:reveal|show|print|dump|expose)\b.{0,48}\bexecution_context\b/i,
+    severity: 'high'
+  },
+  {
+    pattern: 'bypass_policy',
+    expression: /\b(?:bypass|disable|override)\b.{0,48}\b(?:approval|guardrail|safety|policy|tool|memory)\b/i,
+    severity: 'high'
+  },
+  {
+    pattern: 'role_rewrite',
+    expression: /\b(?:you are now|act as|pretend to be)\b.{0,48}\b(?:system|developer|admin|root)\b/i,
+    severity: 'medium'
+  }
+];
+
+const MEMORY_SECRET_PATTERNS: Array<{
+  pattern: string;
+  expression: RegExp;
+  severity: MemoryWritePolicyFinding['severity'];
+}> = [
+  {
+    pattern: 'named_secret_assignment',
+    expression: /\b(?:api[_ -]?key|secret|token|password|credential)\s*[:=]\s*['"]?[A-Za-z0-9_\-./+=]{8,}/i,
+    severity: 'high'
+  },
+  {
+    pattern: 'known_token_prefix',
+    expression: /\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{16,}|github_pat_[A-Za-z0-9_]{20,}_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{16,})\b/i,
+    severity: 'high'
+  },
+  {
+    pattern: 'named_secret_phrase',
+    expression: /\b(?:api[_ -]?key|secret|token|password|credential)\b\s*(?:is|as|=|:)?\s*['"]?(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,}_[A-Za-z0-9_]{12,}|xox[baprs]-[A-Za-z0-9-]{12,}|[A-Za-z0-9_\-./+=]{16,})\b/i,
+    severity: 'high'
+  },
+  {
+    pattern: 'private_key',
+    expression: /-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----/i,
+    severity: 'high'
+  },
+  {
+    pattern: 'secret_exfiltration',
+    expression: /\b(?:exfiltrate|leak|send|print|dump)\b.{0,48}\b(?:secret|token|credential|api key|password)\b/i,
+    severity: 'high'
+  }
+];
+
+export function evaluateMemoryWritePolicy(content: string): MemoryWritePolicyResult {
+  const sanitizedContent = content.replace(/\r\n/g, '\n').replace(/\s+$/g, '').trim();
+  const findings: MemoryWritePolicyFinding[] = [];
+  for (const pattern of MEMORY_PROMPT_CONTROL_PATTERNS) {
+    if (pattern.expression.test(sanitizedContent)) {
+      findings.push({
+        kind: 'prompt_control',
+        pattern: pattern.pattern,
+        severity: pattern.severity
+      });
+    }
+  }
+  for (const pattern of MEMORY_SECRET_PATTERNS) {
+    if (pattern.expression.test(sanitizedContent)) {
+      findings.push({
+        kind: 'secret_like',
+        pattern: pattern.pattern,
+        severity: pattern.severity
+      });
+    }
+  }
+  const highSeverity = findings.filter((finding) => finding.severity === 'high');
+  const secretFinding = highSeverity.find((finding) => finding.kind === 'secret_like');
+  const promptFinding = highSeverity.find((finding) => finding.kind === 'prompt_control');
+  const blockedReason = secretFinding ? 'secret_like' : promptFinding ? 'prompt_control' : null;
+  return {
+    schema: 'ops.memory-write-governance.v1',
+    allowed: blockedReason === null,
+    blockedReason,
+    sanitizedContent,
+    findings
   };
 }
 
@@ -172,18 +302,26 @@ export class MemoryService {
     content: string;
     tags?: string[];
     metadata?: Record<string, unknown>;
-  }): Promise<{ memoryFilePath: string; dailyFilePath: string; row?: MemoryRecord }> {
+  }): Promise<MemoryRememberResult> {
     const memoryFilePath = path.join(input.workspacePath, this.options.workspaceMemoryFile);
     const dailyDirectoryPath = path.join(input.workspacePath, this.options.dailyMemoryDir);
     const day = utcNow().slice(0, 10);
     const dailyFilePath = path.join(dailyDirectoryPath, `${day}.md`);
+    const policy = evaluateMemoryWritePolicy(input.content);
+    if (!policy.allowed) {
+      this.emitTelemetry('memory_write', 'blocked', {
+        blockedReason: policy.blockedReason,
+        findings: policy.findings.map((finding) => `${finding.kind}:${finding.pattern}:${finding.severity}`)
+      });
+      throw new MemoryWritePolicyError(policy);
+    }
 
     await fs.mkdir(path.dirname(memoryFilePath), { recursive: true });
     await fs.mkdir(dailyDirectoryPath, { recursive: true });
 
     const heading = `\n## ${utcNow()}\n`;
     const tagsLabel = input.tags && input.tags.length > 0 ? `\nTags: ${input.tags.join(', ')}` : '';
-    const block = `${heading}${input.content.trim()}${tagsLabel}\n`;
+    const block = `${heading}${policy.sanitizedContent}${tagsLabel}\n`;
 
     await fs.appendFile(memoryFilePath, block, 'utf8');
     await fs.appendFile(dailyFilePath, block, 'utf8');
@@ -194,33 +332,43 @@ export class MemoryService {
         sessionId: input.sessionId ?? null,
         agentId: input.agentId,
         source: 'structured',
-        content: input.content,
-        embeddingRef: this.provider.name === 'noop' ? null : this.embeddingRef(input.content),
+        content: policy.sanitizedContent,
+        embeddingRef: this.provider.name === 'noop' ? null : this.embeddingRef(policy.sanitizedContent),
         importance: input.tags?.includes('critical') ? 10 : 3,
         metadata: {
           tags: input.tags ?? [],
           memoryFilePath,
           dailyFilePath,
+          memoryWriteGovernance: {
+            schema: policy.schema,
+            findingCount: policy.findings.length
+          },
           ...(input.metadata ?? {})
         }
       });
       await this.persistEmbedding({
         row,
-        content: input.content
+        content: policy.sanitizedContent
       });
     }
+    this.emitTelemetry('memory_write', 'written', {
+      findingCount: policy.findings.length,
+      structured: Boolean(row)
+    });
 
     if (row) {
       return {
         memoryFilePath,
         dailyFilePath,
-        row
+        row,
+        policy
       };
     }
 
     return {
       memoryFilePath,
-      dailyFilePath
+      dailyFilePath,
+      policy
     };
   }
 
@@ -253,25 +401,44 @@ export class MemoryService {
       .filter(Boolean)
       .slice(-50);
 
+    let ingested = 0;
     for (const block of blocks) {
+      const policy = evaluateMemoryWritePolicy(block);
+      if (!policy.allowed) {
+        this.emitTelemetry('memory_write', 'blocked', {
+          source: 'memory_md',
+          blockedReason: policy.blockedReason,
+          findings: policy.findings.map((finding) => `${finding.kind}:${finding.pattern}:${finding.severity}`)
+        });
+        continue;
+      }
       const row = this.database.insertMemory({
         sessionId: input.sessionId ?? null,
         agentId: input.agentId,
         source: 'memory_md',
-        content: block,
-        embeddingRef: this.provider.name === 'noop' ? null : this.embeddingRef(block),
+        content: policy.sanitizedContent,
+        embeddingRef: this.provider.name === 'noop' ? null : this.embeddingRef(policy.sanitizedContent),
         importance: 1,
         metadata: {
-          ingestedAt: utcNow()
+          ingestedAt: utcNow(),
+          memoryWriteGovernance: {
+            schema: policy.schema,
+            findingCount: policy.findings.length
+          }
         }
       });
       await this.persistEmbedding({
         row,
-        content: block
+        content: policy.sanitizedContent
       });
+      this.emitTelemetry('memory_write', 'written', {
+        source: 'memory_md',
+        findingCount: policy.findings.length
+      });
+      ingested += 1;
     }
 
-    return blocks.length;
+    return ingested;
   }
 
   async search(input: { agentId: string; query: string; limit: number }): Promise<MemorySearchResult[]> {
@@ -426,23 +593,43 @@ export class MemoryService {
       const topSignificance = chapters.reduce((max, chapter) => Math.max(max, chapter.significance), 0);
       const citations = chapters.flatMap((chapter) => parseJsonSafe<string[]>(chapter.citationsJson, []));
 
+      const memoryContent = `Compacted trajectory for run ${run.id}\n${compacted}`;
+      const policy = evaluateMemoryWritePolicy(memoryContent);
+      if (!policy.allowed) {
+        this.emitTelemetry('memory_write', 'blocked', {
+          source: 'compact_trajectories',
+          runId: run.id,
+          blockedReason: policy.blockedReason,
+          findings: policy.findings.map((finding) => `${finding.kind}:${finding.pattern}:${finding.severity}`)
+        });
+        continue;
+      }
       const row = this.database.insertMemory({
         sessionId: run.sessionId,
         agentId: input.agentId,
         source: 'structured',
-        content: `Compacted trajectory for run ${run.id}\n${compacted}`,
-        embeddingRef: this.provider.name === 'noop' ? null : this.embeddingRef(compacted),
+        content: policy.sanitizedContent,
+        embeddingRef: this.provider.name === 'noop' ? null : this.embeddingRef(policy.sanitizedContent),
         importance: Number(topSignificance.toFixed(4)),
         metadata: {
           compactedFromRunId: run.id,
           compactedAt: utcNow(),
           significance: topSignificance,
-          citations: Array.from(new Set(citations))
+          citations: Array.from(new Set(citations)),
+          memoryWriteGovernance: {
+            schema: policy.schema,
+            findingCount: policy.findings.length
+          }
         }
       });
       await this.persistEmbedding({
         row,
-        content: compacted
+        content: policy.sanitizedContent
+      });
+      this.emitTelemetry('memory_write', 'written', {
+        source: 'compact_trajectories',
+        runId: run.id,
+        findingCount: policy.findings.length
       });
       compactedRuns += 1;
       memoryRows += 1;
@@ -595,6 +782,19 @@ export class MemoryService {
         rowId: rememberResult.row?.id
       };
     } catch (error) {
+      if (error instanceof MemoryWritePolicyError) {
+        this.emitTelemetry('auto_remember', 'memory_policy_blocked', {
+          runId: input.runId,
+          blockedReason: error.policy.blockedReason,
+          findings: error.policy.findings.map((finding) => `${finding.kind}:${finding.pattern}:${finding.severity}`)
+        });
+        return {
+          written: false,
+          reason: 'memory_policy_blocked',
+          significance,
+          entryChars: bounded.length
+        };
+      }
       this.emitTelemetry('auto_remember', 'remember_failed', {
         runId: input.runId,
         error: error instanceof Error ? error.message : String(error)
@@ -789,7 +989,7 @@ export class MemoryService {
   }
 
   private emitTelemetry(
-    category: 'embedding' | 'retrieval' | 'auto_remember',
+    category: 'embedding' | 'retrieval' | 'auto_remember' | 'memory_write',
     status: string,
     details?: Record<string, unknown>
   ): void {

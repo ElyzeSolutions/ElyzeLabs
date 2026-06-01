@@ -7,6 +7,7 @@ import type {
   ApiEnvelope,
   BinaryAvailabilityRow,
   BacklogBoardColumns,
+  BacklogDeliveryRow,
   BacklogDeliveryDetailRow,
   BacklogContractsState,
   BacklogDecisionStreamRow,
@@ -25,6 +26,11 @@ import type {
   BrowserConnectMethod,
   BrowserConnectSiteKey,
   BrowserConnectVerificationRow,
+  BrowserInteractiveActionInput,
+  BrowserInteractiveRunResult,
+  BrowserInteractiveSessionCloseResult,
+  BrowserInteractiveSessionRecord,
+  BrowserMobileSessionHandoffRow,
   BrowserLocalProfileKind,
   BrowserSessionVaultState,
   BrowserHistoryState,
@@ -37,6 +43,8 @@ import type {
   HousekeepingState,
   CronStatusState,
   CleanupRunState,
+  DoctorCenterState,
+  DoctorRepairRunResultRow,
   InstallerReadiness,
   ImprovementLearningRow,
   ImprovementProposalRow,
@@ -61,10 +69,14 @@ import type {
   ScheduleConcurrencyPolicy,
   ScheduleDetailState,
   ScheduleDeliveryTarget,
+  ScheduleGuardrailRow,
   ScheduleHistoryRow,
   ScheduleRow,
   ScheduleSessionTarget,
   SessionRow,
+  SkillCuratorProposalRow,
+  SkillLifecycleState,
+  SkillLifecycleStateRow,
   SkillRow,
   SkillCatalogState,
   SkillCatalogEntryRow,
@@ -375,6 +387,52 @@ export async function fetchEvents(token?: string, since = 0): Promise<RuntimeEve
 
 export function fetchSkills(token?: string): Promise<SkillRow[]> {
   return apiRequestField<ApiEnvelope & { skills: SkillRow[] }, 'skills'>('/api/skills', 'skills', { token });
+}
+
+export async function fetchSkillLifecycle(token?: string): Promise<SkillLifecycleStateRow> {
+  const response = await apiRequest<ApiEnvelope & { lifecycle: SkillLifecycleStateRow }>('/api/skills/lifecycle', {}, { token });
+  return response.lifecycle;
+}
+
+export async function runSkillCurator(
+  token: string,
+  payload?: {
+    apply?: boolean;
+  }
+): Promise<{ proposals: SkillCuratorProposalRow[]; lifecycle: SkillLifecycleStateRow; skills: SkillRow[] }> {
+  return apiRequest<ApiEnvelope & { proposals: SkillCuratorProposalRow[]; lifecycle: SkillLifecycleStateRow; skills: SkillRow[] }>(
+    '/api/skills/curator/run',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actor: 'dashboard',
+        apply: payload?.apply ?? true
+      })
+    },
+    { token }
+  );
+}
+
+export async function updateSkillLifecycle(
+  token: string,
+  skillName: string,
+  payload: {
+    state: SkillLifecycleState;
+    note?: string | null;
+  }
+): Promise<{ skill: SkillRow | null; lifecycleState: SkillLifecycleStateRow }> {
+  return apiRequest<ApiEnvelope & { skill: SkillRow | null; lifecycleState: SkillLifecycleStateRow }>(
+    `/api/skills/${encodeURIComponent(skillName)}/lifecycle`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({
+        actor: 'dashboard',
+        state: payload.state,
+        note: payload.note ?? null
+      })
+    },
+    { token }
+  );
 }
 
 export async function fetchSkillsCatalog(token?: string): Promise<SkillCatalogState> {
@@ -747,6 +805,31 @@ export async function fetchReadiness(token?: string): Promise<ReadinessState> {
   return response.readiness;
 }
 
+export async function fetchDoctorCenter(token?: string): Promise<DoctorCenterState> {
+  const response = await apiRequest<ApiEnvelope & { doctor: DoctorCenterState }>('/api/doctor', {}, { token });
+  return response.doctor;
+}
+
+export async function runDoctorRepair(
+  token: string,
+  repairId: string,
+  payload?: {
+    approved?: boolean;
+  }
+): Promise<{ doctor: DoctorCenterState; repair: DoctorRepairRunResultRow }> {
+  return apiRequest<ApiEnvelope & { doctor: DoctorCenterState; repair: DoctorRepairRunResultRow }>(
+    `/api/doctor/repairs/${encodeURIComponent(repairId)}/run`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actor: 'dashboard',
+        approved: payload?.approved === true
+      })
+    },
+    { token }
+  );
+}
+
 export async function updateHousekeepingRetention(
   token: string,
   updates: Record<string, number | string[]>
@@ -1005,6 +1088,26 @@ export async function runScheduleNow(
     schedule: response.schedule,
     history: response.history ?? null,
     runId: response.run?.id ?? null
+  };
+}
+
+export async function applyScheduleGuardrails(
+  token: string,
+  scheduleId: string
+): Promise<{ schedule: ScheduleRow; guardrail: ScheduleGuardrailRow }> {
+  const response = await apiRequest<ApiEnvelope & { schedule: ScheduleRow; guardrail: ScheduleGuardrailRow }>(
+    `/api/schedules/${encodeURIComponent(scheduleId)}/guardrails/apply`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actor: 'dashboard'
+      })
+    },
+    { token }
+  );
+  return {
+    schedule: response.schedule,
+    guardrail: response.guardrail
   };
 }
 
@@ -1586,6 +1689,34 @@ export async function upsertBrowserSessionProfile(
   return response.vault;
 }
 
+export async function ensureManagedBrowserProfile(
+  token: string,
+  payload?: {
+    label?: string;
+  }
+): Promise<{ vault: BrowserSessionVaultState; sessionProfile: BrowserSessionVaultState['sessionProfiles'][number] }> {
+  const response = await apiRequest<
+    ApiEnvelope & {
+      vault: BrowserSessionVaultState;
+      sessionProfile: BrowserSessionVaultState['sessionProfiles'][number];
+    }
+  >(
+    '/api/browser/managed-profiles/ensure',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actor: 'dashboard',
+        ...(payload ?? {})
+      })
+    },
+    { token }
+  );
+  return {
+    vault: response.vault,
+    sessionProfile: response.sessionProfile
+  };
+}
+
 export async function connectBrowserAccount(
   token: string,
   payload: {
@@ -1599,8 +1730,14 @@ export async function connectBrowserAccount(
     verifyUrl?: string | null;
     sourceKind?: 'raw_cookie_header' | 'netscape_cookies_txt' | 'manual' | 'json_cookie_export' | 'browser_profile_import';
     raw?: string;
+    storageState?: Record<string, unknown>;
+    storageStatePath?: string | null;
+    playwrightSessionPath?: string | null;
+    cdpEndpoint?: string | null;
     browserKind?: BrowserLocalProfileKind | null;
     browserProfileId?: string | null;
+    browserProfileName?: string | null;
+    browserProfilePath?: string | null;
     visibility?: 'shared' | 'session_only';
     allowedSessionIds?: string[];
     headersProfileId?: string | null;
@@ -1632,6 +1769,72 @@ export async function connectBrowserAccount(
     sessionProfile: response.sessionProfile,
     verification: response.verification
   };
+}
+
+export async function startBrowserMobileHandoff(
+  token: string,
+  payload: {
+    sessionProfileId?: string;
+    cookieJarId?: string;
+    label: string;
+    ownerLabel?: string | null;
+    siteKey: BrowserConnectSiteKey;
+    domains?: string[];
+    verifyUrl?: string | null;
+    sourceKind?: 'raw_cookie_header' | 'netscape_cookies_txt' | 'manual' | 'json_cookie_export' | 'browser_profile_import';
+    visibility?: 'shared' | 'session_only';
+    allowedSessionIds?: string[];
+    headersProfileId?: string | null;
+    proxyProfileId?: string | null;
+    storageStateId?: string | null;
+    locale?: string | null;
+    countryCode?: string | null;
+    timezoneId?: string | null;
+    notes?: string | null;
+    agentId?: string | null;
+  }
+): Promise<{
+  vault: BrowserSessionVaultState;
+  handoff: BrowserMobileSessionHandoffRow;
+  submitUrl: string;
+  nextStep: string;
+}> {
+  return apiRequest<
+    ApiEnvelope & {
+      vault: BrowserSessionVaultState;
+      handoff: BrowserMobileSessionHandoffRow;
+      submitUrl: string;
+      nextStep: string;
+    }
+  >(
+    '/api/browser/mobile-handoff/start',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    },
+    { token }
+  );
+}
+
+export async function fetchBrowserMobileHandoffStatus(
+  token: string,
+  handoffId: string
+): Promise<{
+  vault: BrowserSessionVaultState;
+  handoff: BrowserMobileSessionHandoffRow;
+  cookieJar: BrowserSessionVaultState['cookieJars'][number] | null;
+  sessionProfile: BrowserSessionVaultState['sessionProfiles'][number] | null;
+  verification: Pick<BrowserConnectVerificationRow, 'summary' | 'method' | 'site'> | null;
+}> {
+  return apiRequest<
+    ApiEnvelope & {
+      vault: BrowserSessionVaultState;
+      handoff: BrowserMobileSessionHandoffRow;
+      cookieJar: BrowserSessionVaultState['cookieJars'][number] | null;
+      sessionProfile: BrowserSessionVaultState['sessionProfiles'][number] | null;
+      verification: Pick<BrowserConnectVerificationRow, 'summary' | 'method' | 'site'> | null;
+    }
+  >(`/api/browser/mobile-handoff/${encodeURIComponent(handoffId)}/status`, {}, { token });
 }
 
 export async function verifyBrowserSessionProfile(
@@ -1756,6 +1959,173 @@ export async function startBrowserLoginCapture(
   );
 }
 
+export async function startPlaywrightAuthCapture(
+  token: string,
+  payload: {
+    siteKey: BrowserConnectSiteKey;
+    browserKind?: BrowserLocalProfileKind | null;
+    label?: string | null;
+    domains?: string[];
+    verifyUrl?: string | null;
+  }
+): Promise<{
+  capture: {
+    id: string;
+    siteKey: BrowserConnectSiteKey;
+    label: string;
+    verifyUrl: string;
+    domains: string[];
+    browserKind: BrowserLocalProfileKind;
+    profileDir: string;
+    storageStatePath: string;
+    createdAt: string;
+  };
+  nextStep: string;
+  command: string;
+  vault: BrowserSessionVaultState;
+}> {
+  return apiRequest<
+    ApiEnvelope & {
+      capture: {
+        id: string;
+        siteKey: BrowserConnectSiteKey;
+        label: string;
+        verifyUrl: string;
+        domains: string[];
+        browserKind: BrowserLocalProfileKind;
+        profileDir: string;
+        storageStatePath: string;
+        createdAt: string;
+      };
+      nextStep: string;
+      command: string;
+      vault: BrowserSessionVaultState;
+    }
+  >(
+    '/api/browser/playwright-auth/start',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    },
+    { token }
+  );
+}
+
+export async function savePlaywrightAuthCapture(
+  token: string,
+  payload: {
+    captureId: string;
+    sessionProfileId?: string;
+    storageStateId?: string;
+    label?: string | null;
+    ownerLabel?: string | null;
+    visibility?: 'shared' | 'session_only';
+    allowedSessionIds?: string[];
+    domains?: string[];
+    verifyUrl?: string | null;
+    playwrightSessionPath?: string | null;
+    cdpEndpoint?: string | null;
+    headersProfileId?: string | null;
+    proxyProfileId?: string | null;
+    locale?: string | null;
+    countryCode?: string | null;
+    timezoneId?: string | null;
+    notes?: string | null;
+    agentId?: string | null;
+  }
+): Promise<{
+  capture: {
+    id: string;
+    siteKey: BrowserConnectSiteKey;
+    label: string;
+    verifyUrl: string;
+    domains: string[];
+    browserKind: BrowserLocalProfileKind;
+    profileDir: string;
+    storageStatePath: string;
+    createdAt: string;
+  };
+  vault: BrowserSessionVaultState;
+  storageState: BrowserSessionVaultState['storageStates'][number];
+  sessionProfile: BrowserSessionVaultState['sessionProfiles'][number];
+  verification: BrowserConnectVerificationRow;
+}> {
+  return apiRequest<
+    ApiEnvelope & {
+      capture: {
+        id: string;
+        siteKey: BrowserConnectSiteKey;
+        label: string;
+        verifyUrl: string;
+        domains: string[];
+        browserKind: BrowserLocalProfileKind;
+        profileDir: string;
+        storageStatePath: string;
+        createdAt: string;
+      };
+      vault: BrowserSessionVaultState;
+      storageState: BrowserSessionVaultState['storageStates'][number];
+      sessionProfile: BrowserSessionVaultState['sessionProfiles'][number];
+      verification: BrowserConnectVerificationRow;
+    }
+  >(
+    '/api/browser/playwright-auth/save',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    },
+    { token }
+  );
+}
+
+export async function saveCurrentPlaywrightAuthSession(
+  token: string,
+  payload: {
+    siteKey: BrowserConnectSiteKey;
+    browserKind?: BrowserLocalProfileKind | null;
+    sessionProfileId?: string;
+    storageStateId?: string;
+    label?: string | null;
+    ownerLabel?: string | null;
+    visibility?: 'shared' | 'session_only';
+    allowedSessionIds?: string[];
+    domains?: string[];
+    verifyUrl?: string | null;
+    playwrightSessionPath?: string | null;
+    cdpEndpoint?: string | null;
+    headersProfileId?: string | null;
+    proxyProfileId?: string | null;
+    locale?: string | null;
+    countryCode?: string | null;
+    timezoneId?: string | null;
+    notes?: string | null;
+    agentId?: string | null;
+  }
+): Promise<{
+  storageStatePath: string;
+  vault: BrowserSessionVaultState;
+  storageState: BrowserSessionVaultState['storageStates'][number];
+  sessionProfile: BrowserSessionVaultState['sessionProfiles'][number];
+  verification: BrowserConnectVerificationRow;
+}> {
+  return apiRequest<
+    ApiEnvelope & {
+      storageStatePath: string;
+      vault: BrowserSessionVaultState;
+      storageState: BrowserSessionVaultState['storageStates'][number];
+      sessionProfile: BrowserSessionVaultState['sessionProfiles'][number];
+      verification: BrowserConnectVerificationRow;
+    }
+  >(
+    '/api/browser/playwright-auth/save-current',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    },
+    { token }
+  );
+}
+
 export async function enableBrowserSessionProfile(token: string, sessionProfileId: string): Promise<BrowserSessionVaultState> {
   const response = await apiRequest<ApiEnvelope & { vault: BrowserSessionVaultState }>(
     `/api/browser/session-profiles/${encodeURIComponent(sessionProfileId)}/enable`,
@@ -1855,6 +2225,70 @@ export async function runBrowserTest(
     {
       method: 'POST',
       body: JSON.stringify(payload)
+    },
+    { token }
+  );
+}
+
+export async function startBrowserInteractiveSession(
+  token: string,
+  payload: {
+    agentId?: string;
+    url: string;
+    sessionId?: string;
+    sessionProfileId?: string;
+    cdpEndpoint?: string;
+    previewChars?: number;
+  }
+): Promise<{ run: RunRow; liveSession: BrowserInteractiveSessionRecord; control: BrowserInteractiveRunResult }> {
+  return apiRequest<
+    ApiEnvelope & {
+      run: RunRow;
+      liveSession: BrowserInteractiveSessionRecord;
+      control: BrowserInteractiveRunResult;
+    }
+  >(
+    '/api/browser/interactive/sessions',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    },
+    { token }
+  );
+}
+
+export async function runBrowserInteractiveSessionActions(
+  token: string,
+  liveSessionId: string,
+  payload: {
+    actions: BrowserInteractiveActionInput[];
+    previewChars?: number;
+  }
+): Promise<{ run: RunRow; liveSession: BrowserInteractiveSessionRecord; control: BrowserInteractiveRunResult }> {
+  return apiRequest<
+    ApiEnvelope & {
+      run: RunRow;
+      liveSession: BrowserInteractiveSessionRecord;
+      control: BrowserInteractiveRunResult;
+    }
+  >(
+    `/api/browser/interactive/sessions/${encodeURIComponent(liveSessionId)}/actions`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    },
+    { token }
+  );
+}
+
+export async function closeBrowserInteractiveSession(
+  token: string,
+  liveSessionId: string
+): Promise<{ run: RunRow; closed: BrowserInteractiveSessionCloseResult }> {
+  return apiRequest<ApiEnvelope & { run: RunRow; closed: BrowserInteractiveSessionCloseResult }>(
+    `/api/browser/interactive/sessions/${encodeURIComponent(liveSessionId)}`,
+    {
+      method: 'DELETE'
     },
     { token }
   );
@@ -1972,6 +2406,40 @@ export async function fetchBacklogBoard(
 export async function fetchBacklogContracts(token?: string): Promise<BacklogContractsState['contracts']> {
   const response = await apiRequest<ApiEnvelope & BacklogContractsState>('/api/backlog/contracts', {}, { token });
   return response.contracts;
+}
+
+export async function createBacklogItem(
+  token: string,
+  payload: {
+    title: string;
+    description?: string;
+    state?: BacklogItemRow['state'];
+    priority?: number;
+    labels?: string[];
+    projectId?: string | null;
+    repoRoot?: string | null;
+    metadata?: {
+      githubRepoHint?: {
+        owner: string;
+        repo: string;
+      };
+    };
+    source?: string;
+  }
+): Promise<BacklogItemRow> {
+  const response = await apiRequest<ApiEnvelope & { item: BacklogItemRow }>(
+    '/api/backlog/items',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        ...payload,
+        actor: 'dashboard',
+        source: payload.source ?? 'dashboard'
+      })
+    },
+    { token }
+  );
+  return response.item;
 }
 
 export async function cleanupBacklog(
@@ -2093,6 +2561,44 @@ export async function updateBacklogDelivery(
     { token }
   );
   return response.item;
+}
+
+export async function syncBacklogIssue(
+  token: string,
+  itemId: string
+): Promise<{
+  itemId: string;
+  issue: {
+    number: number | null;
+    url: string | null;
+    state: string | null;
+    labels: string[];
+    assignee: string | null;
+  };
+  delivery: BacklogDeliveryRow;
+}> {
+  return apiRequest<
+    ApiEnvelope & {
+      itemId: string;
+      issue: {
+        number: number | null;
+        url: string | null;
+        state: string | null;
+        labels: string[];
+        assignee: string | null;
+      };
+      delivery: BacklogDeliveryRow;
+    }
+  >(
+    `/api/backlog/items/${encodeURIComponent(itemId)}/issues/sync`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actor: 'dashboard'
+      })
+    },
+    { token }
+  );
 }
 
 export async function fetchBacklogDeliveryDetail(

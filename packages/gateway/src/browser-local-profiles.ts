@@ -40,7 +40,7 @@ function loadDatabaseSync(): DatabaseSyncConstructor {
   return sqliteModule.DatabaseSync;
 }
 
-type BrowserLocalProfileKind = 'chrome' | 'firefox';
+export type BrowserLocalProfileKind = 'chrome' | 'edge' | 'firefox';
 
 export interface LocalBrowserProfileRow {
   id: string;
@@ -50,10 +50,14 @@ export interface LocalBrowserProfileRow {
   profilePath: string;
   isDefault: boolean;
   importStrategy: 'cookie_import' | 'cookie_import_and_real_chrome';
+  browserDisplayName?: string;
+  browserAppName?: string;
+  browserBinaryPath?: string;
+  chromiumSafeStorageService?: string;
 }
 
 export function listLocalBrowserProfiles(): LocalBrowserProfileRow[] {
-  return [...listChromeProfiles(), ...listFirefoxProfiles()].sort((left, right) => {
+  return [...listChromeProfiles(), ...listEdgeProfiles(), ...listFirefoxProfiles()].sort((left, right) => {
     if (left.browserKind !== right.browserKind) {
       return left.browserKind.localeCompare(right.browserKind);
     }
@@ -80,7 +84,11 @@ export function importCookiesFromLocalBrowserProfile(input: {
   if (input.profile.browserKind === 'firefox') {
     return readFirefoxCookies(input.profile.profilePath, input.domains ?? []);
   }
-  return readChromeCookies(input.profile.profilePath, input.domains ?? []);
+  return readChromeCookies(
+    input.profile.profilePath,
+    input.domains ?? [],
+    input.profile.chromiumSafeStorageService ?? chromiumSafeStorageService(input.profile.browserKind)
+  );
 }
 
 export function startVisibleBrowserLogin(input: {
@@ -92,46 +100,83 @@ export function startVisibleBrowserLogin(input: {
     throw new Error('A login URL is required.');
   }
   if (input.profile.browserKind === 'firefox') {
-    launchDetached(resolveFirefoxBinary(), ['-P', input.profile.profileName, '-new-window', normalizedUrl], [
+    const launch = resolveFirefoxLaunch(input.profile);
+    launchDetached(launch.binaryPath, ['-P', input.profile.profileName, '-new-window', normalizedUrl], [
       'open',
       '-a',
-      'Firefox',
+      launch.appName,
       normalizedUrl
     ]);
     return {
-      command: `Firefox profile ${input.profile.profileName}`,
+      command: `${launch.displayName} profile ${input.profile.profileName}`,
       url: normalizedUrl
     };
   }
 
-  launchDetached(
-    resolveChromeBinary(),
-    [`--profile-directory=${input.profile.profileName}`, '--new-window', normalizedUrl],
-    ['open', '-a', 'Google Chrome', normalizedUrl]
-  );
+  const launch = resolveChromiumLaunch(input.profile);
+  launchDetached(launch.binaryPath, [`--profile-directory=${input.profile.profileName}`, '--new-window', normalizedUrl], [
+    'open',
+    '-a',
+    launch.appName,
+    normalizedUrl
+  ]);
   return {
-    command: `Chrome profile ${input.profile.profileName}`,
+    command: `${launch.displayName} profile ${input.profile.profileName}`,
     url: normalizedUrl
   };
 }
 
 function listChromeProfiles(): LocalBrowserProfileRow[] {
-  const chromeDir = resolveChromeProfilesDir();
-  if (!fs.existsSync(chromeDir)) {
+  return listChromiumProfiles({
+    browserKind: 'chrome',
+    profilesDir: resolveChromeProfilesDir(),
+    displayName: 'Chrome',
+    appName: 'Google Chrome',
+    binaryPath: resolveChromeBinary(),
+    defaultProfileLabel: 'Chrome default',
+    importStrategy: 'cookie_import_and_real_chrome',
+    safeStorageService: 'Chrome Safe Storage'
+  });
+}
+
+function listEdgeProfiles(): LocalBrowserProfileRow[] {
+  return listChromiumProfiles({
+    browserKind: 'edge',
+    profilesDir: resolveEdgeProfilesDir(),
+    displayName: 'Edge',
+    appName: 'Microsoft Edge',
+    binaryPath: resolveEdgeBinary(),
+    defaultProfileLabel: 'Edge default',
+    importStrategy: 'cookie_import',
+    safeStorageService: 'Microsoft Edge Safe Storage'
+  });
+}
+
+function listChromiumProfiles(input: {
+  browserKind: 'chrome' | 'edge';
+  profilesDir: string;
+  displayName: string;
+  appName: string;
+  binaryPath: string;
+  defaultProfileLabel: string;
+  importStrategy: LocalBrowserProfileRow['importStrategy'];
+  safeStorageService: string;
+}): LocalBrowserProfileRow[] {
+  if (!fs.existsSync(input.profilesDir)) {
     return [];
   }
 
-  const localStatePath = path.join(chromeDir, 'Local State');
+  const localStatePath = path.join(input.profilesDir, 'Local State');
   const localState = readJsonFile(localStatePath);
   const profile = localState && isRecord(localState.profile) ? localState.profile : null;
   const profileInfoCache = profile && isRecord(profile.info_cache) ? profile.info_cache : {};
 
   const results: LocalBrowserProfileRow[] = [];
-  for (const entry of fs.readdirSync(chromeDir, { withFileTypes: true })) {
+  for (const entry of fs.readdirSync(input.profilesDir, { withFileTypes: true })) {
     if (!entry.isDirectory() || (entry.name !== 'Default' && !/^Profile \d+$/i.test(entry.name))) {
       continue;
     }
-    const profilePath = path.join(chromeDir, entry.name);
+    const profilePath = path.join(input.profilesDir, entry.name);
     if (!fs.existsSync(path.join(profilePath, 'Cookies'))) {
       continue;
     }
@@ -139,55 +184,63 @@ function listChromeProfiles(): LocalBrowserProfileRow[] {
     const info = isRecord(rawInfo) ? rawInfo : null;
     const infoName = info && typeof info.name === 'string' ? info.name.trim() : '';
     results.push({
-      id: buildLocalProfileId('chrome', profilePath),
-      browserKind: 'chrome',
-      label: infoName || (entry.name === 'Default' ? 'Chrome default' : `Chrome ${entry.name}`),
+      id: buildLocalProfileId(input.browserKind, profilePath),
+      browserKind: input.browserKind,
+      label: infoName || (entry.name === 'Default' ? input.defaultProfileLabel : `${input.displayName} ${entry.name}`),
       profileName: entry.name,
       profilePath,
       isDefault: entry.name === 'Default',
-      importStrategy: 'cookie_import_and_real_chrome'
+      importStrategy: input.importStrategy,
+      browserDisplayName: input.displayName,
+      browserAppName: input.appName,
+      browserBinaryPath: input.binaryPath,
+      chromiumSafeStorageService: input.safeStorageService
     });
   }
   return results;
 }
 
 function listFirefoxProfiles(): LocalBrowserProfileRow[] {
-  const firefoxDir = resolveFirefoxProfilesDir();
-  const profilesIniPath = path.join(firefoxDir, 'profiles.ini');
-  if (!fs.existsSync(profilesIniPath)) {
-    return [];
-  }
-
-  const parsed = parseIni(fs.readFileSync(profilesIniPath, 'utf8'));
   const results: LocalBrowserProfileRow[] = [];
-  for (const section of parsed) {
-    if (!/^Profile/i.test(section.name)) {
+  for (const root of resolveFirefoxProfileRoots()) {
+    const profilesIniPath = path.join(root.profilesDir, 'profiles.ini');
+    if (!fs.existsSync(profilesIniPath)) {
       continue;
     }
-    const profileName = typeof section.values.Name === 'string' ? section.values.Name.trim() : '';
-    const configuredPath = typeof section.values.Path === 'string' ? section.values.Path.trim() : '';
-    if (!profileName || !configuredPath) {
-      continue;
+
+    const parsed = parseIni(fs.readFileSync(profilesIniPath, 'utf8'));
+    for (const section of parsed) {
+      if (!/^Profile/i.test(section.name)) {
+        continue;
+      }
+      const profileName = typeof section.values.Name === 'string' ? section.values.Name.trim() : '';
+      const configuredPath = typeof section.values.Path === 'string' ? section.values.Path.trim() : '';
+      if (!profileName || !configuredPath) {
+        continue;
+      }
+      const isRelative = String(section.values.IsRelative ?? '1').trim() !== '0';
+      const profilePath = isRelative ? path.join(root.profilesDir, configuredPath) : configuredPath;
+      if (!fs.existsSync(path.join(profilePath, 'cookies.sqlite'))) {
+        continue;
+      }
+      results.push({
+        id: buildLocalProfileId('firefox', profilePath),
+        browserKind: 'firefox',
+        label: root.displayName === 'Firefox' ? profileName : `${root.displayName} ${profileName}`,
+        profileName,
+        profilePath,
+        isDefault: String(section.values.Default ?? '0').trim() === '1',
+        importStrategy: 'cookie_import',
+        browserDisplayName: root.displayName,
+        browserAppName: root.appName,
+        browserBinaryPath: root.binaryPath
+      });
     }
-    const isRelative = String(section.values.IsRelative ?? '1').trim() !== '0';
-    const profilePath = isRelative ? path.join(firefoxDir, configuredPath) : configuredPath;
-    if (!fs.existsSync(path.join(profilePath, 'cookies.sqlite'))) {
-      continue;
-    }
-    results.push({
-      id: buildLocalProfileId('firefox', profilePath),
-      browserKind: 'firefox',
-      label: profileName,
-      profileName,
-      profilePath,
-      isDefault: String(section.values.Default ?? '0').trim() === '1',
-      importStrategy: 'cookie_import'
-    });
   }
   return results;
 }
 
-function readChromeCookies(profilePath: string, domains: string[]): BrowserCookieEntry[] {
+function readChromeCookies(profilePath: string, domains: string[], safeStorageService: string): BrowserCookieEntry[] {
   const sourcePath = path.join(profilePath, 'Cookies');
   const tempCopy = copyDatabaseToTemp(sourcePath);
   const allowedDomains = normalizeDomains(domains);
@@ -197,7 +250,7 @@ function readChromeCookies(profilePath: string, domains: string[]): BrowserCooki
     try {
       const rows = database
         .prepare(
-          `SELECT host_key, name, value, encrypted_value, path, expires_utc, is_httponly, is_secure, samesite
+          `SELECT host_key, name, value, encrypted_value, path, CAST(expires_utc AS TEXT) AS expires_utc, is_httponly, is_secure, samesite
            FROM cookies`
         )
         .all();
@@ -225,7 +278,7 @@ function readChromeCookies(profilePath: string, domains: string[]): BrowserCooki
               ? decryptChromeCookieValue(
                   encryptedValue,
                   hostKey,
-                  secret ?? (secret = resolveMacSafeStorageSecret('Chrome Safe Storage'))
+                  secret ?? (secret = resolveMacSafeStorageSecret(safeStorageService))
                 )
               : '';
         if (!cookieValue) {
@@ -236,7 +289,7 @@ function readChromeCookies(profilePath: string, domains: string[]): BrowserCooki
           value: cookieValue,
           domain: hostKey || null,
           path: String(row.path ?? '/').trim() || '/',
-          expires: chromeTimestampToUnix(Number(row.expires_utc ?? 0)),
+          expires: chromeTimestampToUnix(row.expires_utc),
           httpOnly: Number(row.is_httponly ?? 0) === 1,
           secure: Number(row.is_secure ?? 0) === 1,
           sameSite: chromeSameSite(Number(row.samesite ?? 0))
@@ -280,7 +333,7 @@ function readFirefoxCookies(profilePath: string, domains: string[]): BrowserCook
           value: cookieValue,
           domain: hostKey || null,
           path: String(row.path ?? '/').trim() || '/',
-          expires: Number.isFinite(Number(row.expiry)) ? Number(row.expiry) : null,
+          expires: unixCookieExpiry(Number(row.expiry)),
           httpOnly: Number(row.isHttpOnly ?? 0) === 1,
           secure: Number(row.isSecure ?? 0) === 1,
           sameSite: firefoxSameSite(Number(row.sameSite ?? 0))
@@ -356,6 +409,25 @@ function resolveChromeBinary(): string {
   return configured && configured.length > 0 ? configured : '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 }
 
+function resolveEdgeBinary(): string {
+  const configured = process.env.OPS_BROWSER_VISIBLE_EDGE_BIN?.trim();
+  return configured && configured.length > 0 ? configured : '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge';
+}
+
+function resolveChromiumLaunch(profile: LocalBrowserProfileRow): { displayName: string; appName: string; binaryPath: string } {
+  const displayName = profile.browserDisplayName ?? (profile.browserKind === 'edge' ? 'Edge' : 'Chrome');
+  const appName = profile.browserAppName ?? (profile.browserKind === 'edge' ? 'Microsoft Edge' : 'Google Chrome');
+  const binaryPath = profile.browserBinaryPath ?? (profile.browserKind === 'edge' ? resolveEdgeBinary() : resolveChromeBinary());
+  return { displayName, appName, binaryPath };
+}
+
+function resolveFirefoxLaunch(profile: LocalBrowserProfileRow): { displayName: string; appName: string; binaryPath: string } {
+  const displayName = profile.browserDisplayName ?? 'Firefox';
+  const appName = profile.browserAppName ?? 'Firefox';
+  const binaryPath = profile.browserBinaryPath ?? resolveFirefoxBinary();
+  return { displayName, appName, binaryPath };
+}
+
 function resolveFirefoxBinary(): string {
   const configured = process.env.OPS_BROWSER_VISIBLE_FIREFOX_BIN?.trim();
   return configured && configured.length > 0 ? configured : '/Applications/Firefox.app/Contents/MacOS/firefox';
@@ -368,6 +440,13 @@ function resolveChromeProfilesDir(): string {
     : path.join(os.homedir(), 'Library', 'Application Support', 'Google', 'Chrome');
 }
 
+function resolveEdgeProfilesDir(): string {
+  const configured = process.env.OPS_BROWSER_EDGE_PROFILE_ROOT?.trim();
+  return configured && configured.length > 0
+    ? configured
+    : path.join(os.homedir(), 'Library', 'Application Support', 'Microsoft Edge');
+}
+
 function resolveFirefoxProfilesDir(): string {
   const configured = process.env.OPS_BROWSER_FIREFOX_PROFILE_ROOT?.trim();
   return configured && configured.length > 0
@@ -375,11 +454,81 @@ function resolveFirefoxProfilesDir(): string {
     : path.join(os.homedir(), 'Library', 'Application Support', 'Firefox');
 }
 
-function chromeTimestampToUnix(value: number): number | null {
+function resolveZenProfilesDir(): string {
+  const configured = process.env.OPS_BROWSER_ZEN_PROFILE_ROOT?.trim();
+  return configured && configured.length > 0 ? configured : path.join(os.homedir(), 'Library', 'Application Support', 'zen');
+}
+
+function resolveZenBinary(): string {
+  const configured = process.env.OPS_BROWSER_VISIBLE_ZEN_BIN?.trim();
+  return configured && configured.length > 0 ? configured : '/Applications/Zen.app/Contents/MacOS/zen';
+}
+
+function chromiumSafeStorageService(browserKind: BrowserLocalProfileKind): string {
+  return browserKind === 'edge' ? 'Microsoft Edge Safe Storage' : 'Chrome Safe Storage';
+}
+
+function resolveFirefoxProfileRoots(): Array<{
+  displayName: string;
+  appName: string;
+  profilesDir: string;
+  binaryPath: string;
+}> {
+  return [
+    {
+      displayName: 'Firefox',
+      appName: 'Firefox',
+      profilesDir: resolveFirefoxProfilesDir(),
+      binaryPath: resolveFirefoxBinary()
+    },
+    {
+      displayName: 'Zen',
+      appName: 'Zen',
+      profilesDir: resolveZenProfilesDir(),
+      binaryPath: resolveZenBinary()
+    }
+  ];
+}
+
+function chromeTimestampToUnix(value: unknown): number | null {
+  const timestampMicros = readIntegerLike(value);
+  if (timestampMicros === null || timestampMicros <= 0n) {
+    return null;
+  }
+  const unixMicros = timestampMicros - 11_644_473_600_000_000n;
+  if (unixMicros <= 0n) {
+    return null;
+  }
+  const unixSeconds = unixMicros / 1_000_000n;
+  if (unixSeconds > BigInt(Number.MAX_SAFE_INTEGER)) {
+    return null;
+  }
+  return Number(unixSeconds);
+}
+
+function unixCookieExpiry(value: number): number | null {
   if (!Number.isFinite(value) || value <= 0) {
     return null;
   }
-  return Math.max(0, Math.floor(value / 1_000_000 - 11_644_473_600));
+  const seconds = value > 9_999_999_999 ? value / 1000 : value;
+  return Math.floor(seconds);
+}
+
+function readIntegerLike(value: unknown): bigint | null {
+  if (typeof value === 'bigint') {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return BigInt(Math.trunc(value));
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!/^-?\d+$/.test(trimmed)) {
+    return null;
+  }
+  return BigInt(trimmed);
 }
 
 function chromeSameSite(value: number): BrowserCookieEntry['sameSite'] {

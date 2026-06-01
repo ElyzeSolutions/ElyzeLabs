@@ -1,0 +1,2766 @@
+{
+  "schema": "ops.route-inventory.v1",
+  "sourceFile": "packages/gateway/src/server.ts",
+  "sourceHash": "901ebe0ed99bbe5f3d56afb711dd03c39807413cb01276f20f78f9e5b11008d3",
+  "docsFile": "docs/api-contract.md",
+  "totalRoutes": 299,
+  "methods": {
+    "GET": 122,
+    "PATCH": 9,
+    "POST": 148,
+    "PUT": 14,
+    "DELETE": 6
+  },
+  "areas": {
+    "hello": 1,
+    "openapi": 1,
+    "docs": 1,
+    "health": 2,
+    "housekeeping": 5,
+    "doctor": 2,
+    "config": 3,
+    "startup-healer": 2,
+    "watchdog": 5,
+    "schedules": 12,
+    "cron": 1,
+    "local": 4,
+    "improvement": 6,
+    "capabilities": 1,
+    "sandbox": 3,
+    "auth": 1,
+    "rbac": 2,
+    "sessions": 16,
+    "backlog": 23,
+    "delivery-groups": 6,
+    "github": 10,
+    "agents": 10,
+    "runs": 13,
+    "continuity": 3,
+    "queue": 1,
+    "messages": 1,
+    "onboarding": 7,
+    "memory": 7,
+    "trajectories": 2,
+    "context-graph": 1,
+    "tools": 2,
+    "browser": 37,
+    "mobile-browser-handoff": 2,
+    "bootstrap": 1,
+    "llm": 6,
+    "skills": 16,
+    "pairings": 3,
+    "ingress": 1,
+    "telegram": 3,
+    "events": 2,
+    "office": 2,
+    "bff": 4,
+    "audit": 1,
+    "metrics": 1,
+    "security": 2,
+    "remediation": 8,
+    "frontier": 37,
+    "certification": 6,
+    "vault": 10,
+    "backup": 1,
+    "root": 1,
+    "*": 1
+  },
+  "coverage": {
+    "documentedRoutes": 292,
+    "undocumentedRoutes": 7,
+    "docOnlyRoutes": []
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/hello",
+      "area": "hello",
+      "public": true,
+      "documented": true,
+      "line": 41557,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/openapi",
+      "area": "openapi",
+      "public": true,
+      "documented": true,
+      "line": 41568,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/docs",
+      "area": "docs",
+      "public": true,
+      "documented": true,
+      "line": 41734,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "area": "health",
+      "public": true,
+      "documented": true,
+      "line": 41752,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/housekeeping",
+      "area": "housekeeping",
+      "public": false,
+      "documented": true,
+      "line": 41777,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/housekeeping/retention",
+      "area": "housekeeping",
+      "public": false,
+      "documented": true,
+      "line": 41829,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/housekeeping/run",
+      "area": "housekeeping",
+      "public": false,
+      "documented": true,
+      "line": 41966,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/housekeeping/dead-letter/purge",
+      "area": "housekeeping",
+      "public": false,
+      "documented": true,
+      "line": 41979,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/housekeeping/artifacts/cleanup",
+      "area": "housekeeping",
+      "public": false,
+      "documented": true,
+      "line": 42004,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/readiness",
+      "area": "health",
+      "public": true,
+      "documented": true,
+      "line": 42030,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/doctor",
+      "area": "doctor",
+      "public": false,
+      "documented": true,
+      "line": 42038,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/doctor/repairs/:repairId/run",
+      "area": "doctor",
+      "public": false,
+      "documented": true,
+      "line": 42044,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/config/validate",
+      "area": "config",
+      "public": false,
+      "documented": true,
+      "line": 42080,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/startup-healer/run",
+      "area": "startup-healer",
+      "public": false,
+      "documented": true,
+      "line": 42097,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/startup-healer/audit",
+      "area": "startup-healer",
+      "public": false,
+      "documented": true,
+      "line": 42106,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/watchdog/config",
+      "area": "watchdog",
+      "public": false,
+      "documented": true,
+      "line": 42115,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/watchdog/config",
+      "area": "watchdog",
+      "public": false,
+      "documented": true,
+      "line": 42121,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/watchdog/status",
+      "area": "watchdog",
+      "public": false,
+      "documented": true,
+      "line": 42161,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/watchdog/history",
+      "area": "watchdog",
+      "public": false,
+      "documented": true,
+      "line": 42190,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/watchdog/simulate",
+      "area": "watchdog",
+      "public": false,
+      "documented": true,
+      "line": 42207,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/schedules",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43071,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/schedules/guardrails",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43090,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/schedules/:scheduleId",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43108,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/schedules/:scheduleId/history",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43124,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/schedules/:scheduleId/guardrails/apply",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43138,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/schedules",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43153,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/schedules/:scheduleId",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43197,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/schedules/:scheduleId",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43265,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/schedules/request",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43308,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/schedules/:scheduleId/pause",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43370,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/schedules/:scheduleId/resume",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43393,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/schedules/:scheduleId/run",
+      "area": "schedules",
+      "public": false,
+      "documented": true,
+      "line": 43428,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cron/status",
+      "area": "cron",
+      "public": false,
+      "documented": true,
+      "line": 43537,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/local/sessions/scan",
+      "area": "local",
+      "public": false,
+      "documented": true,
+      "line": 43590,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/local/sessions",
+      "area": "local",
+      "public": false,
+      "documented": true,
+      "line": 43613,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/local/sessions/:sessionId",
+      "area": "local",
+      "public": false,
+      "documented": true,
+      "line": 43691,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/local/stats",
+      "area": "local",
+      "public": false,
+      "documented": true,
+      "line": 43705,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/improvement/learnings",
+      "area": "improvement",
+      "public": false,
+      "documented": true,
+      "line": 43850,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/improvement/proposals",
+      "area": "improvement",
+      "public": false,
+      "documented": true,
+      "line": 43872,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/improvement/cycle/run",
+      "area": "improvement",
+      "public": false,
+      "documented": true,
+      "line": 43894,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/improvement/agents/:agentId",
+      "area": "improvement",
+      "public": false,
+      "documented": true,
+      "line": 43916,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/improvement/proposals/:proposalId/approve",
+      "area": "improvement",
+      "public": false,
+      "documented": true,
+      "line": 43957,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/improvement/proposals/:proposalId/reject",
+      "area": "improvement",
+      "public": false,
+      "documented": true,
+      "line": 44046,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/capabilities",
+      "area": "capabilities",
+      "public": true,
+      "documented": true,
+      "line": 44081,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sandbox/policy",
+      "area": "sandbox",
+      "public": false,
+      "documented": true,
+      "line": 44197,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sandbox/policy/diff",
+      "area": "sandbox",
+      "public": false,
+      "documented": true,
+      "line": 44203,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sandbox/policy/apply",
+      "area": "sandbox",
+      "public": false,
+      "documented": true,
+      "line": 44214,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/principal",
+      "area": "auth",
+      "public": false,
+      "documented": true,
+      "line": 44305,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/rbac/policy",
+      "area": "rbac",
+      "public": false,
+      "documented": true,
+      "line": 44315,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/rbac/policy",
+      "area": "rbac",
+      "public": false,
+      "documented": true,
+      "line": 44326,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/config/runtime",
+      "area": "config",
+      "public": false,
+      "documented": true,
+      "line": 44347,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/config/runtime",
+      "area": "config",
+      "public": false,
+      "documented": true,
+      "line": 44369,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sessions",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 44480,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sessions/bulk-delete",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 44519,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sessions",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 44608,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/link-code",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 44720,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sessions/:sessionId",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 44774,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/browser-auth-profile",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 44814,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/continuity",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 44854,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/compact",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 44886,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/collaboration/targets",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 44921,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/collaboration/history",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 44949,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/collaboration/route",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 45002,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/collaboration/send",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 45039,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backlog/contracts",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 45084,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backlog",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 45097,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backlog/board",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 45121,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/backlog/project-intake",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 45158,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/delivery-groups",
+      "area": "delivery-groups",
+      "public": false,
+      "documented": true,
+      "line": 46038,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/delivery-groups/:groupId",
+      "area": "delivery-groups",
+      "public": false,
+      "documented": true,
+      "line": 46061,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/delivery-groups/:groupId/status",
+      "area": "delivery-groups",
+      "public": false,
+      "documented": true,
+      "line": 46080,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/delivery-groups",
+      "area": "delivery-groups",
+      "public": false,
+      "documented": true,
+      "line": 46104,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/delivery-groups/:groupId",
+      "area": "delivery-groups",
+      "public": false,
+      "documented": true,
+      "line": 46143,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/delivery-groups/:groupId/publish",
+      "area": "delivery-groups",
+      "public": false,
+      "documented": true,
+      "line": 46205,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/backlog/items",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 46221,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backlog/items/:itemId",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 46378,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/backlog/items/:itemId",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 46390,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/backlog/items/:itemId/transition",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 46520,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/backlog/items/:itemId/dependencies",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 46589,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/backlog/items/:itemId/delivery",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 46621,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/backlog/items/:itemId/delivery/reconcile",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 46845,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backlog/items/:itemId/delivery/detail",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 46888,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/backlog/items/:itemId/delivery/repair",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 46929,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/backlog/items/:itemId/delivery/publish",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 47019,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backlog/orchestration",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 47810,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backlog/orchestration/decisions",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 47859,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/backlog/orchestration",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 47951,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/backlog/orchestration/tick",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 47991,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/backlog/cleanup",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 47999,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/backlog/items/:itemId",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 48038,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/backlog/orchestration/override",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 48070,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/github/issues/config",
+      "area": "github",
+      "public": false,
+      "documented": true,
+      "line": 48317,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/github/issues/config",
+      "area": "github",
+      "public": false,
+      "documented": true,
+      "line": 48323,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/github/repos",
+      "area": "github",
+      "public": false,
+      "documented": true,
+      "line": 48332,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/github/repos",
+      "area": "github",
+      "public": false,
+      "documented": true,
+      "line": 48342,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/github/repos/:repoConnectionId",
+      "area": "github",
+      "public": false,
+      "documented": true,
+      "line": 48415,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/github/repos/:repoConnectionId/sync",
+      "area": "github",
+      "public": false,
+      "documented": true,
+      "line": 48495,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/github/repos/:repoConnectionId/reconcile",
+      "area": "github",
+      "public": false,
+      "documented": true,
+      "line": 48645,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backlog/items/:itemId/issues",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 48687,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/backlog/items/:itemId/issues/sync",
+      "area": "backlog",
+      "public": false,
+      "documented": true,
+      "line": 48720,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/github/webhooks",
+      "area": "github",
+      "public": false,
+      "documented": true,
+      "line": 48859,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/github/webhooks/events",
+      "area": "github",
+      "public": false,
+      "documented": true,
+      "line": 49277,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/github/webhooks/replay",
+      "area": "github",
+      "public": false,
+      "documented": true,
+      "line": 49325,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/profiles",
+      "area": "agents",
+      "public": false,
+      "documented": true,
+      "line": 49370,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/profiles",
+      "area": "agents",
+      "public": false,
+      "documented": true,
+      "line": 49378,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/profiles/:agentId",
+      "area": "agents",
+      "public": false,
+      "documented": true,
+      "line": 49454,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/profiles/:agentId/reset-baseline",
+      "area": "agents",
+      "public": false,
+      "documented": true,
+      "line": 49548,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agents/profiles/:agentId",
+      "area": "agents",
+      "public": false,
+      "documented": true,
+      "line": 49598,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/profiles/:agentId/clear-history",
+      "area": "agents",
+      "public": false,
+      "documented": true,
+      "line": 49640,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/profiles/:agentId/harness/start",
+      "area": "agents",
+      "public": false,
+      "documented": true,
+      "line": 49714,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/profiles/:agentId/harness/stop",
+      "area": "agents",
+      "public": false,
+      "documented": true,
+      "line": 49733,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/profiles/:agentId/turbo-coding",
+      "area": "agents",
+      "public": false,
+      "documented": true,
+      "line": 49755,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/profiles/:agentId/sessions",
+      "area": "agents",
+      "public": false,
+      "documented": true,
+      "line": 49772,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/delegate",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 49890,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 49987,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/sessions/:sessionId/preferences",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 50005,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/switch-runtime",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 50146,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/:runId",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 50319,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/:runId/liveness",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 50372,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/:runId/watchdog",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 50403,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/:runId/prompt-assembly",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 50434,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/:runId/execution-contract",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 50462,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/runs/:runId/control-actions",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 50496,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/continuity/signals",
+      "area": "continuity",
+      "public": false,
+      "documented": true,
+      "line": 50563,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/continuity/signals",
+      "area": "continuity",
+      "public": false,
+      "documented": true,
+      "line": 50575,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/continuity/signals/:signalId/resolve",
+      "area": "continuity",
+      "public": false,
+      "documented": true,
+      "line": 50608,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/:runId/terminal",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 50622,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/:runId/terminal/stream",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 50664,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/runs",
+      "area": "sessions",
+      "public": false,
+      "documented": true,
+      "line": 50751,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/runs/:runId/steer",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 51408,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/runs/:runId/resume",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 51446,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/runs/:runId/abort",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 51481,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/:runId/timeline",
+      "area": "runs",
+      "public": false,
+      "documented": true,
+      "line": 51513,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/queue",
+      "area": "queue",
+      "public": false,
+      "documented": true,
+      "line": 51520,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messages",
+      "area": "messages",
+      "public": false,
+      "documented": true,
+      "line": 51529,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/onboarding/status",
+      "area": "onboarding",
+      "public": false,
+      "documented": true,
+      "line": 51554,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/ceo-baseline",
+      "area": "onboarding",
+      "public": false,
+      "documented": true,
+      "line": 51574,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/vault/bootstrap",
+      "area": "onboarding",
+      "public": false,
+      "documented": true,
+      "line": 51767,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/vault/unlock",
+      "area": "onboarding",
+      "public": false,
+      "documented": true,
+      "line": 51846,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/provider-keys/check",
+      "area": "onboarding",
+      "public": false,
+      "documented": true,
+      "line": 51916,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/provider-keys/live-check",
+      "area": "onboarding",
+      "public": false,
+      "documented": true,
+      "line": 51941,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/smoke-run",
+      "area": "onboarding",
+      "public": false,
+      "documented": true,
+      "line": 51982,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory/auto-remember",
+      "area": "memory",
+      "public": false,
+      "documented": true,
+      "line": 52242,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory/scopes",
+      "area": "memory",
+      "public": false,
+      "documented": true,
+      "line": 52253,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory/embedding/status",
+      "area": "memory",
+      "public": false,
+      "documented": true,
+      "line": 52285,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory/search",
+      "area": "memory",
+      "public": false,
+      "documented": true,
+      "line": 52333,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/remember",
+      "area": "memory",
+      "public": false,
+      "documented": true,
+      "line": 52370,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/compact",
+      "area": "memory",
+      "public": false,
+      "documented": true,
+      "line": 52430,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/evaluate",
+      "area": "memory",
+      "public": false,
+      "documented": true,
+      "line": 52448,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/trajectories/:runId",
+      "area": "trajectories",
+      "public": false,
+      "documented": true,
+      "line": 52470,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/trajectories/:runId/project",
+      "area": "trajectories",
+      "public": false,
+      "documented": true,
+      "line": 52485,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/context-graph/query",
+      "area": "context-graph",
+      "public": false,
+      "documented": true,
+      "line": 52504,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tools",
+      "area": "tools",
+      "public": false,
+      "documented": true,
+      "line": 52517,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/browser/status",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52535,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/browser/release-gate",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52542,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/policy/diff",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52560,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/policy/apply",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52572,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/browser/config",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52666,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/browser/doctor",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52746,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/browser/session-vault",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52755,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/cookie-jars/import",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52763,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/header-profiles/upsert",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52800,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/proxy-profiles/upsert",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52832,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/storage-states/upsert",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52869,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/session-profiles/upsert",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52901,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/login-capture/start",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 52975,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/playwright-auth/start",
+      "area": "browser",
+      "public": false,
+      "documented": false,
+      "line": 53021,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/playwright-auth/save",
+      "area": "browser",
+      "public": false,
+      "documented": false,
+      "line": 53087,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/playwright-auth/save-current",
+      "area": "browser",
+      "public": false,
+      "documented": false,
+      "line": 53200,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/mobile-handoff/start",
+      "area": "browser",
+      "public": false,
+      "documented": false,
+      "line": 53333,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/browser/mobile-handoff/:handoffId/status",
+      "area": "browser",
+      "public": false,
+      "documented": false,
+      "line": 53412,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/mobile-browser-handoff/:handoffId",
+      "area": "mobile-browser-handoff",
+      "public": true,
+      "documented": false,
+      "line": 53456,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/mobile-browser-handoff/:handoffId/complete",
+      "area": "mobile-browser-handoff",
+      "public": false,
+      "documented": false,
+      "line": 53467,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/managed-profiles/ensure",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 53565,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/connect-account",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 53608,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/session-profiles/:sessionProfileId/verify",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 53887,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/session-profiles/:sessionProfileId/enable",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 53926,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/session-profiles/:sessionProfileId/disable",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 53951,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/session-profiles/:sessionProfileId/revoke",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 53976,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/browser/session-profiles/:sessionProfileId",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54004,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/cookie-jars/:cookieJarId/revoke",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54024,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/header-profiles/:profileId/revoke",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54043,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/proxy-profiles/:profileId/revoke",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54062,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/storage-states/:storageStateId/revoke",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54081,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/interactive/sessions",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54192,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/interactive/sessions/:liveSessionId/actions",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54353,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/browser/interactive/sessions/:liveSessionId",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54427,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/interactive/run",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54488,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/test",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54646,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/browser/history",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54782,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/browser/history/:runId",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54802,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/browser/artifacts/:handle",
+      "area": "browser",
+      "public": false,
+      "documented": true,
+      "line": 54814,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/bootstrap/vendor",
+      "area": "bootstrap",
+      "public": false,
+      "documented": true,
+      "line": 54833,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/tools/:toolName",
+      "area": "tools",
+      "public": false,
+      "documented": true,
+      "line": 54898,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/limits",
+      "area": "llm",
+      "public": false,
+      "documented": true,
+      "line": 54930,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/llm/limits",
+      "area": "llm",
+      "public": false,
+      "documented": true,
+      "line": 54978,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/auth-profiles",
+      "area": "llm",
+      "public": false,
+      "documented": true,
+      "line": 55029,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/llm/auth-profiles/:profileId",
+      "area": "llm",
+      "public": false,
+      "documented": true,
+      "line": 55035,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/costs",
+      "area": "llm",
+      "public": false,
+      "documented": true,
+      "line": 55123,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/routing/effective",
+      "area": "llm",
+      "public": false,
+      "documented": true,
+      "line": 55264,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/skills",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55307,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/skills/lifecycle",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55313,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/skills/release-gate",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55319,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/release-gate/evaluate",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55325,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/curator/run",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55354,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/skills/catalog",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55382,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/catalog/entries/upsert",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55400,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/catalog/entries/remove",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55478,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/runtime-contracts/upsert",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55546,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/install",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55633,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/remove",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55767,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/resync",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55832,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/autodiscover",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55886,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/reload",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55964,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/skills/:skillName/lifecycle",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 55981,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/:skillName/invoke",
+      "area": "skills",
+      "public": false,
+      "documented": true,
+      "line": 56023,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pairings",
+      "area": "pairings",
+      "public": false,
+      "documented": true,
+      "line": 56087,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pairings/:channel/:senderId/approve",
+      "area": "pairings",
+      "public": false,
+      "documented": true,
+      "line": 56095,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pairings/:channel/:senderId/revoke",
+      "area": "pairings",
+      "public": false,
+      "documented": true,
+      "line": 56108,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ingress/telegram",
+      "area": "ingress",
+      "public": true,
+      "documented": true,
+      "line": 56121,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/telegram/webhook",
+      "area": "telegram",
+      "public": true,
+      "documented": true,
+      "line": 59846,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/telegram/smoke-test",
+      "area": "telegram",
+      "public": false,
+      "documented": true,
+      "line": 59866,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/telegram/commands/sync",
+      "area": "telegram",
+      "public": false,
+      "documented": true,
+      "line": 59915,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/events",
+      "area": "events",
+      "public": false,
+      "documented": true,
+      "line": 59949,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/events/stream",
+      "area": "events",
+      "public": false,
+      "documented": true,
+      "line": 59959,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/office/presence",
+      "area": "office",
+      "public": false,
+      "documented": true,
+      "line": 60013,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/office/stream",
+      "area": "office",
+      "public": false,
+      "documented": true,
+      "line": 60029,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/bff/cards",
+      "area": "bff",
+      "public": false,
+      "documented": true,
+      "line": 60078,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/bff/board",
+      "area": "bff",
+      "public": false,
+      "documented": true,
+      "line": 60210,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/bff/chats",
+      "area": "bff",
+      "public": false,
+      "documented": true,
+      "line": 60265,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/bff/health-cards",
+      "area": "bff",
+      "public": false,
+      "documented": true,
+      "line": 60286,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/audit",
+      "area": "audit",
+      "public": false,
+      "documented": true,
+      "line": 60299,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/metrics",
+      "area": "metrics",
+      "public": false,
+      "documented": true,
+      "line": 60305,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/security/elevated-check",
+      "area": "security",
+      "public": false,
+      "documented": true,
+      "line": 60313,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/security/token-status",
+      "area": "security",
+      "public": false,
+      "documented": true,
+      "line": 60407,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/remediation",
+      "area": "remediation",
+      "public": false,
+      "documented": true,
+      "line": 60421,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/remediation",
+      "area": "remediation",
+      "public": false,
+      "documented": true,
+      "line": 60432,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/remediation/signals",
+      "area": "remediation",
+      "public": false,
+      "documented": true,
+      "line": 60445,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/remediation/signals",
+      "area": "remediation",
+      "public": false,
+      "documented": true,
+      "line": 60451,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/remediation/plans",
+      "area": "remediation",
+      "public": false,
+      "documented": true,
+      "line": 60524,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/remediation/plans/:planId/approve",
+      "area": "remediation",
+      "public": false,
+      "documented": true,
+      "line": 60530,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/remediation/plans/:planId/execute",
+      "area": "remediation",
+      "public": false,
+      "documented": true,
+      "line": 60541,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/remediation/outcomes",
+      "area": "remediation",
+      "public": false,
+      "documented": true,
+      "line": 60606,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/contracts",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 60755,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/governance",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 60776,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/governance/principals",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 60806,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/governance/companies",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 60845,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/governance/memberships",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 60898,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/governance/grants",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 60935,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/governance/invites",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 60966,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/governance/invites/accept",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61000,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/governance/join-requests",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61029,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/governance/join-requests/:requestId/decision",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61053,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/governance/claims/challenge",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61085,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/governance/claims/complete",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61108,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/issues/locks",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61137,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/issues/:issueId/wakeup",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61164,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/issues/:issueId/release",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61194,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/issues/repair",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61219,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/portability/export",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61237,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/portability/import/preview",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61257,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/portability/import/apply",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61283,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/adapters/contract",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61313,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/adapters/diagnostics",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61319,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/runs/:runId/events",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61325,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/runs/:runId/logs",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61362,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/deployment",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61396,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/frontier/deployment",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61411,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/deployment/doctor",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61451,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/scorecard",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61541,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/frontier/scorecard",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61547,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/comparator/run",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61600,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/comparator/run",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61612,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/comparator/closure",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61641,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/comparator/closure",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61653,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/benchmark/delta",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61675,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/critic",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61737,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/remediation/plans",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61785,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/frontier/release/gate",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61829,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/frontier/certification/report",
+      "area": "frontier",
+      "public": false,
+      "documented": true,
+      "line": 61886,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/certification/runtime",
+      "area": "certification",
+      "public": false,
+      "documented": true,
+      "line": 61905,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/certification/runtime/report",
+      "area": "certification",
+      "public": false,
+      "documented": true,
+      "line": 61914,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/certification/continuity",
+      "area": "certification",
+      "public": false,
+      "documented": true,
+      "line": 61940,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/certification/continuity/report",
+      "area": "certification",
+      "public": false,
+      "documented": true,
+      "line": 61949,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/certification/architecture",
+      "area": "certification",
+      "public": false,
+      "documented": true,
+      "line": 61971,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/certification/architecture/report",
+      "area": "certification",
+      "public": false,
+      "documented": true,
+      "line": 61980,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vault/status",
+      "area": "vault",
+      "public": false,
+      "documented": true,
+      "line": 62027,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/reset-empty",
+      "area": "vault",
+      "public": false,
+      "documented": true,
+      "line": 62033,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/bootstrap",
+      "area": "vault",
+      "public": false,
+      "documented": true,
+      "line": 62077,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/unlock",
+      "area": "vault",
+      "public": false,
+      "documented": true,
+      "line": 62111,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/lock",
+      "area": "vault",
+      "public": false,
+      "documented": true,
+      "line": 62171,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vault/secrets",
+      "area": "vault",
+      "public": false,
+      "documented": true,
+      "line": 62195,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/vault/secrets/:name",
+      "area": "vault",
+      "public": false,
+      "documented": true,
+      "line": 62203,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/secrets/:name/rotate",
+      "area": "vault",
+      "public": false,
+      "documented": true,
+      "line": 62262,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/vault/secrets/:name",
+      "area": "vault",
+      "public": false,
+      "documented": true,
+      "line": 62302,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/rotate-master-key",
+      "area": "vault",
+      "public": false,
+      "documented": true,
+      "line": 62368,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backup/export",
+      "area": "backup",
+      "public": false,
+      "documented": true,
+      "line": 62412,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "area": "root",
+      "public": true,
+      "documented": true,
+      "line": 62453,
+      "sourceFile": "packages/gateway/src/server.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/*",
+      "area": "*",
+      "public": true,
+      "documented": true,
+      "line": 62459,
+      "sourceFile": "packages/gateway/src/server.ts"
+    }
+  ]
+}

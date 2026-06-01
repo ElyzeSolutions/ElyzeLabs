@@ -85,7 +85,7 @@ function resetRealtimeMocks(): void {
 describe('useRealtimeSync', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.stubGlobal('EventSource', MockEventSource as unknown as typeof EventSource);
+    vi.stubGlobal('EventSource', MockEventSource);
     vi.spyOn(Math, 'random').mockReturnValue(1);
     resetRealtimeMocks();
   });

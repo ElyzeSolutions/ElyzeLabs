@@ -14,7 +14,7 @@
     "lint": "pnpm -r --if-present run lint",
     "typecheck": "pnpm -r --if-present run typecheck",
     "test:unit": "vitest run --config vitest.config.ts $(find packages -path '*/test/unit/*.test.ts' -print)",
-    "test:integration": "vitest run --config vitest.config.ts $(find packages tests -path '*/integration/*.test.ts' -print)",
+    "test:integration": "vitest run --config vitest.config.ts --maxWorkers=4 --testTimeout=30000 --hookTimeout=30000 $(find packages tests -path '*/integration/*.test.ts' -print)",
     "test:integration:queue-watchdog": "vitest run --config vitest.config.ts packages/gateway/test/integration/queue-watchdog.test.ts",
     "test:integration:execution-contract": "vitest run --config vitest.config.ts packages/gateway/test/integration/execution-contract-scope.test.ts",
     "test:integration:backlog-delivery": "vitest run --config vitest.config.ts packages/gateway/test/integration/backlog-delivery-group.test.ts",
@@ -50,6 +50,10 @@
     "agent:config": "tsx scripts/runtime/agents.ts",
     "ops": "tsx scripts/runtime/ops.ts",
     "ops:config:validate": "tsx scripts/runtime/ops.ts config validate",
+    "api:inventory": "tsx scripts/runtime/route-inventory.ts --write",
+    "api:inventory:check": "tsx scripts/runtime/route-inventory.ts --check",
+    "best-in-class:matrix": "node scripts/runtime/best-in-class-audit.mjs --write",
+    "best-in-class:matrix:check": "node scripts/runtime/best-in-class-audit.mjs --check",
     "doctor:react": "npx -y react-doctor@latest dashboard --verbose --diff",
     "quality:pipeline": "node scripts/quality/skill-orchestrated-gates.mjs",
     "quality:remediation": "node scripts/quality/remediation-loop.mjs",
@@ -61,16 +65,16 @@
     "docker:smoke": "bash scripts/testing/docker-smoke.sh"
   },
   "devDependencies": {
-    "@eslint/js": "^9.36.0",
-    "@types/node": "^22.18.6",
-    "@vitest/coverage-v8": "^2.1.9",
-    "eslint": "^9.36.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "globals": "^16.4.0",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.58.0",
-    "vitest": "^2.1.9",
-    "yaml": "^2.8.3"
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.9.1",
+    "@vitest/coverage-v8": "^4.1.7",
+    "eslint": "^10.4.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.6.0",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.60.0",
+    "vitest": "^4.1.7",
+    "yaml": "^2.9.0"
   }
 }

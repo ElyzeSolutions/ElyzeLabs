@@ -13,6 +13,7 @@ import {
   RocketLaunch,
   Rows,
   CalendarDots,
+  FirstAidKit,
   ShieldCheck,
   SlidersHorizontal,
   Toolbox,
@@ -134,6 +135,12 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'Housekeeping',
         description: 'Maintenance routines, cleanup, and repair loops.',
         icon: Broom
+      },
+      {
+        to: '/doctor',
+        label: 'Repair center',
+        description: 'Readiness checks, bounded repairs, and operator review queues.',
+        icon: FirstAidKit
       }
     ]
   }
@@ -256,6 +263,14 @@ const ROUTE_META: Array<{ matches: (pathname: string) => boolean; meta: RouteMet
     meta: {
       label: 'Housekeeping',
       description: 'Repair loops, cleanup jobs, and maintenance feedback.',
+      section: 'Infrastructure'
+    }
+  },
+  {
+    matches: (pathname) => pathname === '/doctor',
+    meta: {
+      label: 'Repair center',
+      description: 'Readiness checks, bounded repairs, and operator review queues.',
       section: 'Infrastructure'
     }
   },
