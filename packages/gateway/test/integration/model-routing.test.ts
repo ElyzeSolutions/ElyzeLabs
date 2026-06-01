@@ -258,7 +258,9 @@ describe('gateway model routing integration', () => {
         });
       }
       if (url.includes('generativelanguage.googleapis.com')) {
-        googleCalls += 1;
+        if (url.includes(':generateContent')) {
+          googleCalls += 1;
+        }
         return new Response(JSON.stringify({ error: { message: 'User not found.' } }), {
           status: 404,
           headers: { 'content-type': 'application/json' }
@@ -386,7 +388,9 @@ describe('gateway model routing integration', () => {
         });
       }
       if (url.includes('generativelanguage.googleapis.com')) {
-        googleCalls += 1;
+        if (url.includes(':generateContent')) {
+          googleCalls += 1;
+        }
         return new Response(JSON.stringify({ error: { message: 'User not found.' } }), {
           status: 404,
           headers: { 'content-type': 'application/json' }
