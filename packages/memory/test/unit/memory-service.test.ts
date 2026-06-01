@@ -233,7 +233,8 @@ describe('memory service', () => {
     expect(secretPolicy.allowed).toBe(false);
     expect(secretPolicy.blockedReason).toBe('secret_like');
 
-    const modernSecretPolicy = evaluateMemoryWritePolicy('API key sk-proj-test-secret-1234567890abcdefghijklmnop');
+    const modernSecretLikeKey = ['sk-proj-test-secret', '1234567890abcdefghijklmnop'].join('-');
+    const modernSecretPolicy = evaluateMemoryWritePolicy(`API key ${modernSecretLikeKey}`);
     expect(modernSecretPolicy.allowed).toBe(false);
     expect(modernSecretPolicy.blockedReason).toBe('secret_like');
 

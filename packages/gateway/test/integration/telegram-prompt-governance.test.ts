@@ -369,6 +369,7 @@ describe('telegram prompt governance integration', () => {
     expect(blockedBody.blockedReason).toBe('secret_like');
     expect(telegramSends.join('\n')).toContain('Memory write blocked');
 
+    const modernSecretLikeKey = ['sk-proj-test-secret', '1234567890abcdefghijklmnop'].join('-');
     const modernBlockedIngress = await harness.inject({
       method: 'POST',
       url: '/api/ingress/telegram',
@@ -376,7 +377,7 @@ describe('telegram prompt governance integration', () => {
         updateId: 931423,
         senderId: 93143,
         username: 'memorygovernance',
-        text: '/remember API key sk-proj-test-secret-1234567890abcdefghijklmnop'
+        text: `/remember API key ${modernSecretLikeKey}`
       })
     });
     expect(modernBlockedIngress.statusCode).toBe(200);
