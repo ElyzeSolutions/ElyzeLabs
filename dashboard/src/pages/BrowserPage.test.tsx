@@ -476,6 +476,43 @@ describe('BrowserPage', () => {
       sessionProfiles: [],
       localProfiles: []
     };
+    const mobileSessionProfile = {
+      id: 'browser_session_profile:tiktok-mobile',
+      label: 'TikTok personal login',
+      domains: ['www.tiktok.com', 'tiktok.com'],
+      cookieJarId: 'browser_cookie_jar:tiktok-mobile',
+      headersProfileId: null,
+      proxyProfileId: null,
+      storageStateId: null,
+      useRealChrome: false,
+      profileClass: 'auth_state',
+      isManaged: false,
+      isIsolated: false,
+      isolationSummary: 'Uses a saved mobile cookie copy.',
+      ownerLabel: null,
+      visibility: 'shared',
+      allowedSessionIds: [],
+      siteKey: 'tiktok',
+      browserKind: null,
+      browserProfileName: null,
+      browserProfilePath: null,
+      cdpEndpoint: null,
+      locale: null,
+      countryCode: null,
+      timezoneId: null,
+      notes: null,
+      enabled: true,
+      lastVerifiedAt: '2026-05-31T10:01:00.000Z',
+      lastVerificationStatus: 'connected',
+      lastVerificationSummary: 'Verified TikTok mobile login.',
+      health: {
+        state: 'healthy',
+        summary: 'Verified TikTok mobile login.',
+        needsReconnect: false
+      },
+      createdAt: '2026-05-31T10:00:00.000Z',
+      updatedAt: '2026-05-31T10:01:00.000Z'
+    };
     apiMocks.fetchBrowserSessionVault.mockResolvedValue(vault);
     apiMocks.startBrowserMobileHandoff.mockResolvedValue({
       vault,
@@ -492,7 +529,45 @@ describe('BrowserPage', () => {
         createdAt: '2026-05-31T10:00:00.000Z'
       },
       submitUrl: 'http://127.0.0.1:8788/mobile-browser-handoff/mobile_handoff%3Atiktok',
-      nextStep: 'Open the one-time handoff URL on the phone, paste the mobile cookie export, and submit it once.'
+      nextStep: 'Open the one-time handoff URL on the phone, choose the cookie export format, paste the payload, submit once, then check status here.'
+    });
+    apiMocks.fetchBrowserMobileHandoffStatus.mockResolvedValue({
+      vault: {
+        ...vault,
+        sessionProfiles: [mobileSessionProfile]
+      },
+      handoff: {
+        id: 'mobile_handoff:tiktok',
+        siteKey: 'tiktok',
+        label: 'TikTok personal login',
+        domains: ['www.tiktok.com', 'tiktok.com'],
+        verifyUrl: 'https://www.tiktok.com/foryou',
+        sourceKind: 'raw_cookie_header',
+        status: 'submitted',
+        expiresAt: '2026-05-31T10:15:00.000Z',
+        submittedAt: '2026-05-31T10:01:00.000Z',
+        createdAt: '2026-05-31T10:00:00.000Z',
+        completedCookieJarId: 'browser_cookie_jar:tiktok-mobile',
+        completedSessionProfileId: 'browser_session_profile:tiktok-mobile',
+        completedVerificationSummary: 'Verified TikTok mobile login.'
+      },
+      cookieJar: null,
+      sessionProfile: mobileSessionProfile,
+      verification: {
+        summary: 'Verified TikTok mobile login.',
+        method: 'mobile_session_import',
+        site: {
+          siteKey: 'tiktok',
+          label: 'TikTok',
+          domains: ['www.tiktok.com', 'tiktok.com'],
+          verifyUrl: 'https://www.tiktok.com/foryou',
+          extractorId: 'tiktok_profile',
+          intent: 'structured_extract',
+          dynamicLikely: true,
+          requiresStealth: true,
+          mainContentOnly: false
+        }
+      }
     });
 
     renderDashboardPage(<BrowserPage />, { path: '/browser' });
@@ -513,6 +588,13 @@ describe('BrowserPage', () => {
       )
     );
     expect(await screen.findByDisplayValue('http://127.0.0.1:8788/mobile-browser-handoff/mobile_handoff%3Atiktok')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check submission' }));
+
+    await waitFor(() =>
+      expect(apiMocks.fetchBrowserMobileHandoffStatus).toHaveBeenCalledWith('token-123', 'mobile_handoff:tiktok')
+    );
+    expect((await screen.findAllByText('Verified TikTok mobile login.')).length).toBeGreaterThan(0);
   });
 
   it('starts a live browser session and sends operator actions from the Live tab', async () => {

@@ -1175,6 +1175,9 @@ export interface BrowserMobileSessionHandoffRow {
   expiresAt: string;
   submittedAt: string | null;
   createdAt: string;
+  completedCookieJarId?: string | null;
+  completedSessionProfileId?: string | null;
+  completedVerificationSummary?: string | null;
 }
 
 export interface PairingRow {

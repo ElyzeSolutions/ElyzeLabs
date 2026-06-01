@@ -43,6 +43,7 @@ const { apiMocks, storeState, toastMocks, useAppStoreMock, routeHeaderContextMoc
     fetchBrowserArtifact: vi.fn(),
     fetchBrowserDoctor: vi.fn(),
     fetchBrowserHistory: vi.fn(),
+    fetchBrowserMobileHandoffStatus: vi.fn(),
     fetchBrowserRun: vi.fn(),
     fetchBrowserSessionVault: vi.fn(),
     fetchBrowserStatus: vi.fn(),
@@ -513,7 +514,28 @@ function configurePageApiMocks(): void {
       createdAt: '2026-05-31T10:00:00.000Z'
     },
     submitUrl: 'http://127.0.0.1:8788/mobile-browser-handoff/mobile_handoff%3Atest',
-    nextStep: 'Open the one-time handoff URL on the phone, paste the mobile cookie export, and submit it once.'
+    nextStep: 'Open the one-time handoff URL on the phone, choose the cookie export format, paste the payload, submit once, then check status here.'
+  });
+  apiMocks.fetchBrowserMobileHandoffStatus.mockResolvedValue({
+    vault: emptyVault,
+    handoff: {
+      id: 'mobile_handoff:test',
+      siteKey: 'tiktok',
+      label: 'TikTok personal login',
+      domains: ['www.tiktok.com', 'tiktok.com'],
+      verifyUrl: 'https://www.tiktok.com/foryou',
+      sourceKind: 'raw_cookie_header',
+      status: 'pending',
+      expiresAt: '2026-05-31T10:15:00.000Z',
+      submittedAt: null,
+      createdAt: '2026-05-31T10:00:00.000Z',
+      completedCookieJarId: null,
+      completedSessionProfileId: null,
+      completedVerificationSummary: null
+    },
+    cookieJar: null,
+    sessionProfile: null,
+    verification: null
   });
   apiMocks.ensureManagedBrowserProfile.mockResolvedValue({
     vault: emptyVault,

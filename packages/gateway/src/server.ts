@@ -6384,6 +6384,9 @@ export async function buildGatewayApp(
     expiresAt: string;
     submittedAt: string | null;
     status: BrowserMobileSessionHandoffStatus;
+    completedCookieJarId: string | null;
+    completedSessionProfileId: string | null;
+    completedVerificationSummary: string | null;
   };
   const MOBILE_SESSION_HANDOFF_TTL_MS = 15 * 60 * 1000;
   const pendingBrowserMobileSessionHandoffs = new Map<string, PendingBrowserMobileSessionHandoff>();
@@ -6756,8 +6759,20 @@ export async function buildGatewayApp(
       status: current.status,
       expiresAt: current.expiresAt,
       submittedAt: current.submittedAt,
-      createdAt: current.createdAt
+      createdAt: current.createdAt,
+      completedCookieJarId: current.completedCookieJarId,
+      completedSessionProfileId: current.completedSessionProfileId,
+      completedVerificationSummary: current.completedVerificationSummary
     };
+  };
+  const canBrowserVaultScopeAccessMobileHandoff = (
+    scope: BrowserVaultAccessScope,
+    handoff: PendingBrowserMobileSessionHandoff
+  ): boolean => {
+    if (!scope.session || handoff.visibility !== 'session_only') {
+      return true;
+    }
+    return handoff.allowedSessionIds.includes(scope.session.id);
   };
   const renderBrowserMobileHandoffPage = (input: {
     handoff: PendingBrowserMobileSessionHandoff | null;
@@ -6780,6 +6795,9 @@ export async function buildGatewayApp(
       'main{min-height:100dvh;display:grid;place-items:center;padding:24px;}',
       'section{width:min(100%,560px);border:1px solid rgba(255,255,255,.12);border-radius:24px;background:rgba(255,255,255,.045);padding:22px;box-shadow:0 24px 90px rgba(0,0,0,.35);}',
       'h1{font-size:24px;margin:0 0 8px;}p{color:rgba(248,250,252,.72);line-height:1.5;}',
+      'ol{margin:14px 0 18px;padding-left:20px;color:rgba(248,250,252,.72);line-height:1.55;}',
+      'label{display:block;margin-top:12px;color:rgba(248,250,252,.82);font-size:13px;font-weight:700;}',
+      'select{width:100%;box-sizing:border-box;border-radius:14px;border:1px solid rgba(255,255,255,.16);background:#111827;color:#f8fafc;padding:11px;margin-top:7px;}',
       'textarea{width:100%;min-height:180px;box-sizing:border-box;border-radius:16px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.34);color:#f8fafc;padding:12px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace;}',
       'button{margin-top:14px;width:100%;border:0;border-radius:14px;background:#f8fafc;color:#020617;font-weight:700;padding:13px 16px;}button:disabled{opacity:.48;}',
       '.status{font-size:13px;color:#a7f3d0}.error{color:#fecdd3}',
@@ -6790,9 +6808,22 @@ export async function buildGatewayApp(
       '<section>',
       `<h1>${escapeHtml(title)}</h1>`,
       `<p class="${input.error ? 'error' : 'status'}">${escapeHtml(status)}</p>`,
-      '<p>Paste the mobile browser Cookie header or exported cookie text, then submit once. The desktop Browser Ops page will show the verified login.</p>',
+      '<p>Use this one-time page only on the phone that is already logged in.</p>',
+      '<ol>',
+      '<li>Open your mobile cookie-export shortcut, extension, or browser dev tool.</li>',
+      '<li>Copy either a Cookie header, cookies.txt text, or a JSON cookie export.</li>',
+      '<li>Select the matching format below, paste the payload, and submit once.</li>',
+      '</ol>',
       `<form id="handoff-form" data-action="${escapeHtml(action)}">`,
-      `<textarea name="raw" aria-label="Cookie payload" ${disabled ? 'disabled' : ''} placeholder="sessionid=...; csrftoken=..."></textarea>`,
+      '<label for="source-kind">Choose export format</label>',
+      `<select id="source-kind" name="sourceKind" ${disabled ? 'disabled' : ''}>`,
+      '<option value="raw_cookie_header">Cookie header</option>',
+      '<option value="netscape_cookies_txt">cookies.txt</option>',
+      '<option value="json_cookie_export">JSON cookie export</option>',
+      '<option value="manual">Manual key=value list</option>',
+      '</select>',
+      '<label for="cookie-payload">Cookie payload</label>',
+      `<textarea id="cookie-payload" name="raw" aria-label="Cookie payload" ${disabled ? 'disabled' : ''} placeholder="sessionid=...; csrftoken=..."></textarea>`,
       `<button type="submit" ${disabled ? 'disabled' : ''}>Submit mobile session</button>`,
       '</form>',
       '<p id="result" class="status"></p>',
@@ -6804,8 +6835,9 @@ export async function buildGatewayApp(
       'form?.addEventListener("submit",async(event)=>{',
       'event.preventDefault();',
       'const raw=String(new FormData(form).get("raw")||"").trim();',
+      'const sourceKind=String(new FormData(form).get("sourceKind")||"raw_cookie_header");',
       'if(!raw){result.textContent="Paste a cookie payload first.";return;}',
-      'const response=await fetch(form.dataset.action,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({raw})});',
+      'const response=await fetch(form.dataset.action,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({raw,sourceKind})});',
       'const payload=await response.json().catch(()=>({ok:false,error:"Unexpected response"}));',
       'result.textContent=payload.ok?"Mobile session submitted and verified. You can close this page.":(payload.error||"Submission failed.");',
       '});',
@@ -53166,7 +53198,10 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       createdAt,
       expiresAt: new Date(Date.parse(createdAt) + MOBILE_SESSION_HANDOFF_TTL_MS).toISOString(),
       submittedAt: null,
-      status: 'pending'
+      status: 'pending',
+      completedCookieJarId: null,
+      completedSessionProfileId: null,
+      completedVerificationSummary: null
     };
     pendingBrowserMobileSessionHandoffs.set(handoff.id, handoff);
     database.appendAudit({
@@ -53184,7 +53219,51 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
     return jsonOk(reply, {
       handoff: serializeBrowserMobileHandoff(handoff),
       submitUrl: buildBrowserMobileHandoffSubmitUrl(request, handoff.id),
-      nextStep: 'Open the one-time handoff URL on the phone, paste the mobile cookie export, and submit it once.',
+      nextStep: 'Open the one-time handoff URL on the phone, choose the cookie export format, paste the payload, submit once, then check status here.',
+      vault: browserSessionVaultPayload(scope)
+    });
+  });
+
+  app.get('/api/browser/mobile-handoff/:handoffId/status', async (request, reply) => {
+    const scope = resolveBrowserVaultAccessScope(request, reply);
+    if (!scope) {
+      return reply;
+    }
+    const params = isRecord(request.params) ? request.params : {};
+    const handoffId = typeof params.handoffId === 'string' ? params.handoffId : '';
+    const handoff = handoffId ? pendingBrowserMobileSessionHandoffs.get(handoffId) ?? null : null;
+    if (!handoff) {
+      return jsonError(reply, 'Mobile browser handoff not found.', 404, {
+        reason: 'browser_mobile_handoff_not_found'
+      });
+    }
+    const current = updateExpiredBrowserMobileHandoff(handoff);
+    if (!canBrowserVaultScopeAccessMobileHandoff(scope, current)) {
+      return jsonError(reply, 'This mobile browser handoff is not visible to the selected session.', 403, {
+        reason: 'browser_mobile_handoff_forbidden'
+      });
+    }
+    const cookieJar = current.completedCookieJarId
+      ? database.getBrowserCookieJarById(current.completedCookieJarId)
+      : null;
+    const sessionProfile = current.completedSessionProfileId
+      ? database.getBrowserSessionProfileById(current.completedSessionProfileId)
+      : null;
+    const visibleSessionProfile =
+      sessionProfile && canBrowserVaultScopeAccessSessionProfile(scope, sessionProfile) ? sessionProfile : null;
+    return jsonOk(reply, {
+      handoff: serializeBrowserMobileHandoff(current),
+      cookieJar: cookieJar && (!scope.session || canBrowserVaultScopeAccessCookieJar(scope, cookieJar.id))
+        ? serializeBrowserCookieJar(cookieJar)
+        : null,
+      sessionProfile: visibleSessionProfile ? serializeBrowserSessionProfile(visibleSessionProfile) : null,
+      verification: current.completedVerificationSummary
+        ? {
+            summary: current.completedVerificationSummary,
+            method: 'mobile_session_import',
+            site: resolveBrowserConnectPreset(current.siteKey, current.verifyUrl)
+          }
+        : null,
       vault: browserSessionVaultPayload(scope)
     });
   });
@@ -53270,7 +53349,9 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       });
       current.status = 'submitted';
       current.submittedAt = utcNow();
-      pendingBrowserMobileSessionHandoffs.delete(current.id);
+      current.completedCookieJarId = importedCookieJar.id;
+      current.completedSessionProfileId = verification.profile.id;
+      current.completedVerificationSummary = verification.resultSummary ?? null;
       return jsonOk(reply, {
         handoff: serializeBrowserMobileHandoff(current),
         cookieJar: serializeBrowserCookieJar(importedCookieJar),

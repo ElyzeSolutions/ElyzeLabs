@@ -1816,6 +1816,27 @@ export async function startBrowserMobileHandoff(
   );
 }
 
+export async function fetchBrowserMobileHandoffStatus(
+  token: string,
+  handoffId: string
+): Promise<{
+  vault: BrowserSessionVaultState;
+  handoff: BrowserMobileSessionHandoffRow;
+  cookieJar: BrowserSessionVaultState['cookieJars'][number] | null;
+  sessionProfile: BrowserSessionVaultState['sessionProfiles'][number] | null;
+  verification: Pick<BrowserConnectVerificationRow, 'summary' | 'method' | 'site'> | null;
+}> {
+  return apiRequest<
+    ApiEnvelope & {
+      vault: BrowserSessionVaultState;
+      handoff: BrowserMobileSessionHandoffRow;
+      cookieJar: BrowserSessionVaultState['cookieJars'][number] | null;
+      sessionProfile: BrowserSessionVaultState['sessionProfiles'][number] | null;
+      verification: Pick<BrowserConnectVerificationRow, 'summary' | 'method' | 'site'> | null;
+    }
+  >(`/api/browser/mobile-handoff/${encodeURIComponent(handoffId)}/status`, {}, { token });
+}
+
 export async function verifyBrowserSessionProfile(
   token: string,
   sessionProfileId: string,

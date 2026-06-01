@@ -23,6 +23,7 @@ import {
   disableBrowserSessionProfile,
   enableBrowserSessionProfile,
   ensureManagedBrowserProfile,
+  fetchBrowserMobileHandoffStatus,
   importBrowserCookieJar,
   revokeBrowserSessionProfile,
   revokeBrowserCookieJar,
@@ -1352,6 +1353,59 @@ function useBrowserPageModel() {
     connectForm.visibility,
     token
   ]);
+  const handleCheckMobileHandoff = useCallback(async () => {
+    const handoffId = connectForm.mobileHandoff?.handoff.id;
+    if (!handoffId) {
+      setError('Create a mobile handoff link before checking status.');
+      return;
+    }
+    if (!token) {
+      setError('Set API token in Settings before checking a mobile handoff.');
+      return;
+    }
+    setLoginCaptureBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await fetchBrowserMobileHandoffStatus(token, handoffId);
+      setVault(result.vault);
+      setConnectForm((current) => ({
+        ...current,
+        mobileHandoff: current.mobileHandoff
+          ? {
+              ...current.mobileHandoff,
+              handoff: result.handoff
+            }
+          : null
+      }));
+      if (result.handoff.status === 'submitted' && result.sessionProfile) {
+        updateTestForm('sessionProfileId', result.sessionProfile.id);
+        setSessionProfileForm((current) => ({
+          ...current,
+          label: result.sessionProfile ? result.sessionProfile.label : current.label,
+          domains: result.sessionProfile ? result.sessionProfile.domains.join('\n') : current.domains,
+          cookieJarId: result.sessionProfile?.cookieJarId ?? current.cookieJarId,
+          headersProfileId: result.sessionProfile?.headersProfileId ?? current.headersProfileId,
+          proxyProfileId: result.sessionProfile?.proxyProfileId ?? current.proxyProfileId,
+          storageStateId: result.sessionProfile?.storageStateId ?? current.storageStateId,
+          locale: result.sessionProfile?.locale ?? current.locale,
+          countryCode: result.sessionProfile?.countryCode ?? current.countryCode,
+          timezoneId: result.sessionProfile?.timezoneId ?? current.timezoneId
+        }));
+        setNotice(result.verification?.summary ?? `Mobile handoff submitted for ${result.sessionProfile.label}.`);
+        return;
+      }
+      if (result.handoff.status === 'expired') {
+        setNotice('Mobile handoff expired. Create a new phone link.');
+        return;
+      }
+      setNotice('Mobile handoff is still pending.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to check mobile handoff status.');
+    } finally {
+      setLoginCaptureBusy(false);
+    }
+  }, [connectForm.mobileHandoff, setConnectForm, setError, setLoginCaptureBusy, setNotice, setSessionProfileForm, setVault, token, updateTestForm]);
   const handleStartLoginCapture = useCallback(async () => {
     if (!token) {
       setError('Set API token in Settings before starting a login capture.');
@@ -2484,11 +2538,12 @@ function useBrowserPageModel() {
       applyStealthPreset,
       handleConnectAccount,
       handleVerifySessionProfile,
-	      handleEnsureManagedProfile,
-	      handleStartPlaywrightAuthCapture,
-	      handleSaveCurrentPlaywrightAuthSession,
-	      handleStartMobileHandoff,
-	      handleStartLoginCapture,
+      handleEnsureManagedProfile,
+      handleStartPlaywrightAuthCapture,
+      handleSaveCurrentPlaywrightAuthSession,
+      handleStartMobileHandoff,
+      handleCheckMobileHandoff,
+      handleStartLoginCapture,
       handleSessionProfileAction,
       handleAccessModeChange,
       handleToggleAllowlistedAgent,
@@ -2574,10 +2629,11 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
     setDraftValue,
     applyStealthPreset,
     handleConnectAccount,
-	    handleStartPlaywrightAuthCapture,
-	    handleSaveCurrentPlaywrightAuthSession,
-	    handleStartMobileHandoff,
-	    handleStartLoginCapture,
+    handleStartPlaywrightAuthCapture,
+    handleSaveCurrentPlaywrightAuthSession,
+    handleStartMobileHandoff,
+    handleCheckMobileHandoff,
+    handleStartLoginCapture,
     handleVerifySessionProfile,
     handleEnsureManagedProfile,
     handleSessionProfileAction,
@@ -3158,7 +3214,7 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                               <div>
                                 <p className="text-sm font-semibold text-emerald-50">Phone handoff</p>
                                 <p className="mt-1 max-w-xl text-xs leading-5 text-emerald-50/70">
-                                  Create a one-time phone URL for this site. Submit from the phone, then refresh sessions here.
+                                  Create a one-time phone URL for this site. Submit from the phone, then check status here.
                                 </p>
                               </div>
                               <button
@@ -3172,6 +3228,19 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                             </div>
                             {connectForm.mobileHandoff ? (
                               <div className="mt-4 grid gap-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-100/10 bg-black/20 px-3 py-2">
+                                  <span className="text-xs font-semibold text-emerald-50">
+                                    Status: {connectForm.mobileHandoff.handoff.status}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleCheckMobileHandoff()}
+                                    disabled={loginCaptureBusy}
+                                    className="rounded-md border border-emerald-100/15 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-emerald-50/80 transition hover:border-emerald-100/30 hover:text-emerald-50 disabled:opacity-50"
+                                  >
+                                    {loginCaptureBusy ? 'Checking...' : 'Check submission'}
+                                  </button>
+                                </div>
                                 <label className="space-y-1.5">
                                   <span className="text-[0.65rem] font-bold uppercase tracking-wider text-emerald-50/70">Phone URL</span>
                                   <input
@@ -3183,6 +3252,11 @@ function renderBrowserPageContent(model: ReturnType<typeof useBrowserPageModel>)
                                 <p className="text-xs leading-5 text-emerald-50/70">
                                   Expires {formatRelativeTime(connectForm.mobileHandoff.handoff.expiresAt)}. {connectForm.mobileHandoff.nextStep}
                                 </p>
+                                {connectForm.mobileHandoff.handoff.completedVerificationSummary ? (
+                                  <p className="rounded-lg border border-emerald-100/10 bg-emerald-200/10 px-3 py-2 text-xs leading-5 text-emerald-50">
+                                    {connectForm.mobileHandoff.handoff.completedVerificationSummary}
+                                  </p>
+                                ) : null}
                               </div>
                             ) : null}
                           </div>

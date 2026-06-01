@@ -1796,13 +1796,23 @@ describe('gateway browser api integration', () => {
     });
     expect(pageResponse.statusCode).toBe(200);
     expect(pageResponse.body).toContain('TikTok phone login mobile handoff');
+    expect(pageResponse.body).toContain('Choose export format');
     expect(pageResponse.body).toContain('Submit mobile session');
+
+    const pendingStatusResponse = await harness.inject({
+      method: 'GET',
+      url: `/api/browser/mobile-handoff/${encodeURIComponent(String(startBody.handoff.id))}/status`,
+      headers: localAdminHeaders
+    });
+    expect(pendingStatusResponse.statusCode).toBe(200);
+    expect(pendingStatusResponse.json().handoff?.status).toBe('pending');
 
     const completeResponse = await harness.inject({
       method: 'POST',
       url: `/api/mobile-browser-handoff/${encodeURIComponent(String(startBody.handoff.id))}/complete`,
       payload: {
-        raw: 'sessionid=phone-tiktok-session'
+        raw: 'sessionid=phone-tiktok-session',
+        sourceKind: 'raw_cookie_header'
       }
     });
     expect(completeResponse.statusCode).toBe(200);
@@ -1815,8 +1825,21 @@ describe('gateway browser api integration', () => {
       profileClass: 'auth_state',
       lastVerificationStatus: 'connected'
     });
+    expect(completeBody.handoff?.completedSessionProfileId).toBe(completeBody.sessionProfile?.id);
     expect(completeBody.verification?.method).toBe('mobile_session_import');
     expect(completeBody.verification?.trace?.artifacts[0]?.previewText).toContain('SessionCookie: phone-tiktok-session');
+
+    const submittedStatusResponse = await harness.inject({
+      method: 'GET',
+      url: `/api/browser/mobile-handoff/${encodeURIComponent(String(startBody.handoff.id))}/status`,
+      headers: localAdminHeaders
+    });
+    expect(submittedStatusResponse.statusCode).toBe(200);
+    const submittedStatusBody = submittedStatusResponse.json();
+    expect(submittedStatusBody.handoff?.status).toBe('submitted');
+    expect(submittedStatusBody.sessionProfile?.id).toBe(completeBody.sessionProfile?.id);
+    expect(submittedStatusBody.handoff?.completedVerificationSummary).toBe(completeBody.verification?.summary);
+    expect(submittedStatusBody.verification?.summary).toBe(completeBody.verification?.summary);
 
     const replayResponse = await harness.inject({
       method: 'POST',
@@ -1825,7 +1848,7 @@ describe('gateway browser api integration', () => {
         raw: 'sessionid=replay'
       }
     });
-    expect(replayResponse.statusCode).toBe(404);
+    expect(replayResponse.statusCode).toBe(410);
   });
 
   it('saves a live CDP browser session metadata file as filtered Scrapling auth state', async () => {
