@@ -57004,7 +57004,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
             session,
             'system',
             'system',
-            `Live browser session ${existingLiveSessionId} is already active for this chat. Use /browser observe, /browser click <selector>, /browser type <selector> | <text>, or /browser live close.`,
+            `Live browser session ${existingLiveSessionId} is already active for this chat. Use /browser observe, /browser read, /browser open <url|site>, /browser click <selector>, /browser type <selector> | <text>, /browser scroll [selector | pixels], /browser key [selector | key], /browser screenshot, /browser pdf, /browser download <selector|url>, /browser upload <selector> | <path>, or /browser live close.`,
             {
               command: 'browser',
               subcommand: 'live',
@@ -57134,7 +57134,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
             updatedSession,
             'system',
             'system',
-            `Live browser session ${started.session.sessionId} opened ${started.session.currentUrl ?? started.session.startedUrl}${authSummary}. Use /browser observe, /browser click <selector>, /browser type <selector> | <text>, then /browser live close.`,
+            `Live browser session ${started.session.sessionId} opened ${started.session.currentUrl ?? started.session.startedUrl}${authSummary}. Use /browser observe, /browser read, /browser open <url|site>, /browser click <selector>, /browser type <selector> | <text>, /browser scroll [selector | pixels], /browser key [selector | key], /browser screenshot, /browser pdf, /browser download <selector|url>, /browser upload <selector> | <path>, then /browser live close.`,
             {
               command: 'browser',
               subcommand: 'live',
@@ -57169,7 +57169,22 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         }
       }
 
-      if (subcommand === 'observe' || subcommand === 'click' || subcommand === 'type') {
+      if (
+        subcommand === 'observe' ||
+        subcommand === 'read' ||
+        subcommand === 'open' ||
+        subcommand === 'click' ||
+        subcommand === 'type' ||
+        subcommand === 'scroll' ||
+        subcommand === 'key' ||
+        subcommand === 'keypress' ||
+        subcommand === 'press' ||
+        subcommand === 'wait' ||
+        subcommand === 'screenshot' ||
+        subcommand === 'pdf' ||
+        subcommand === 'download' ||
+        subcommand === 'upload'
+      ) {
         const liveSessionId = parseSessionBrowserInteractiveLiveSessionId(session);
         const liveSession = liveSessionId ? browserInteractiveLiveSessions.get(liveSessionId) ?? null : null;
         if (!liveSessionId || !liveSession) {
@@ -57194,18 +57209,78 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         let action: BrowserInteractiveActionInput | null = null;
         if (subcommand === 'observe') {
           action = { type: 'snapshot' };
+        } else if (subcommand === 'read') {
+          action = { type: 'read' };
+        } else if (subcommand === 'open') {
+          const targetText = args.slice(1).join(' ').trim();
+          const siteKey = parseBrowserNamedSiteKey(targetText);
+          const explicitUrl = /^https?:\/\//i.test(targetText) ? targetText : '';
+          const targetUrl = explicitUrl || (siteKey ? resolveBrowserConnectPreset(siteKey, null).verifyUrl : '');
+          if (targetUrl) {
+            action = { type: 'open', url: targetUrl, timeoutMs: 2_000 };
+          }
         } else if (subcommand === 'click') {
           const selector = args.slice(1).join(' ').trim();
           if (selector) {
             action = { type: 'click', selector, timeoutMs: 2_000 };
           }
-        } else {
+        } else if (subcommand === 'type') {
           const payload = args.slice(1).join(' ').trim();
           const separatorIndex = payload.indexOf('|');
           const selector = separatorIndex >= 0 ? payload.slice(0, separatorIndex).trim() : (args[1] ?? '').trim();
           const text = separatorIndex >= 0 ? payload.slice(separatorIndex + 1).trim() : args.slice(2).join(' ').trim();
           if (selector && text) {
             action = { type: 'type', selector, text, timeoutMs: 2_000 };
+          }
+        } else if (subcommand === 'scroll') {
+          const payload = args.slice(1).join(' ').trim();
+          const separatorIndex = payload.indexOf('|');
+          const rawSelector = separatorIndex >= 0 ? payload.slice(0, separatorIndex).trim() : '';
+          const rawDelta = separatorIndex >= 0 ? payload.slice(separatorIndex + 1).trim() : payload;
+          const parsedDelta = Number(rawDelta);
+          const deltaY = Number.isFinite(parsedDelta) ? parsedDelta : 600;
+          const selector = rawSelector || (Number.isFinite(parsedDelta) ? '' : payload);
+          action = selector
+            ? { type: 'scroll', selector, deltaY, timeoutMs: 1_000 }
+            : { type: 'scroll', deltaY, timeoutMs: 1_000 };
+        } else if (subcommand === 'key' || subcommand === 'keypress' || subcommand === 'press') {
+          const payload = args.slice(1).join(' ').trim();
+          const separatorIndex = payload.indexOf('|');
+          const selector = separatorIndex >= 0 ? payload.slice(0, separatorIndex).trim() : '';
+          const key = separatorIndex >= 0 ? payload.slice(separatorIndex + 1).trim() : payload;
+          if (key) {
+            action = selector
+              ? { type: 'keypress', selector, key, timeoutMs: 1_000 }
+              : { type: 'keypress', key, timeoutMs: 1_000 };
+          }
+        } else if (subcommand === 'wait') {
+          const parsedWaitMs = Number(args[1] ?? '');
+          const timeoutMs = Number.isFinite(parsedWaitMs)
+            ? Math.max(100, Math.min(10_000, parsedWaitMs))
+            : 1_000;
+          action = { type: 'wait', timeoutMs };
+        } else if (subcommand === 'screenshot') {
+          action = { type: 'screenshot' };
+        } else if (subcommand === 'pdf') {
+          action = { type: 'pdf' };
+        } else if (subcommand === 'download') {
+          const target = args.slice(1).join(' ').trim();
+          if (/^https?:\/\//i.test(target)) {
+            action = { type: 'download', url: target, timeoutMs: 15_000 };
+          } else if (target) {
+            action = { type: 'download', selector: target, timeoutMs: 15_000 };
+          }
+        } else if (subcommand === 'upload') {
+          const payload = args.slice(1).join(' ').trim();
+          const separatorIndex = payload.indexOf('|');
+          const selector = separatorIndex >= 0 ? payload.slice(0, separatorIndex).trim() : '';
+          const rawPaths = separatorIndex >= 0 ? payload.slice(separatorIndex + 1).trim() : '';
+          const filePaths = rawPaths
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter((entry) => entry.length > 0);
+          if (selector && filePaths.length > 0) {
+            action = { type: 'upload', selector, filePaths, timeoutMs: 2_000 };
           }
         }
         if (!action) {
@@ -57214,7 +57289,25 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
               ? 'Usage: /browser click <selector>'
               : subcommand === 'type'
                 ? 'Usage: /browser type <selector> | <text>'
-                : 'Usage: /browser observe';
+                : subcommand === 'open'
+                  ? 'Usage: /browser open <url|tiktok|instagram|reddit|x|pinterest|facebook>'
+                  : subcommand === 'scroll'
+                    ? 'Usage: /browser scroll [selector | pixels]'
+                    : subcommand === 'key' || subcommand === 'keypress' || subcommand === 'press'
+                      ? 'Usage: /browser key [selector | key]'
+                      : subcommand === 'download'
+                        ? 'Usage: /browser download <selector|url>'
+                        : subcommand === 'upload'
+                          ? 'Usage: /browser upload <selector> | <path[,path]>'
+                          : subcommand === 'wait'
+                            ? 'Usage: /browser wait [milliseconds]'
+                            : subcommand === 'read'
+                              ? 'Usage: /browser read'
+                              : subcommand === 'screenshot'
+                                ? 'Usage: /browser screenshot'
+                                : subcommand === 'pdf'
+                                  ? 'Usage: /browser pdf'
+                                  : 'Usage: /browser observe';
           await saveOutboundMessage(session, 'system', 'system', usage, {
             command: 'browser',
             subcommand
@@ -57265,6 +57358,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
           const artifactPreview =
             result.control.artifacts.find((artifact) => artifact.kind === 'snapshot')?.contentPreview ??
             result.control.artifacts.find((artifact) => artifact.kind === 'read')?.contentPreview ??
+            result.control.artifacts[0]?.contentPreview ??
             null;
           const actionSummary = result.control.actions.map((entry) => `${entry.type}: ${entry.summary}`).join('\n');
           const messageText = [
