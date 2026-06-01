@@ -23830,6 +23830,146 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
     return deriveProjectIdFromRepoName(repoHint?.repo ?? findRepositoryNameInText(raw));
   };
 
+  type ParsedTelegramBacklogCommand = {
+    title: string;
+    description: string;
+    labels: string[];
+    priority: number | null;
+    projectId: string | null;
+    repoRoot: string | null;
+    repoHintText: string | null;
+    assignedAgentId: string | null;
+    state: BacklogState | null;
+  };
+
+  const cleanTelegramDirectiveValue = (value: string): string => {
+    const trimmed = value.trim();
+    if (
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      return trimmed.slice(1, -1).trim();
+    }
+    return trimmed;
+  };
+
+  const addTelegramLabels = (labels: Set<string>, value: string): void => {
+    for (const entry of value.split(/[,\s]+/u)) {
+      const normalized = entry.trim().replace(/^#/u, '').toLowerCase();
+      if (/^[a-z0-9][a-z0-9_.-]{0,39}$/u.test(normalized)) {
+        labels.add(normalized);
+      }
+    }
+  };
+
+  const parseTelegramPriority = (value: string): number | null => {
+    const parsed = Number(value.trim().replace(/^p/iu, ''));
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+    return Math.max(0, Math.min(100, Math.round(parsed)));
+  };
+
+  const applyTelegramDirective = (
+    parsed: ParsedTelegramBacklogCommand,
+    labels: Set<string>,
+    key: string,
+    rawValue: string
+  ): void => {
+    const normalizedKey = key.trim().toLowerCase();
+    const value = cleanTelegramDirectiveValue(rawValue);
+    if (!value) {
+      return;
+    }
+    if (normalizedKey === 'label' || normalizedKey === 'labels') {
+      addTelegramLabels(labels, value);
+      return;
+    }
+    if (normalizedKey === 'priority' || normalizedKey === 'p') {
+      parsed.priority = parseTelegramPriority(value);
+      return;
+    }
+    if (normalizedKey === 'project') {
+      parsed.projectId = normalizeBacklogScopeSlug(value) ?? value.trim();
+      return;
+    }
+    if (normalizedKey === 'repo' || normalizedKey === 'github') {
+      parsed.repoHintText = value;
+      return;
+    }
+    if (normalizedKey === 'reporoot' || normalizedKey === 'root') {
+      parsed.repoRoot = parseBacklogRepoRoot(value);
+      return;
+    }
+    if (normalizedKey === 'agent' || normalizedKey === 'assignee') {
+      parsed.assignedAgentId = value;
+      return;
+    }
+    if (normalizedKey === 'state') {
+      parsed.state = parseBacklogState(value);
+    }
+  };
+
+  const stripTelegramInlineDirectives = (line: string, parsed: ParsedTelegramBacklogCommand, labels: Set<string>): string => {
+    const withoutDirectives = line.replace(
+      /(?:^|\s)(repo|github|project|repoRoot|root|labels?|priority|p|agent|assignee|state)=("[^"]+"|'[^']+'|\S+)/giu,
+      (match: string, key: string, value: string) => {
+        applyTelegramDirective(parsed, labels, key, value);
+        return match.startsWith(' ') ? ' ' : '';
+      }
+    );
+    return withoutDirectives.replace(/(^|\s)#([a-z0-9][a-z0-9_.-]{0,39})/giu, (match: string, prefix: string, label: string) => {
+      addTelegramLabels(labels, label);
+      return prefix || (match.startsWith(' ') ? ' ' : '');
+    });
+  };
+
+  const parseTelegramBacklogCommandText = (raw: string): ParsedTelegramBacklogCommand => {
+    const parsed: ParsedTelegramBacklogCommand = {
+      title: '',
+      description: '',
+      labels: [],
+      priority: null,
+      projectId: null,
+      repoRoot: null,
+      repoHintText: null,
+      assignedAgentId: null,
+      state: null
+    };
+    const labels = new Set<string>();
+    const contentLines: string[] = [];
+    const descriptionLines: string[] = [];
+    for (const rawLine of raw.split(/\r?\n/u)) {
+      const directive = rawLine.match(
+        /^\s*(repo|github|project|repoRoot|root|labels?|priority|p|agent|assignee|state|description|body)\s*[:=]\s*(.*?)\s*$/iu
+      );
+      if (directive) {
+        const key = directive[1] ?? '';
+        const value = directive[2] ?? '';
+        const normalizedKey = key.trim().toLowerCase();
+        if (normalizedKey === 'description' || normalizedKey === 'body') {
+          const cleaned = cleanTelegramDirectiveValue(value);
+          if (cleaned) {
+            descriptionLines.push(cleaned);
+          }
+        } else {
+          applyTelegramDirective(parsed, labels, key, value);
+        }
+        continue;
+      }
+      const cleanedLine = stripTelegramInlineDirectives(rawLine, parsed, labels).replace(/\s+/gu, ' ').trim();
+      if (cleanedLine) {
+        contentLines.push(cleanedLine);
+      }
+    }
+    const content = contentLines.join('\n').trim();
+    const explicitDescription = descriptionLines.join('\n').trim();
+    parsed.title = (contentLines[0] ?? explicitDescription).trim().slice(0, 180);
+    parsed.description = explicitDescription || content || parsed.title;
+    parsed.labels = Array.from(labels.values()).sort((left, right) => left.localeCompare(right));
+    return parsed;
+  };
+
   const resolveStoredSessionLinkedRepoRoot = (metadata: Record<string, unknown>): string | null => {
     const raw = typeof metadata.linkedRepoRoot === 'string' ? metadata.linkedRepoRoot.trim() : '';
     if (!raw) {
@@ -58229,12 +58369,15 @@ Linked via /link: ${linkedBinding ? 'yes' : 'no'}`;
     if (command.toLowerCase().startsWith('/idea') || command.toLowerCase().startsWith('/task')) {
       const isTask = command.toLowerCase().startsWith('/task');
       const text = command.replace(/^\/(idea|task)\b/i, '').trim();
-      if (!text) {
+      const parsedBacklogCommand = parseTelegramBacklogCommandText(text);
+      if (!text || !parsedBacklogCommand.title) {
         await saveOutboundMessage(
           session,
           'system',
           'system',
-          isTask ? 'Usage: /task <title>' : 'Usage: /idea <title>',
+          isTask
+            ? 'Usage: /task <title> [repo=owner/repo] [project=project-id] [labels=a,b] [priority=70] [agent=software-engineer] [state=planned]'
+            : 'Usage: /idea <title> [repo=owner/repo] [project=project-id] [labels=a,b] [priority=45] [state=idea]',
           {
             command: isTask ? 'task' : 'idea'
           }
@@ -58245,14 +58388,40 @@ Linked via /link: ${linkedBinding ? 'yes' : 'no'}`;
         });
       }
 
-      const autoDetectedRepoMatch = resolveGithubRepoHintMatch(text);
+      if (parsedBacklogCommand.assignedAgentId && !getAgentProfileById(parsedBacklogCommand.assignedAgentId)) {
+        await saveOutboundMessage(
+          session,
+          'system',
+          'system',
+          `Unknown backlog assignee: ${parsedBacklogCommand.assignedAgentId}`,
+          {
+            command: isTask ? 'task' : 'idea',
+            reason: 'unknown_assigned_agent'
+          }
+        );
+        return jsonOk(reply, {
+          status: 'ignored',
+          reason: 'unknown_assigned_agent'
+        });
+      }
+
+      const repoHintSource = [parsedBacklogCommand.repoHintText, parsedBacklogCommand.title, parsedBacklogCommand.description]
+        .filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
+        .join('\n');
+      const autoDetectedRepoMatch = resolveGithubRepoHintMatch(repoHintSource);
       const autoDetectedRepo = autoDetectedRepoMatch.repoHint;
       const item = database.createBacklogItem({
-        title: text.slice(0, 180),
-        description: text,
-        state: isTask ? 'planned' : 'idea',
-        priority: isTask ? 70 : 45,
-        projectId: deriveProjectIdFromRepoName(autoDetectedRepo?.repo ?? null) ?? deriveProjectIdFromText(text),
+        title: parsedBacklogCommand.title,
+        description: parsedBacklogCommand.description,
+        state: parsedBacklogCommand.state ?? (isTask ? 'planned' : 'idea'),
+        priority: parsedBacklogCommand.priority ?? (isTask ? 70 : 45),
+        labels: parsedBacklogCommand.labels,
+        projectId:
+          parsedBacklogCommand.projectId ??
+          deriveProjectIdFromRepoName(autoDetectedRepo?.repo ?? null) ??
+          deriveProjectIdFromText(`${parsedBacklogCommand.title}\n${parsedBacklogCommand.description}`),
+        repoRoot: parsedBacklogCommand.repoRoot,
+        assignedAgentId: parsedBacklogCommand.assignedAgentId,
         source: 'telegram',
         sourceRef: message.chatId,
         createdBy: message.senderId,
@@ -58266,6 +58435,14 @@ Linked via /link: ${linkedBinding ? 'yes' : 'no'}`;
           updateId: message.updateId,
           senderHandle: message.senderHandle,
           ingress: 'telegram',
+          telegramCommand: {
+            labels: parsedBacklogCommand.labels,
+            priority: parsedBacklogCommand.priority,
+            projectId: parsedBacklogCommand.projectId,
+            repoHintText: parsedBacklogCommand.repoHintText,
+            assignedAgentId: parsedBacklogCommand.assignedAgentId,
+            state: parsedBacklogCommand.state
+          },
           ...(autoDetectedRepo
             ? {
                 githubRepoHint: {
@@ -58317,16 +58494,22 @@ Linked via /link: ${linkedBinding ? 'yes' : 'no'}`;
         session,
         'system',
         'system',
-        `${isTask ? 'Task' : 'Idea'} captured: ${item.id} (${item.state})`,
+        `${isTask ? 'Task' : 'Idea'} captured: ${item.id} (${item.state}, p${item.priority})`,
         {
           command: isTask ? 'task' : 'idea',
-          itemId: item.id
+          itemId: item.id,
+          projectId: item.projectId,
+          repoRoot: item.repoRoot,
+          labels: parsedBacklogCommand.labels
         }
       );
       return jsonOk(reply, {
         status: 'command_applied',
         command: isTask ? 'task' : 'idea',
-        itemId: item.id
+        itemId: item.id,
+        state: item.state,
+        projectId: item.projectId,
+        repoRoot: item.repoRoot
       });
     }
 

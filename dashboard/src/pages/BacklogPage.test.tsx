@@ -240,8 +240,16 @@ describe('BacklogPage', () => {
     fireEvent.change(screen.getByLabelText('GitHub Repo'), {
       target: { value: 'https://github.com/example/elyze.git' }
     });
+    fireEvent.change(screen.getByLabelText('Labels'), {
+      target: { value: 'browser, auth' }
+    });
+    fireEvent.change(screen.getByLabelText('Priority'), {
+      target: { value: '88' }
+    });
 
-    expect(screen.getByLabelText('Telegram task command')).toHaveValue('/task Sync Pinterest auth captures');
+    expect(screen.getByLabelText('Telegram task command')).toHaveValue(
+      '/task Sync Pinterest auth captures repo=example/elyze labels=browser,auth priority=88'
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
@@ -250,8 +258,8 @@ describe('BacklogPage', () => {
         title: 'Sync Pinterest auth captures',
         description: 'Sync Pinterest auth captures',
         state: 'planned',
-        priority: 70,
-        labels: [],
+        priority: 88,
+        labels: ['browser', 'auth'],
         projectId: null,
         repoRoot: null,
         metadata: {

@@ -84,4 +84,87 @@ describe('telegram backlog Kanban intake', () => {
     expect(task?.originChannel).toBe('telegram');
     expect(task?.originChatId).toBe(String(senderId));
   });
+
+  it('creates scoped operator tasks from Telegram /task metadata flags', async () => {
+    const harness = await createGatewayTestHarness('telegram-backlog-kanban-rich-task');
+    harnesses.push(harness);
+
+    const onboardingResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/onboarding/ceo-baseline',
+      headers: {
+        Authorization: `Bearer ${harness.config.server.apiToken}`,
+        'x-ops-role': 'operator'
+      },
+      payload: {
+        actor: 'telegram-kanban-test'
+      }
+    });
+    expect(onboardingResponse.statusCode).toBe(200);
+
+    const repoResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/github/repos',
+      headers: {
+        Authorization: `Bearer ${harness.config.server.apiToken}`
+      },
+      payload: {
+        owner: 'example',
+        repo: 'elyze',
+        authSecretRef: 'vault://github/example-elyze'
+      }
+    });
+    expect(repoResponse.statusCode).toBe(201);
+    const repoBody = repoResponse.json();
+    const repo = isRecord(repoBody) && isRecord(repoBody.repo) ? repoBody.repo : {};
+    const repoConnectionId = typeof repo.id === 'string' ? repo.id : '';
+    expect(repoConnectionId.length).toBeGreaterThan(0);
+
+    const senderId = 44092;
+    const response = await harness.inject({
+      method: 'POST',
+      url: '/api/ingress/telegram',
+      payload: telegramPayload({
+        updateId: 440920,
+        senderId,
+        text: [
+          '/task Ship Pinterest authenticated capture repo=example/elyze labels=browser,auth #telegram priority=88 project=browser-ops agent=software-engineer state=triage',
+          'description: Verify imported sessions through Scrapling and CDP fallback.'
+        ].join('\n')
+      })
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(isRecord(body) ? body.status : null).toBe('command_applied');
+    expect(isRecord(body) ? body.command : null).toBe('task');
+    expect(isRecord(body) ? body.state : null).toBe('triage');
+    expect(isRecord(body) ? body.projectId : null).toBe('browser-ops');
+
+    const boardResponse = await harness.inject({
+      method: 'GET',
+      url: '/api/backlog/board?projectId=browser-ops',
+      headers: {
+        Authorization: `Bearer ${harness.config.server.apiToken}`
+      }
+    });
+    expect(boardResponse.statusCode).toBe(200);
+    const boardBody = boardResponse.json();
+    const columns = isRecord(boardBody) && isRecord(boardBody.columns) ? boardBody.columns : {};
+    const triage = recordArray(columns.triage);
+    const task = triage.find((entry) => entry.title === 'Ship Pinterest authenticated capture');
+    expect(task).toBeDefined();
+    expect(task?.description).toBe('Verify imported sessions through Scrapling and CDP fallback.');
+    expect(task?.priority).toBe(88);
+    expect(task?.projectId).toBe('browser-ops');
+    expect(task?.assignedAgentId).toBe('software-engineer');
+    expect(task?.originChannel).toBe('telegram');
+    expect(task?.originChatId).toBe(String(senderId));
+    expect(task?.labels).toEqual(['auth', 'browser', 'telegram']);
+    const metadata = isRecord(task?.metadata) ? task.metadata : {};
+    const githubRepoHint = isRecord(metadata.githubRepoHint) ? metadata.githubRepoHint : {};
+    const delivery = isRecord(task?.delivery) ? task.delivery : {};
+    expect(githubRepoHint.owner).toBe('example');
+    expect(githubRepoHint.repo).toBe('elyze');
+    expect(delivery.repoConnectionId).toBe(repoConnectionId);
+  });
 });

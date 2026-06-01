@@ -166,9 +166,53 @@ function parseGithubRepoHintInput(value: string): { owner: string; repo: string 
   return { owner, repo };
 }
 
-function buildTelegramTaskCommand(title: string): string {
+type TelegramTaskCommandOptions = {
+  labels?: string;
+  repoHint?: string;
+  priority?: string;
+  scope?: BacklogProjectScopeRow;
+};
+
+function parseLabelInput(value: string): string[] {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function quoteTelegramDirectiveValue(value: string): string {
+  const trimmed = value.trim();
+  if (/^[^\s"']+$/u.test(trimmed)) {
+    return trimmed;
+  }
+  return `"${trimmed.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`;
+}
+
+function buildTelegramTaskCommand(title: string, options: TelegramTaskCommandOptions = {}): string {
   const normalized = title.trim().replace(/\s+/g, ' ');
-  return normalized ? `/task ${normalized}` : '/task <title>';
+  const parts = [normalized ? `/task ${normalized}` : '/task <title>'];
+  const repoInput = options.repoHint?.trim() ?? '';
+  if (repoInput) {
+    const parsedRepo = parseGithubRepoHintInput(repoInput);
+    parts.push(`repo=${quoteTelegramDirectiveValue(parsedRepo ? `${parsedRepo.owner}/${parsedRepo.repo}` : repoInput)}`);
+  }
+  const labels = parseLabelInput(options.labels ?? '');
+  if (labels.length > 0) {
+    parts.push(`labels=${quoteTelegramDirectiveValue(labels.join(','))}`);
+  }
+  const priority = Number(options.priority ?? '');
+  if (Number.isFinite(priority) && priority !== 70) {
+    parts.push(`priority=${String(Math.round(priority))}`);
+  }
+  if (options.scope && !options.scope.unscopedOnly) {
+    if (options.scope.projectId) {
+      parts.push(`project=${quoteTelegramDirectiveValue(options.scope.projectId)}`);
+    }
+    if (options.scope.repoRoot) {
+      parts.push(`root=${quoteTelegramDirectiveValue(options.scope.repoRoot)}`);
+    }
+  }
+  return parts.join(' ');
 }
 
 function describeScope(scope: BacklogProjectScopeRow, selectedProject: ProjectScopeOption | null, selectedRepo: BacklogScopeSummaryRow | null): string {
@@ -994,7 +1038,10 @@ function CreateBacklogTaskPanel({
   const [priority, setPriority] = useState('70');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const telegramCommand = useMemo(() => buildTelegramTaskCommand(title), [title]);
+  const telegramCommand = useMemo(
+    () => buildTelegramTaskCommand(title, { labels, priority, repoHint, scope }),
+    [labels, priority, repoHint, scope, title]
+  );
 
   const createTask = useCallback(async (): Promise<void> => {
     const trimmedTitle = title.trim();
@@ -1019,10 +1066,7 @@ function CreateBacklogTaskPanel({
         description: description.trim() || trimmedTitle,
         state: 'planned',
         priority: Number.isFinite(Number(priority)) ? Number(priority) : 70,
-        labels: labels
-          .split(',')
-          .map((entry) => entry.trim())
-          .filter((entry) => entry.length > 0),
+        labels: parseLabelInput(labels),
         projectId: scope.unscopedOnly ? null : scope.projectId,
         repoRoot: scope.unscopedOnly ? null : scope.repoRoot,
         ...(parsedRepoHint
