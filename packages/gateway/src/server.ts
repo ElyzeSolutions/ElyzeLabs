@@ -4543,10 +4543,10 @@ const DEFAULT_LLM_LIMITS: LlmLimitsConfig = {
   providerCostBudgetUsdMonthly: {},
   modelCallBudgetDaily: {},
   primaryModelByRuntime: {
-    codex: 'gemini-pro-latest',
-    claude: 'gemini-pro-latest',
-    gemini: 'gemini-pro-latest',
-    process: 'gemini-pro-latest'
+    codex: 'gemini-3.1-pro-preview',
+    claude: 'gemini-3.1-pro-preview',
+    gemini: 'gemini-3.1-pro-preview',
+    process: 'gemini-3.1-pro-preview'
   },
   fallbackByRuntime: {
     codex: [
@@ -4563,7 +4563,8 @@ const DEFAULT_LLM_LIMITS: LlmLimitsConfig = {
     ],
     process: [
       { runtime: 'process', model: 'gemini-3-flash-preview' },
-      { runtime: 'process', model: 'openrouter/minimax/minimax-m2.5' }
+      { runtime: 'process', model: 'openrouter/minimax/minimax-m2.5' },
+      { runtime: 'codex', model: null }
     ]
   },
   strictPrimaryByRuntime: {
@@ -4599,7 +4600,8 @@ const DEFAULT_LLM_LIMITS: LlmLimitsConfig = {
     ],
     process: [
       { runtime: 'process', model: 'gemini-3-flash-preview' },
-      { runtime: 'process', model: 'openrouter/openrouter/free' }
+      { runtime: 'process', model: 'openrouter/openrouter/free' },
+      { runtime: 'codex', model: null }
     ]
   },
   orchestratorStrictPrimaryByRuntime: {
@@ -22346,6 +22348,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       }
       const activeProvider = inferProvider(activeRoute.model);
       const saturationFailure = isProviderSaturationFailure(execution, activeRoute.runtime);
+      const identityFailure = isProviderIdentityFailure(execution);
       const strictPrimaryActive = llmPolicyMaps(llmLimits, 'orchestrator').strictPrimary[activeRoute.runtime] === true;
       if (strictPrimaryActive) {
         break;
@@ -22357,7 +22360,8 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         checks: routeDecision.checks,
         selectedRuntime: activeRoute.runtime,
         selectedModel: activeRoute.model,
-        preferProviderSwitchFrom: saturationFailure ? activeProvider : null
+        preferProviderSwitchFrom: saturationFailure || identityFailure ? activeProvider : null,
+        preferRuntimeNative: identityFailure && attempt > 1
       });
       if (!fallbackRoute) {
         break;
@@ -29901,6 +29905,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       }
       const activeProvider = inferProvider(activeRoute.model);
       const saturationFailure = isProviderSaturationFailure(execution, activeRoute.runtime);
+      const identityFailure = isProviderIdentityFailure(execution);
       const strictPrimaryActive = llmPolicyMaps(llmLimits, 'orchestrator').strictPrimary[activeRoute.runtime] === true;
       if (strictPrimaryActive) {
         break;
@@ -29912,7 +29917,8 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         checks: routeDecision.checks,
         selectedRuntime: activeRoute.runtime,
         selectedModel: activeRoute.model,
-        preferProviderSwitchFrom: saturationFailure ? activeProvider : null
+        preferProviderSwitchFrom: saturationFailure || identityFailure ? activeProvider : null,
+        preferRuntimeNative: identityFailure && attempt > 1
       });
       if (!fallbackRoute) {
         break;
@@ -30966,12 +30972,33 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
     selectedRuntime: RuntimeKind;
     selectedModel: string | null;
     preferProviderSwitchFrom?: LlmProviderKey | null;
+    preferRuntimeNative?: boolean;
   }): { runtime: RuntimeKind; model: string | null; fromIndex: number; selectedIndex: number } | null => {
     const selectedIndex = input.checks.findIndex((check) =>
       sameRoute(check.runtime, check.model ?? null, input.selectedRuntime, input.selectedModel)
     );
     if (selectedIndex < 0) {
       return null;
+    }
+    if (input.preferRuntimeNative === true) {
+      for (let index = selectedIndex + 1; index < input.checks.length; index += 1) {
+        const check = input.checks[index];
+        if (!check) {
+          continue;
+        }
+        if (!check.eligible || !check.policyEligible) {
+          continue;
+        }
+        if (inferProvider(normalizeModelInput(check.model)) !== null) {
+          continue;
+        }
+        return {
+          runtime: check.runtime,
+          model: normalizeModelInput(check.model),
+          fromIndex: index,
+          selectedIndex
+        };
+      }
     }
     if (input.preferProviderSwitchFrom === 'openrouter' || input.preferProviderSwitchFrom === 'google') {
       for (let index = selectedIndex + 1; index < input.checks.length; index += 1) {
@@ -31842,6 +31869,20 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
     }
     const combined = collectRunFailureSignalText(result, runId);
     return isQuotaSaturationSignal(runtime, combined);
+  };
+
+  const isProviderIdentityFailure = (result: RuntimeExecutionResult, runId?: string | null): boolean => {
+    if (result.finalStatus !== 'failed') {
+      return false;
+    }
+    const combined = collectRunFailureSignalText(result, runId);
+    return (
+      /\buser not found\b/i.test(combined) ||
+      /\b(?:api key|apikey|credential|consumer|caller|account|project|user)\b.{0,120}\b(?:invalid|expired|revoked|disabled|suspended|missing|not found|not configured|does not exist|unauthorized|unauthenticated|permission denied|forbidden)\b/i.test(
+        combined
+      ) ||
+      /\b(?:unauthorized|unauthenticated|permission_denied|permission denied|forbidden)\b/i.test(combined)
+    );
   };
 
   const isDeliveryTruthValidationFailure = (error: string | null | undefined): boolean =>
@@ -35989,6 +36030,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       }
 
       const saturationFailure = isProviderSaturationFailure(result, selectedRuntime, run.id);
+      const identityFailure = isProviderIdentityFailure(result, run.id);
       const retryableFailure = isRetryableRuntimeFailure(result);
       const isFinalAttempt = !retryableFailure || item.attempt + 1 >= item.maxAttempts;
       const fallbackAnchorRuntime = selectedRuntime;
@@ -36004,7 +36046,8 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
               checks: routeDecision.checks,
               selectedRuntime: fallbackAnchorRuntime,
               selectedModel: fallbackAnchorModel,
-              preferProviderSwitchFrom: saturationFailure ? activeProvider : null
+              preferProviderSwitchFrom: saturationFailure || identityFailure ? activeProvider : null,
+              preferRuntimeNative: identityFailure && item.attempt > 0
             })
           : null;
       const shouldPauseForQuotaRecovery =
@@ -52117,6 +52160,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       }
       const activeProvider = inferProvider(selectedRoute.model);
       const saturationFailure = isProviderSaturationFailure(result, selectedRoute.runtime);
+      const identityFailure = isProviderIdentityFailure(result);
       if ((activeProvider !== 'openrouter' && activeProvider !== 'google') || !isRetryableRuntimeFailure(result)) {
         break;
       }
@@ -52124,7 +52168,8 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         checks: routeChecks,
         selectedRuntime: activeRoute.runtime,
         selectedModel: routeModel,
-        preferProviderSwitchFrom: saturationFailure ? activeProvider : null
+        preferProviderSwitchFrom: saturationFailure || identityFailure ? activeProvider : null,
+        preferRuntimeNative: identityFailure && attempt > 1
       });
       if (!fallbackRoute) {
         break;

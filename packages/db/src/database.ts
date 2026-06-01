@@ -2148,6 +2148,15 @@ export class ControlPlaneDatabase {
     if (!existing) {
       throw new Error(`Run not found: ${input.runId}`);
     }
+    const nextEffectiveRuntime = Object.prototype.hasOwnProperty.call(input, 'effectiveRuntime')
+      ? input.effectiveRuntime
+      : input.runtime;
+    const nextEffectiveModel = Object.prototype.hasOwnProperty.call(input, 'effectiveModel')
+      ? input.effectiveModel
+      : existing.effectiveModel;
+    const nextEffectiveReasoningEffort = Object.prototype.hasOwnProperty.call(input, 'effectiveReasoningEffort')
+      ? input.effectiveReasoningEffort
+      : existing.effectiveReasoningEffort;
 
     this.db
       .prepare(
@@ -2157,9 +2166,9 @@ export class ControlPlaneDatabase {
       )
       .run(
         input.runtime,
-        input.effectiveRuntime ?? input.runtime,
-        input.effectiveModel ?? existing.effectiveModel,
-        input.effectiveReasoningEffort ?? existing.effectiveReasoningEffort,
+        nextEffectiveRuntime,
+        nextEffectiveModel,
+        nextEffectiveReasoningEffort,
         utcNow(),
         input.runId
       );
