@@ -270,11 +270,55 @@ describe('telegram live browser control', () => {
     });
     expect(openResponse.statusCode).toBe(200);
 
-    const scrollResponse = await harness.inject({
+    const reloadResponse = await harness.inject({
       method: 'POST',
       url: '/api/ingress/telegram',
       payload: telegramPayload({
         updateId: 771016,
+        senderId,
+        text: '/browser reload'
+      })
+    });
+    expect(reloadResponse.statusCode).toBe(200);
+
+    const backResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/ingress/telegram',
+      payload: telegramPayload({
+        updateId: 771017,
+        senderId,
+        text: '/browser back'
+      })
+    });
+    expect(backResponse.statusCode).toBe(200);
+
+    const forwardResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/ingress/telegram',
+      payload: telegramPayload({
+        updateId: 771018,
+        senderId,
+        text: '/browser forward'
+      })
+    });
+    expect(forwardResponse.statusCode).toBe(200);
+
+    const hoverResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/ingress/telegram',
+      payload: telegramPayload({
+        updateId: 771019,
+        senderId,
+        text: '/browser hover button:has-text("Continue")'
+      })
+    });
+    expect(hoverResponse.statusCode).toBe(200);
+
+    const scrollResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/ingress/telegram',
+      payload: telegramPayload({
+        updateId: 771020,
         senderId,
         text: '/browser scroll #feed | 900'
       })
@@ -285,7 +329,7 @@ describe('telegram live browser control', () => {
       method: 'POST',
       url: '/api/ingress/telegram',
       payload: telegramPayload({
-        updateId: 771017,
+        updateId: 771021,
         senderId,
         text: '/browser key aria=Search | Enter'
       })
@@ -296,7 +340,7 @@ describe('telegram live browser control', () => {
       method: 'POST',
       url: '/api/ingress/telegram',
       payload: telegramPayload({
-        updateId: 771018,
+        updateId: 771022,
         senderId,
         text: '/browser screenshot'
       })
@@ -308,7 +352,7 @@ describe('telegram live browser control', () => {
       method: 'POST',
       url: '/api/ingress/telegram',
       payload: telegramPayload({
-        updateId: 771019,
+        updateId: 771023,
         senderId,
         text: '/browser download https://example.test/export.csv'
       })
@@ -319,7 +363,7 @@ describe('telegram live browser control', () => {
       method: 'POST',
       url: '/api/ingress/telegram',
       payload: telegramPayload({
-        updateId: 771020,
+        updateId: 771024,
         senderId,
         text: '/browser upload #avatar | /tmp/live-avatar.png'
       })
@@ -330,7 +374,7 @@ describe('telegram live browser control', () => {
       method: 'POST',
       url: '/api/ingress/telegram',
       payload: telegramPayload({
-        updateId: 771021,
+        updateId: 771025,
         senderId,
         text: '/browser wait 750'
       })
@@ -343,6 +387,50 @@ describe('telegram live browser control', () => {
         actions: [
           expect.objectContaining({
             type: 'snapshot'
+          })
+        ]
+      })
+    );
+    expect(provider.runSessionActions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'live-telegram-1',
+        actions: [
+          expect.objectContaining({
+            type: 'reload',
+            timeoutMs: 2000
+          })
+        ]
+      })
+    );
+    expect(provider.runSessionActions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'live-telegram-1',
+        actions: [
+          expect.objectContaining({
+            type: 'back',
+            timeoutMs: 2000
+          })
+        ]
+      })
+    );
+    expect(provider.runSessionActions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'live-telegram-1',
+        actions: [
+          expect.objectContaining({
+            type: 'forward',
+            timeoutMs: 2000
+          })
+        ]
+      })
+    );
+    expect(provider.runSessionActions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'live-telegram-1',
+        actions: [
+          expect.objectContaining({
+            type: 'hover',
+            selector: 'button:has-text("Continue")'
           })
         ]
       })
@@ -464,7 +552,7 @@ describe('telegram live browser control', () => {
       method: 'POST',
       url: '/api/ingress/telegram',
       payload: telegramPayload({
-        updateId: 771022,
+        updateId: 771026,
         senderId,
         text: '/browser live close'
       })

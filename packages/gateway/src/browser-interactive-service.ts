@@ -8,8 +8,12 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 export type BrowserInteractiveActionType =
   | 'open'
+  | 'reload'
+  | 'back'
+  | 'forward'
   | 'read'
   | 'snapshot'
+  | 'hover'
   | 'click'
   | 'type'
   | 'upload'
@@ -613,6 +617,22 @@ async function executeCdpAction(input: {
       return actionResult(index, action, true, `Opened ${targetUrl}`, null);
     }
 
+    if (action.type === 'reload') {
+      await client.send('Page.reload', { ignoreCache: true });
+      await delay(Math.min(Math.max(action.timeoutMs ?? 1_000, 250), 5_000));
+      return actionResult(index, action, true, 'Reloaded page', null);
+    }
+
+    if (action.type === 'back' || action.type === 'forward') {
+      const delta = action.type === 'back' ? -1 : 1;
+      const navigated = await navigateHistoryRelative(client, delta);
+      if (!navigated) {
+        throw new Error(action.type === 'back' ? 'No previous browser history entry.' : 'No next browser history entry.');
+      }
+      await delay(Math.min(Math.max(action.timeoutMs ?? 1_000, 250), 5_000));
+      return actionResult(index, action, true, action.type === 'back' ? 'Navigated back' : 'Navigated forward', null);
+    }
+
     if (action.type === 'wait') {
       await delay(Math.min(Math.max(action.timeoutMs ?? 500, 100), 10_000));
       return actionResult(index, action, true, `Waited ${String(action.timeoutMs ?? 500)}ms`, null);
@@ -628,6 +648,16 @@ async function executeCdpAction(input: {
       const snapshot = await evaluateString(client, interactiveSnapshotExpression());
       artifacts.push(snapshotArtifact(index, snapshot, previewChars));
       return actionResult(index, action, true, `Captured ${String(snapshot.length)} snapshot characters`, snapshot.slice(0, previewChars));
+    }
+
+    if (action.type === 'hover') {
+      const selector = requireSelector(action);
+      const point = await dispatchNativeHover(client, selector);
+      if (!point) {
+        throw new Error(`Selector not found: ${selector}`);
+      }
+      await delay(Math.min(Math.max(action.timeoutMs ?? 250, 50), 5_000));
+      return actionResult(index, action, true, `Hovered ${selector}`, null);
     }
 
     if (action.type === 'click') {
@@ -1277,6 +1307,22 @@ async function dispatchNativeClick(client: CdpCommandClient, selector: string): 
   return point;
 }
 
+async function dispatchNativeHover(client: CdpCommandClient, selector: string): Promise<CdpSelectorPoint | null> {
+  const point = await resolveSelectorPoint(client, selector);
+  if (!point) {
+    return null;
+  }
+  await bringPageToFront(client);
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: point.x,
+    y: point.y,
+    button: 'none',
+    buttons: 0
+  });
+  return point;
+}
+
 async function bringPageToFront(client: CdpCommandClient): Promise<void> {
   try {
     await client.send('Page.bringToFront');
@@ -1692,6 +1738,28 @@ function normalizeScrollDelta(value: number | null | undefined, fallback: number
     return fallback;
   }
   return Math.max(-3_000, Math.min(3_000, value));
+}
+
+async function navigateHistoryRelative(client: CdpCommandClient, delta: -1 | 1): Promise<boolean> {
+  const history = await client.send('Page.getNavigationHistory');
+  if (!isRecord(history) || !Array.isArray(history.entries)) {
+    return false;
+  }
+  const currentIndex = readFiniteNumberField(history, 'currentIndex');
+  if (currentIndex === null) {
+    return false;
+  }
+  const targetIndex = currentIndex + delta;
+  const targetEntry = history.entries[targetIndex];
+  if (!isRecord(targetEntry)) {
+    return false;
+  }
+  const entryId = readFiniteNumberField(targetEntry, 'id');
+  if (entryId === null) {
+    return false;
+  }
+  await client.send('Page.navigateToHistoryEntry', { entryId });
+  return true;
 }
 
 async function dispatchNativeKeyPress(client: CdpCommandClient, keyPress: CdpKeyPress): Promise<void> {

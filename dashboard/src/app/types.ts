@@ -1059,8 +1059,12 @@ export interface BrowserTestRequestRow {
 
 export type BrowserInteractiveActionType =
   | 'open'
+  | 'reload'
+  | 'back'
+  | 'forward'
   | 'read'
   | 'snapshot'
+  | 'hover'
   | 'click'
   | 'type'
   | 'upload'

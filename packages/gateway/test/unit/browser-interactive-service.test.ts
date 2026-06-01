@@ -28,7 +28,7 @@ interface FakeCdpState {
 }
 
 describe('browser interactive service', () => {
-  it('uses native CDP events for click, type, upload, download, scroll, and keypress actions', async () => {
+  it('uses native CDP events and deterministic navigation for rich browser actions', async () => {
     const fakeCdp = await startFakeCdpServer();
     const uploadRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ops-browser-upload-test-'));
     const uploadPath = path.join(uploadRoot, 'fixture.txt');
@@ -41,7 +41,11 @@ describe('browser interactive service', () => {
         previewChars: 120,
         actions: [
           { type: 'open', url: 'https://example.test/form', timeoutMs: 250 },
+          { type: 'reload', timeoutMs: 250 },
+          { type: 'back', timeoutMs: 250 },
+          { type: 'forward', timeoutMs: 250 },
           { type: 'snapshot' },
+          { type: 'hover', selector: '#menu', timeoutMs: 50 },
           { type: 'click', selector: '#continue', timeoutMs: 100 },
           { type: 'type', selector: 'aria=Search', text: 'hello native input', timeoutMs: 50 },
           { type: 'upload', selector: '#avatar', filePath: uploadPath, timeoutMs: 50 },
@@ -56,7 +60,11 @@ describe('browser interactive service', () => {
       expect(result.provider).toBe('cdp_chrome');
       expect(result.actions.map((action) => action.type)).toEqual([
         'open',
+        'reload',
+        'back',
+        'forward',
         'snapshot',
+        'hover',
         'click',
         'type',
         'upload',
@@ -72,6 +80,7 @@ describe('browser interactive service', () => {
         .filter((command) => command.method === 'Input.dispatchMouseEvent')
         .map((command) => readStringField(command.params, 'type'));
       expect(mouseEventTypes).toEqual([
+        'mouseMoved',
         'mouseMoved',
         'mousePressed',
         'mouseReleased',
@@ -102,6 +111,9 @@ describe('browser interactive service', () => {
           command.method === 'Input.dispatchMouseEvent' && readStringField(command.params, 'type') === 'mouseWheel'
       );
       expect(wheelCommand ? readNumberField(wheelCommand.params, 'deltaY') : null).toBe(720);
+      expect(fakeCdp.commands.some((command) => command.method === 'Page.reload')).toBe(true);
+      const historyCommands = fakeCdp.commands.filter((command) => command.method === 'Page.navigateToHistoryEntry');
+      expect(historyCommands.map((command) => readNumberField(command.params, 'entryId'))).toEqual([1, 3]);
 
       const insertedTextCommand = fakeCdp.commands.find((command) => command.method === 'Input.insertText');
       expect(insertedTextCommand ? readStringField(insertedTextCommand.params, 'text') : '').toBe('hello native input');
@@ -166,6 +178,10 @@ describe('browser interactive service', () => {
         sessionId: started.session.sessionId,
         previewChars: 120,
         actions: [
+          { type: 'hover', selector: '#continue', timeoutMs: 50 },
+          { type: 'reload', timeoutMs: 250 },
+          { type: 'back', timeoutMs: 250 },
+          { type: 'forward', timeoutMs: 250 },
           { type: 'click', selector: '#continue', timeoutMs: 100 },
           { type: 'snapshot' },
           { type: 'type', selector: '#search', text: 'live session input', timeoutMs: 50 },
@@ -181,6 +197,10 @@ describe('browser interactive service', () => {
       expect(acted.session.lastActivityAt >= started.session.lastActivityAt).toBe(true);
       expect(acted.control.ok).toBe(true);
       expect(acted.control.actions.map((action) => action.type)).toEqual([
+        'hover',
+        'reload',
+        'back',
+        'forward',
         'click',
         'snapshot',
         'type',
@@ -351,6 +371,16 @@ function cdpResultFor(method: string, params: Record<string, unknown>, state: Fa
   }
   if (method === 'Page.captureScreenshot') {
     return { data: Buffer.from('png', 'utf8').toString('base64') };
+  }
+  if (method === 'Page.getNavigationHistory') {
+    return {
+      currentIndex: 1,
+      entries: [
+        { id: 1, url: 'https://example.test/previous' },
+        { id: 2, url: 'https://example.test/form' },
+        { id: 3, url: 'https://example.test/next' }
+      ]
+    };
   }
   return {};
 }

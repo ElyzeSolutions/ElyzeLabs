@@ -107,9 +107,13 @@ const TRANSPORT_OPTIONS: BrowserTransportMode[] = ['stdio', 'http'];
 const LIVE_BROWSER_ACTION_OPTIONS: Array<{ id: BrowserInteractiveActionType; label: string }> = [
   { id: 'read', label: 'Read page' },
   { id: 'snapshot', label: 'Snapshot targets' },
+  { id: 'hover', label: 'Hover selector' },
   { id: 'click', label: 'Click selector' },
   { id: 'type', label: 'Type text' },
   { id: 'open', label: 'Open URL' },
+  { id: 'reload', label: 'Reload page' },
+  { id: 'back', label: 'Back' },
+  { id: 'forward', label: 'Forward' },
   { id: 'scroll', label: 'Scroll' },
   { id: 'keypress', label: 'Keypress' },
   { id: 'screenshot', label: 'Screenshot' },
@@ -524,7 +528,7 @@ function buildLiveBrowserAction(form: BrowserFormState['liveForm']): BrowserInte
 }
 
 function isLiveBrowserActionReady(form: BrowserFormState['liveForm']): boolean {
-  if (form.actionType === 'click' || form.actionType === 'type' || form.actionType === 'upload') {
+  if (form.actionType === 'click' || form.actionType === 'type' || form.actionType === 'hover' || form.actionType === 'upload') {
     return form.selector.trim().length > 0;
   }
   if (form.actionType === 'open') {

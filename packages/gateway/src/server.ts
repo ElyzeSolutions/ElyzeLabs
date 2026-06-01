@@ -6011,7 +6011,7 @@ export async function buildGatewayApp(
       {
         id: 'click_type_pdf',
         status: 'certified',
-        summary: 'CDP-level open/read/snapshot/click/type/screenshot/PDF controls are exposed through the interactive browser API.',
+        summary: 'CDP-level open/reload/back/forward/read/snapshot/hover/click/type/scroll/key/upload/download/screenshot/PDF controls are exposed through the interactive browser API.',
         evidence: ['/api/browser/interactive/run', 'packages/gateway/src/browser-interactive-service.ts'],
         blocking: false
       }
@@ -53915,8 +53915,12 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
   const parseBrowserInteractiveActionType = (value: unknown): BrowserInteractiveActionType | null => {
     if (
       value === 'open' ||
+      value === 'reload' ||
+      value === 'back' ||
+      value === 'forward' ||
       value === 'read' ||
       value === 'snapshot' ||
+      value === 'hover' ||
       value === 'click' ||
       value === 'type' ||
       value === 'upload' ||
@@ -57004,7 +57008,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
             session,
             'system',
             'system',
-            `Live browser session ${existingLiveSessionId} is already active for this chat. Use /browser observe, /browser read, /browser open <url|site>, /browser click <selector>, /browser type <selector> | <text>, /browser scroll [selector | pixels], /browser key [selector | key], /browser screenshot, /browser pdf, /browser download <selector|url>, /browser upload <selector> | <path>, or /browser live close.`,
+            `Live browser session ${existingLiveSessionId} is already active for this chat. Use /browser observe, /browser read, /browser open <url|site>, /browser reload, /browser back, /browser forward, /browser hover <selector>, /browser click <selector>, /browser type <selector> | <text>, /browser scroll [selector | pixels], /browser key [selector | key], /browser screenshot, /browser pdf, /browser download <selector|url>, /browser upload <selector> | <path>, or /browser live close.`,
             {
               command: 'browser',
               subcommand: 'live',
@@ -57134,7 +57138,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
             updatedSession,
             'system',
             'system',
-            `Live browser session ${started.session.sessionId} opened ${started.session.currentUrl ?? started.session.startedUrl}${authSummary}. Use /browser observe, /browser read, /browser open <url|site>, /browser click <selector>, /browser type <selector> | <text>, /browser scroll [selector | pixels], /browser key [selector | key], /browser screenshot, /browser pdf, /browser download <selector|url>, /browser upload <selector> | <path>, then /browser live close.`,
+            `Live browser session ${started.session.sessionId} opened ${started.session.currentUrl ?? started.session.startedUrl}${authSummary}. Use /browser observe, /browser read, /browser open <url|site>, /browser reload, /browser back, /browser forward, /browser hover <selector>, /browser click <selector>, /browser type <selector> | <text>, /browser scroll [selector | pixels], /browser key [selector | key], /browser screenshot, /browser pdf, /browser download <selector|url>, /browser upload <selector> | <path>, then /browser live close.`,
             {
               command: 'browser',
               subcommand: 'live',
@@ -57173,6 +57177,10 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         subcommand === 'observe' ||
         subcommand === 'read' ||
         subcommand === 'open' ||
+        subcommand === 'reload' ||
+        subcommand === 'back' ||
+        subcommand === 'forward' ||
+        subcommand === 'hover' ||
         subcommand === 'click' ||
         subcommand === 'type' ||
         subcommand === 'scroll' ||
@@ -57218,6 +57226,17 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
           const targetUrl = explicitUrl || (siteKey ? resolveBrowserConnectPreset(siteKey, null).verifyUrl : '');
           if (targetUrl) {
             action = { type: 'open', url: targetUrl, timeoutMs: 2_000 };
+          }
+        } else if (subcommand === 'reload') {
+          action = { type: 'reload', timeoutMs: 2_000 };
+        } else if (subcommand === 'back') {
+          action = { type: 'back', timeoutMs: 2_000 };
+        } else if (subcommand === 'forward') {
+          action = { type: 'forward', timeoutMs: 2_000 };
+        } else if (subcommand === 'hover') {
+          const selector = args.slice(1).join(' ').trim();
+          if (selector) {
+            action = { type: 'hover', selector, timeoutMs: 1_000 };
           }
         } else if (subcommand === 'click') {
           const selector = args.slice(1).join(' ').trim();
@@ -57284,30 +57303,38 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
           }
         }
         if (!action) {
-          const usage =
-            subcommand === 'click'
-              ? 'Usage: /browser click <selector>'
-              : subcommand === 'type'
-                ? 'Usage: /browser type <selector> | <text>'
-                : subcommand === 'open'
-                  ? 'Usage: /browser open <url|tiktok|instagram|reddit|x|pinterest|facebook>'
-                  : subcommand === 'scroll'
-                    ? 'Usage: /browser scroll [selector | pixels]'
-                    : subcommand === 'key' || subcommand === 'keypress' || subcommand === 'press'
-                      ? 'Usage: /browser key [selector | key]'
-                      : subcommand === 'download'
-                        ? 'Usage: /browser download <selector|url>'
-                        : subcommand === 'upload'
-                          ? 'Usage: /browser upload <selector> | <path[,path]>'
-                          : subcommand === 'wait'
-                            ? 'Usage: /browser wait [milliseconds]'
-                            : subcommand === 'read'
-                              ? 'Usage: /browser read'
-                              : subcommand === 'screenshot'
-                                ? 'Usage: /browser screenshot'
-                                : subcommand === 'pdf'
-                                  ? 'Usage: /browser pdf'
-                                  : 'Usage: /browser observe';
+          let usage = 'Usage: /browser observe';
+          if (subcommand === 'click') {
+            usage = 'Usage: /browser click <selector>';
+          } else if (subcommand === 'type') {
+            usage = 'Usage: /browser type <selector> | <text>';
+          } else if (subcommand === 'open') {
+            usage = 'Usage: /browser open <url|tiktok|instagram|reddit|x|pinterest|facebook>';
+          } else if (subcommand === 'hover') {
+            usage = 'Usage: /browser hover <selector>';
+          } else if (subcommand === 'reload') {
+            usage = 'Usage: /browser reload';
+          } else if (subcommand === 'back') {
+            usage = 'Usage: /browser back';
+          } else if (subcommand === 'forward') {
+            usage = 'Usage: /browser forward';
+          } else if (subcommand === 'scroll') {
+            usage = 'Usage: /browser scroll [selector | pixels]';
+          } else if (subcommand === 'key' || subcommand === 'keypress' || subcommand === 'press') {
+            usage = 'Usage: /browser key [selector | key]';
+          } else if (subcommand === 'download') {
+            usage = 'Usage: /browser download <selector|url>';
+          } else if (subcommand === 'upload') {
+            usage = 'Usage: /browser upload <selector> | <path[,path]>';
+          } else if (subcommand === 'wait') {
+            usage = 'Usage: /browser wait [milliseconds]';
+          } else if (subcommand === 'read') {
+            usage = 'Usage: /browser read';
+          } else if (subcommand === 'screenshot') {
+            usage = 'Usage: /browser screenshot';
+          } else if (subcommand === 'pdf') {
+            usage = 'Usage: /browser pdf';
+          }
           await saveOutboundMessage(session, 'system', 'system', usage, {
             command: 'browser',
             subcommand

@@ -644,6 +644,27 @@ describe('BrowserPage', () => {
     );
     expect(await screen.findByText('Clicked #continue')).toBeInTheDocument();
 
+    fireEvent.change(screen.getByLabelText('Live action'), {
+      target: { value: 'reload' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Run Live Action' }));
+
+    await waitFor(() =>
+      expect(apiMocks.runBrowserInteractiveSessionActions).toHaveBeenLastCalledWith(
+        'token-123',
+        'live-session-1',
+        expect.objectContaining({
+          actions: [
+            expect.objectContaining({
+              type: 'reload',
+              timeoutMs: 500
+            })
+          ],
+          previewChars: 1000
+        })
+      )
+    );
+
     fireEvent.click(screen.getByRole('button', { name: 'Close Live Browser' }));
 
     await waitFor(() => expect(apiMocks.closeBrowserInteractiveSession).toHaveBeenCalledWith('token-123', 'live-session-1'));
