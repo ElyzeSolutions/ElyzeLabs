@@ -12,7 +12,7 @@ Error envelope:
 { "ok": false, "error": "message", "details": {} }
 ```
 
-Generated route coverage lives in [docs/generated/api-route-inventory.md](generated/api-route-inventory.md). Run `pnpm api:inventory` after gateway route changes and `pnpm api:inventory:check` in verification. The current inventory reports 288 Fastify routes, with 288 explicitly documented here and 0 undocumented routes.
+Generated route coverage lives in [docs/generated/api-route-inventory.md](generated/api-route-inventory.md). Run `pnpm api:inventory` after gateway route changes and `pnpm api:inventory:check` in verification. The current inventory reports 299 Fastify routes, with 292 explicitly documented here and 7 undocumented routes.
 
 ## Core Endpoints
 
