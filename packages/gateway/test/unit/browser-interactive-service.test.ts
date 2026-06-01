@@ -41,12 +41,13 @@ describe('browser interactive service', () => {
         previewChars: 120,
         actions: [
           { type: 'open', url: 'https://example.test/form', timeoutMs: 250 },
+          { type: 'snapshot' },
           { type: 'click', selector: '#continue', timeoutMs: 100 },
-          { type: 'type', selector: '#search', text: 'hello native input', timeoutMs: 50 },
+          { type: 'type', selector: 'aria=Search', text: 'hello native input', timeoutMs: 50 },
           { type: 'upload', selector: '#avatar', filePath: uploadPath, timeoutMs: 50 },
-          { type: 'download', selector: '#export', timeoutMs: 500 },
+          { type: 'download', selector: 'button:has-text("Export")', timeoutMs: 500 },
           { type: 'scroll', selector: '#feed', deltaY: 720, timeoutMs: 50 },
-          { type: 'keypress', key: 'Enter', timeoutMs: 50 },
+          { type: 'keypress', selector: 'text=Search', key: 'Enter', timeoutMs: 50 },
           { type: 'read' }
         ]
       });
@@ -55,6 +56,7 @@ describe('browser interactive service', () => {
       expect(result.provider).toBe('cdp_chrome');
       expect(result.actions.map((action) => action.type)).toEqual([
         'open',
+        'snapshot',
         'click',
         'type',
         'upload',
@@ -63,6 +65,8 @@ describe('browser interactive service', () => {
         'keypress',
         'read'
       ]);
+      const snapshotArtifact = result.artifacts.find((artifact) => artifact.kind === 'snapshot');
+      expect(snapshotArtifact?.contentPreview).toContain('selector=aria=Search');
 
       const mouseEventTypes = fakeCdp.commands
         .filter((command) => command.method === 'Input.dispatchMouseEvent')
@@ -77,8 +81,21 @@ describe('browser interactive service', () => {
         'mouseMoved',
         'mousePressed',
         'mouseReleased',
-        'mouseWheel'
+        'mouseWheel',
+        'mouseMoved',
+        'mousePressed',
+        'mouseReleased'
       ]);
+      const pressedCommand = fakeCdp.commands.find(
+        (command) =>
+          command.method === 'Input.dispatchMouseEvent' && readStringField(command.params, 'type') === 'mousePressed'
+      );
+      const releasedCommand = fakeCdp.commands.find(
+        (command) =>
+          command.method === 'Input.dispatchMouseEvent' && readStringField(command.params, 'type') === 'mouseReleased'
+      );
+      expect(pressedCommand ? readNumberField(pressedCommand.params, 'buttons') : null).toBe(1);
+      expect(releasedCommand ? readNumberField(releasedCommand.params, 'buttons') : null).toBe(0);
 
       const wheelCommand = fakeCdp.commands.find(
         (command) =>
@@ -97,6 +114,8 @@ describe('browser interactive service', () => {
         .map((command) => readStringField(command.params, 'expression'));
       expect(selectorExpressions.some((expression) => expression.includes('shadowRoot'))).toBe(true);
       expect(selectorExpressions.some((expression) => expression.includes('contentDocument'))).toBe(true);
+      expect(selectorExpressions.some((expression) => expression.includes('opsInteractiveSnapshot'))).toBe(true);
+      expect(selectorExpressions.some((expression) => expression.includes('parseSpecialSelector'))).toBe(true);
 
       const downloadCommand = fakeCdp.commands.find((command) => command.method === 'Browser.setDownloadBehavior');
       expect(downloadCommand ? readStringField(downloadCommand.params, 'behavior') : '').toBe('allow');
@@ -148,6 +167,7 @@ describe('browser interactive service', () => {
         previewChars: 120,
         actions: [
           { type: 'click', selector: '#continue', timeoutMs: 100 },
+          { type: 'snapshot' },
           { type: 'type', selector: '#search', text: 'live session input', timeoutMs: 50 },
           { type: 'upload', selector: '#avatar', filePaths: [uploadPath], timeoutMs: 50 },
           { type: 'download', selector: '#export', timeoutMs: 500 },
@@ -162,6 +182,7 @@ describe('browser interactive service', () => {
       expect(acted.control.ok).toBe(true);
       expect(acted.control.actions.map((action) => action.type)).toEqual([
         'click',
+        'snapshot',
         'type',
         'upload',
         'download',
@@ -335,6 +356,20 @@ function cdpResultFor(method: string, params: Record<string, unknown>, state: Fa
 }
 
 function runtimeEvaluateResult(expression: string): Record<string, unknown> {
+  if (expression.includes('opsInteractiveSnapshot')) {
+    return {
+      result: {
+        type: 'string',
+        value: [
+          'url: https://example.test/form',
+          'title: Example form',
+          'targets:',
+          '- 1. textbox "Search" selector=aria=Search box=96,48,120,36',
+          '- 2. button "Export" selector=button:has-text("Export") box=96,96,120,36'
+        ].join('\n')
+      }
+    };
+  }
   if (expression.includes('return found ? found.el : null')) {
     return { result: { type: 'object', objectId: 'deep-node-7' } };
   }

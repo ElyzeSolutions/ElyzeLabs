@@ -6010,7 +6010,7 @@ export async function buildGatewayApp(
       {
         id: 'click_type_pdf',
         status: 'certified',
-        summary: 'CDP-level open/read/click/type/screenshot/PDF controls are exposed through the interactive browser API.',
+        summary: 'CDP-level open/read/snapshot/click/type/screenshot/PDF controls are exposed through the interactive browser API.',
         evidence: ['/api/browser/interactive/run', 'packages/gateway/src/browser-interactive-service.ts'],
         blocking: false
       }
@@ -53796,6 +53796,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
     if (
       value === 'open' ||
       value === 'read' ||
+      value === 'snapshot' ||
       value === 'click' ||
       value === 'type' ||
       value === 'upload' ||

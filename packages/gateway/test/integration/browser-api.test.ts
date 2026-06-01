@@ -363,6 +363,15 @@ describe('gateway browser api integration', () => {
             contentBase64: Buffer.from('hello world', 'utf8').toString('base64')
           },
           {
+            id: 'interactive_artifact:1:snapshot',
+            actionIndex: 1,
+            kind: 'snapshot',
+            mimeType: 'text/plain',
+            sizeBytes: 42,
+            contentPreview: 'targets:\n- 1. button "Continue" selector=text=Continue',
+            contentBase64: Buffer.from('targets:\n- 1. button "Continue" selector=text=Continue', 'utf8').toString('base64')
+          },
+          {
             id: 'interactive_artifact:3:screenshot',
             actionIndex: 3,
             kind: 'screenshot',
@@ -446,6 +455,15 @@ describe('gateway browser api integration', () => {
             error: null
           })),
           artifacts: [
+            {
+              id: 'interactive_artifact:1:snapshot',
+              actionIndex: 1,
+              kind: 'snapshot',
+              mimeType: 'text/plain',
+              sizeBytes: 38,
+              contentPreview: 'targets:\n- 1. textbox "Search" selector=aria=Search',
+              contentBase64: Buffer.from('targets:\n- 1. textbox "Search" selector=aria=Search', 'utf8').toString('base64')
+            },
             {
               id: 'interactive_artifact:2:read',
               actionIndex: 2,
@@ -561,6 +579,7 @@ describe('gateway browser api integration', () => {
         sessionProfileId: profileBody.sessionProfile.id,
         actions: [
           { type: 'read' },
+          { type: 'snapshot' },
           { type: 'click', selector: '#continue' },
           { type: 'type', selector: '#search', text: 'instagram reels' },
           { type: 'upload', selector: '#avatar', filePath: '/tmp/ops-avatar.png' },
@@ -587,6 +606,7 @@ describe('gateway browser api integration', () => {
     expect(interactiveBody.control.provider).toBe('test');
     expect(interactiveBody.control.actions.map((action) => action.type)).toEqual([
       'read',
+      'snapshot',
       'click',
       'type',
       'upload',
@@ -598,6 +618,7 @@ describe('gateway browser api integration', () => {
     ]);
     expect(interactiveBody.control.artifacts.map((artifact) => artifact.kind)).toEqual([
       'read',
+      'snapshot',
       'screenshot',
       'download'
     ]);
@@ -670,6 +691,7 @@ describe('gateway browser api integration', () => {
       payload: {
         actions: [
           { type: 'click', selector: '#continue' },
+          { type: 'snapshot' },
           { type: 'type', selector: '#search', text: 'live instagram reels' },
           { type: 'upload', selector: '#avatar', filePaths: ['/tmp/live-avatar.png'] },
           { type: 'download', selector: '#export', timeoutMs: 750 },
@@ -690,6 +712,7 @@ describe('gateway browser api integration', () => {
     expect(liveActionBody.control.ok).toBe(true);
     expect(liveActionBody.control.actions.map((action) => action.type)).toEqual([
       'click',
+      'snapshot',
       'type',
       'upload',
       'download',
@@ -697,7 +720,7 @@ describe('gateway browser api integration', () => {
       'keypress',
       'read'
     ]);
-    expect(liveActionBody.control.artifacts.map((artifact) => artifact.kind)).toEqual(['read', 'download']);
+    expect(liveActionBody.control.artifacts.map((artifact) => artifact.kind)).toEqual(['snapshot', 'read', 'download']);
     expect(provider.runSessionActions).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: liveSessionId,

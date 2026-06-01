@@ -9,6 +9,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 export type BrowserInteractiveActionType =
   | 'open'
   | 'read'
+  | 'snapshot'
   | 'click'
   | 'type'
   | 'upload'
@@ -76,7 +77,7 @@ export interface BrowserInteractiveActionResult {
 export interface BrowserInteractiveArtifact {
   id: string;
   actionIndex: number;
-  kind: 'read' | 'screenshot' | 'pdf' | 'download';
+  kind: 'read' | 'snapshot' | 'screenshot' | 'pdf' | 'download';
   mimeType: string;
   sizeBytes: number;
   contentPreview: string;
@@ -623,6 +624,12 @@ async function executeCdpAction(input: {
       return actionResult(index, action, true, `Read ${String(text.length)} characters`, text.slice(0, previewChars));
     }
 
+    if (action.type === 'snapshot') {
+      const snapshot = await evaluateString(client, interactiveSnapshotExpression());
+      artifacts.push(snapshotArtifact(index, snapshot, previewChars));
+      return actionResult(index, action, true, `Captured ${String(snapshot.length)} snapshot characters`, snapshot.slice(0, previewChars));
+    }
+
     if (action.type === 'click') {
       const selector = requireSelector(action);
       const point = await dispatchNativeClick(client, selector);
@@ -693,6 +700,7 @@ async function executeCdpAction(input: {
         x: point.x,
         y: point.y,
         button: 'none',
+        buttons: 0,
         deltaX,
         deltaY
       });
@@ -1073,6 +1081,18 @@ function textArtifact(index: number, text: string, previewChars: number): Browse
   };
 }
 
+function snapshotArtifact(index: number, text: string, previewChars: number): BrowserInteractiveArtifact {
+  return {
+    id: `interactive_artifact:${String(index)}:snapshot`,
+    actionIndex: index,
+    kind: 'snapshot',
+    mimeType: 'text/plain',
+    sizeBytes: Buffer.byteLength(text, 'utf8'),
+    contentPreview: text.slice(0, previewChars),
+    contentBase64: Buffer.from(text, 'utf8').toString('base64')
+  };
+}
+
 async function downloadArtifact(
   index: number,
   downloaded: DownloadedFile,
@@ -1229,27 +1249,40 @@ async function dispatchNativeClick(client: CdpCommandClient, selector: string): 
   if (!point) {
     return null;
   }
+  await bringPageToFront(client);
   await client.send('Input.dispatchMouseEvent', {
     type: 'mouseMoved',
     x: point.x,
     y: point.y,
-    button: 'none'
+    button: 'none',
+    buttons: 0
   });
   await client.send('Input.dispatchMouseEvent', {
     type: 'mousePressed',
     x: point.x,
     y: point.y,
     button: 'left',
+    buttons: 1,
     clickCount: 1
   });
+  await delay(40);
   await client.send('Input.dispatchMouseEvent', {
     type: 'mouseReleased',
     x: point.x,
     y: point.y,
     button: 'left',
+    buttons: 0,
     clickCount: 1
   });
   return point;
+}
+
+async function bringPageToFront(client: CdpCommandClient): Promise<void> {
+  try {
+    await client.send('Page.bringToFront');
+  } catch {
+    // Some CDP targets do not expose Page.bringToFront. Native input can still proceed.
+  }
 }
 
 async function resolveSelectorPoint(client: CdpCommandClient, selector: string): Promise<CdpSelectorPoint | null> {
@@ -1400,10 +1433,86 @@ function selectorElementExpression(selector: string): string {
 function deepSelectorExpression(selector: string, foundBody: string): string {
   return `(() => {
     const selector = ${JSON.stringify(selector)};
+    const normalizeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+    const unquoteSelectorText = (value) => {
+      const trimmed = normalizeText(value);
+      if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      ) {
+        return trimmed.slice(1, -1);
+      }
+      return trimmed;
+    };
+    const cssQueryOne = (root, css) => {
+      try {
+        return root.querySelector(css);
+      } catch {
+        return null;
+      }
+    };
+    const cssQueryAll = (root, css) => {
+      try {
+        return Array.from(root.querySelectorAll(css));
+      } catch {
+        return [];
+      }
+    };
+    const readElementLabel = (node) => {
+      const aria = normalizeText(node.getAttribute && node.getAttribute('aria-label'));
+      if (aria) return aria;
+      const title = normalizeText(node.getAttribute && node.getAttribute('title'));
+      if (title) return title;
+      const placeholder = normalizeText(node.getAttribute && node.getAttribute('placeholder'));
+      if (placeholder) return placeholder;
+      const alt = normalizeText(node.getAttribute && node.getAttribute('alt'));
+      if (alt) return alt;
+      const text = normalizeText(node.innerText || node.textContent);
+      if (text) return text;
+      const name = normalizeText(node.getAttribute && node.getAttribute('name'));
+      return name;
+    };
+    const parseSpecialSelector = (raw) => {
+      const textPrefix = raw.match(/^text=(.*)$/i);
+      if (textPrefix) return { mode: 'text', base: '*', value: unquoteSelectorText(textPrefix[1]) };
+      const ariaPrefix = raw.match(/^(aria|label)=(.*)$/i);
+      if (ariaPrefix) return { mode: 'aria', base: '*', value: unquoteSelectorText(ariaPrefix[2]) };
+      const hasText = raw.match(/^(.+):has-text\\((.*)\\)$/i);
+      if (hasText) return { mode: 'text', base: normalizeText(hasText[1]) || '*', value: unquoteSelectorText(hasText[2]) };
+      return null;
+    };
+    const actionableSelector =
+      'a,button,input,textarea,select,summary,[role="button"],[role="link"],[role="textbox"],[contenteditable=""],[contenteditable="true"],[tabindex]:not([tabindex="-1"])';
+    const isContainerTag = (node) => {
+      const tag = node.tagName ? node.tagName.toLowerCase() : '';
+      return tag === 'html' || tag === 'body' || tag === 'main' || tag === 'section' || tag === 'article';
+    };
+    const candidatesForSpecial = (root, special) => {
+      if (special.base !== '*') return cssQueryAll(root, special.base);
+      const actionable = cssQueryAll(root, actionableSelector);
+      if (actionable.length > 0) return actionable;
+      return cssQueryAll(root, '*').filter((node) => !isContainerTag(node));
+    };
+    const elementMatchesSpecial = (node, special) => {
+      const needle = normalizeText(special.value).toLowerCase();
+      if (!needle) return false;
+      const haystack =
+        special.mode === 'aria'
+          ? readElementLabel(node).toLowerCase()
+          : normalizeText(node.innerText || node.textContent || readElementLabel(node)).toLowerCase();
+      return haystack.includes(needle);
+    };
     const findDeepTarget = (root) => {
       if (!root || typeof root.querySelector !== 'function') return null;
-      const direct = root.querySelector(selector);
-      if (direct) return { el: direct, frames: [] };
+      const special = parseSpecialSelector(selector);
+      if (special) {
+        const candidates = candidatesForSpecial(root, special);
+        const matched = candidates.find((candidate) => elementMatchesSpecial(candidate, special));
+        if (matched) return { el: matched, frames: [] };
+      } else {
+        const direct = cssQueryOne(root, selector);
+        if (direct) return { el: direct, frames: [] };
+      }
       const all = root.querySelectorAll('*');
       for (const node of all) {
         if (node.shadowRoot) {
@@ -1428,6 +1537,130 @@ function deepSelectorExpression(selector: string, foundBody: string): string {
     };
     const found = findDeepTarget(document);
     ${foundBody}
+  })()`;
+}
+
+function interactiveSnapshotExpression(): string {
+  return `(() => {
+    const opsInteractiveSnapshot = true;
+    const normalizeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+    const quoteAttribute = (value) => String(value).replace(/\\\\/g, '\\\\\\\\').replace(/"/g, '\\\\"');
+    const escapeCssIdent = (value) =>
+      window.CSS && typeof window.CSS.escape === 'function'
+        ? window.CSS.escape(value)
+        : String(value).replace(/[^a-zA-Z0-9_-]/g, '\\\\$&');
+    const isVisible = (node) => {
+      const rect = node.getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+      const style = window.getComputedStyle(node);
+      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) !== 0;
+    };
+    const labelFor = (node) => {
+      const aria = normalizeText(node.getAttribute('aria-label'));
+      if (aria) return aria;
+      const title = normalizeText(node.getAttribute('title'));
+      if (title) return title;
+      const placeholder = normalizeText(node.getAttribute('placeholder'));
+      if (placeholder) return placeholder;
+      const alt = normalizeText(node.getAttribute('alt'));
+      if (alt) return alt;
+      const text = normalizeText(node.innerText || node.textContent);
+      if (text) return text;
+      return normalizeText(node.getAttribute('name'));
+    };
+    const roleFor = (node) => {
+      const explicit = normalizeText(node.getAttribute('role'));
+      if (explicit) return explicit;
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'a') return 'link';
+      if (tag === 'button') return 'button';
+      if (tag === 'textarea') return 'textbox';
+      if (tag === 'select') return 'combobox';
+      if (tag === 'input') {
+        const type = normalizeText(node.getAttribute('type')).toLowerCase();
+        if (type === 'checkbox') return 'checkbox';
+        if (type === 'radio') return 'radio';
+        if (type === 'submit' || type === 'button') return 'button';
+        return 'textbox';
+      }
+      return tag;
+    };
+    const uniqueCss = (selector) => {
+      try {
+        return document.querySelectorAll(selector).length === 1;
+      } catch {
+        return false;
+      }
+    };
+    const nthSelectorFor = (node) => {
+      const parts = [];
+      let current = node;
+      while (current && current.nodeType === Node.ELEMENT_NODE && parts.length < 4) {
+        const tag = current.tagName.toLowerCase();
+        const parent = current.parentElement;
+        if (!parent) {
+          parts.unshift(tag);
+          break;
+        }
+        const sameTag = Array.from(parent.children).filter((child) => child.tagName === current.tagName);
+        const index = sameTag.indexOf(current) + 1;
+        parts.unshift(sameTag.length > 1 ? tag + ':nth-of-type(' + index + ')' : tag);
+        current = parent;
+      }
+      return parts.join(' > ');
+    };
+    const selectorFor = (node, label) => {
+      const id = normalizeText(node.id);
+      if (id && uniqueCss('#' + escapeCssIdent(id))) return '#' + escapeCssIdent(id);
+      const testId = normalizeText(node.getAttribute('data-testid'));
+      if (testId) return '[data-testid="' + quoteAttribute(testId) + '"]';
+      const name = normalizeText(node.getAttribute('name'));
+      if (name) return node.tagName.toLowerCase() + '[name="' + quoteAttribute(name) + '"]';
+      const aria = normalizeText(node.getAttribute('aria-label'));
+      if (aria) return 'aria=' + aria;
+      const tag = node.tagName.toLowerCase();
+      if (label && (tag === 'button' || tag === 'a' || tag === 'summary')) {
+        return tag + ':has-text("' + quoteAttribute(label.slice(0, 120)) + '")';
+      }
+      if (label) return 'text=' + label.slice(0, 120);
+      return nthSelectorFor(node);
+    };
+    const candidates = Array.from(
+      document.querySelectorAll(
+        'a,button,input,textarea,select,summary,[role="button"],[role="link"],[role="textbox"],[contenteditable=""],[contenteditable="true"],[tabindex]:not([tabindex="-1"])'
+      )
+    )
+      .filter(isVisible)
+      .slice(0, 80);
+    const lines = [
+      'url: ' + window.location.href,
+      'title: ' + normalizeText(document.title),
+      'targets:'
+    ];
+    candidates.forEach((node, index) => {
+      const rect = node.getBoundingClientRect();
+      const label = labelFor(node).slice(0, 160);
+      const role = roleFor(node);
+      const selector = selectorFor(node, label);
+      const disabled = node.disabled || node.getAttribute('aria-disabled') === 'true' ? ' disabled' : '';
+      lines.push(
+        '- ' +
+          String(index + 1) +
+          '. ' +
+          role +
+          ' "' +
+          label.replace(/"/g, '\\"') +
+          '" selector=' +
+          selector +
+          ' box=' +
+          [Math.round(rect.left), Math.round(rect.top), Math.round(rect.width), Math.round(rect.height)].join(',') +
+          disabled
+      );
+    });
+    if (candidates.length === 0) {
+      lines.push('- none');
+    }
+    return lines.join('\\n');
   })()`;
 }
 

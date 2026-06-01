@@ -105,6 +105,7 @@ const EXTRACTION_OPTIONS: BrowserExtractionMode[] = ['markdown', 'html', 'text']
 const TRANSPORT_OPTIONS: BrowserTransportMode[] = ['stdio', 'http'];
 const LIVE_BROWSER_ACTION_OPTIONS: Array<{ id: BrowserInteractiveActionType; label: string }> = [
   { id: 'read', label: 'Read page' },
+  { id: 'snapshot', label: 'Snapshot targets' },
   { id: 'click', label: 'Click selector' },
   { id: 'type', label: 'Type text' },
   { id: 'open', label: 'Open URL' },

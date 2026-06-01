@@ -1060,6 +1060,7 @@ export interface BrowserTestRequestRow {
 export type BrowserInteractiveActionType =
   | 'open'
   | 'read'
+  | 'snapshot'
   | 'click'
   | 'type'
   | 'upload'
@@ -1097,7 +1098,7 @@ export interface BrowserInteractiveActionResult {
 export interface BrowserInteractiveArtifactRow {
   id: string;
   actionIndex: number;
-  kind: 'read' | 'screenshot' | 'pdf' | 'download';
+  kind: 'read' | 'snapshot' | 'screenshot' | 'pdf' | 'download';
   mimeType: string;
   sizeBytes: number;
   contentPreview: string;
