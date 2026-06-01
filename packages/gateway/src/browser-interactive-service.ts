@@ -1742,7 +1742,11 @@ function normalizeScrollDelta(value: number | null | undefined, fallback: number
 
 async function navigateHistoryRelative(client: CdpCommandClient, delta: -1 | 1): Promise<boolean> {
   const history = await client.send('Page.getNavigationHistory');
-  if (!isRecord(history) || !Array.isArray(history.entries)) {
+  if (!isRecord(history)) {
+    return false;
+  }
+  const historyEntries = readUnknownArrayField(history, 'entries');
+  if (!historyEntries) {
     return false;
   }
   const currentIndex = readFiniteNumberField(history, 'currentIndex');
@@ -1750,7 +1754,7 @@ async function navigateHistoryRelative(client: CdpCommandClient, delta: -1 | 1):
     return false;
   }
   const targetIndex = currentIndex + delta;
-  const targetEntry = history.entries[targetIndex];
+  const targetEntry = historyEntries[targetIndex];
   if (!isRecord(targetEntry)) {
     return false;
   }
@@ -1889,6 +1893,18 @@ function readStringField(value: unknown, key: string): string {
 function readFiniteNumberField(value: Record<string, unknown>, key: string): number | null {
   const field = value[key];
   return typeof field === 'number' && Number.isFinite(field) ? field : null;
+}
+
+function readUnknownArrayField(value: Record<string, unknown>, key: string): unknown[] | null {
+  const field = value[key];
+  if (!Array.isArray(field)) {
+    return null;
+  }
+  const entries: unknown[] = [];
+  for (const entry of field) {
+    entries.push(entry);
+  }
+  return entries;
 }
 
 function requireSelector(action: BrowserInteractiveActionInput): string {
