@@ -369,6 +369,22 @@ describe('telegram prompt governance integration', () => {
     expect(blockedBody.blockedReason).toBe('secret_like');
     expect(telegramSends.join('\n')).toContain('Memory write blocked');
 
+    const modernBlockedIngress = await harness.inject({
+      method: 'POST',
+      url: '/api/ingress/telegram',
+      payload: telegramPayload({
+        updateId: 931423,
+        senderId: 93143,
+        username: 'memorygovernance',
+        text: '/remember API key sk-proj-test-secret-1234567890abcdefghijklmnop'
+      })
+    });
+    expect(modernBlockedIngress.statusCode).toBe(200);
+    const modernBlockedBody = responseRecord(modernBlockedIngress, 'modern blocked ingress body');
+    expect(modernBlockedBody.status).toBe('blocked');
+    expect(modernBlockedBody.reason).toBe('memory_write_policy');
+    expect(modernBlockedBody.blockedReason).toBe('secret_like');
+
     const memoryStatus = await harness.inject({
       method: 'GET',
       url: '/api/memory/auto-remember'
@@ -377,7 +393,7 @@ describe('telegram prompt governance integration', () => {
     const memoryStatusBody = responseRecord(memoryStatus, 'memory status body');
     const writeGovernance = recordField(memoryStatusBody, 'writeGovernance', 'memory write governance');
     const writeTelemetry = recordField(writeGovernance, 'telemetry', 'memory write telemetry');
-    expect(writeTelemetry.blocked).toBe(1);
+    expect(writeTelemetry.blocked).toBe(2);
 
     const doctorResponse = await harness.inject({
       method: 'GET',

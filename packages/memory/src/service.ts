@@ -163,7 +163,12 @@ const MEMORY_SECRET_PATTERNS: Array<{
   },
   {
     pattern: 'known_token_prefix',
-    expression: /\b(?:sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{16,}|xox[baprs]-[A-Za-z0-9-]{16,})\b/i,
+    expression: /\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{16,}|github_pat_[A-Za-z0-9_]{20,}_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{16,})\b/i,
+    severity: 'high'
+  },
+  {
+    pattern: 'named_secret_phrase',
+    expression: /\b(?:api[_ -]?key|secret|token|password|credential)\b\s*(?:is|as|=|:)?\s*['"]?(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,}_[A-Za-z0-9_]{12,}|xox[baprs]-[A-Za-z0-9-]{12,}|[A-Za-z0-9_\-./+=]{16,})\b/i,
     severity: 'high'
   },
   {

@@ -233,6 +233,13 @@ describe('memory service', () => {
     expect(secretPolicy.allowed).toBe(false);
     expect(secretPolicy.blockedReason).toBe('secret_like');
 
+    const modernSecretPolicy = evaluateMemoryWritePolicy('API key sk-proj-test-secret-1234567890abcdefghijklmnop');
+    expect(modernSecretPolicy.allowed).toBe(false);
+    expect(modernSecretPolicy.blockedReason).toBe('secret_like');
+
+    const safeCredentialPolicy = evaluateMemoryWritePolicy('The API key rotation checklist is reviewed monthly.');
+    expect(safeCredentialPolicy.allowed).toBe(true);
+
     await expect(
       service.remember({
         workspacePath,
