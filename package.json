@@ -28,6 +28,7 @@
     "test:e2e": "node scripts/testing/run-e2e.mjs",
     "test:browser": "node scripts/testing/run-browser-tests.mjs",
     "test:browser-schedule:cert": "node scripts/testing/run-browser-schedule-certification.mjs",
+    "test:interactive-browser:cert": "node scripts/testing/run-interactive-browser-certification.mjs",
     "test:live-social-browser": "node scripts/testing/run-live-social-browser-certification.mjs",
     "test:roadmap-closure": "tsx scripts/testing/run-roadmap-closure.ts",
     "test:chaos": "node scripts/testing/run-chaos-tests.mjs",

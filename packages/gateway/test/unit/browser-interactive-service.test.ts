@@ -52,7 +52,9 @@ describe('browser interactive service', () => {
           { type: 'download', selector: 'button:has-text("Export")', timeoutMs: 500 },
           { type: 'scroll', selector: '#feed', deltaY: 720, timeoutMs: 50 },
           { type: 'keypress', selector: 'text=Search', key: 'Enter', timeoutMs: 50 },
-          { type: 'read' }
+          { type: 'read' },
+          { type: 'screenshot' },
+          { type: 'pdf' }
         ]
       });
 
@@ -71,7 +73,9 @@ describe('browser interactive service', () => {
         'download',
         'scroll',
         'keypress',
-        'read'
+        'read',
+        'screenshot',
+        'pdf'
       ]);
       const snapshotArtifact = result.artifacts.find((artifact) => artifact.kind === 'snapshot');
       expect(snapshotArtifact?.contentPreview).toContain('selector=aria=Search');
@@ -133,6 +137,20 @@ describe('browser interactive service', () => {
       expect(downloadCommand ? readStringField(downloadCommand.params, 'behavior') : '').toBe('allow');
       const downloadArtifact = result.artifacts.find((artifact) => artifact.kind === 'download');
       expect(downloadArtifact?.contentPreview).toContain('download fixture');
+      const screenshotArtifact = result.artifacts.find((artifact) => artifact.kind === 'screenshot');
+      expect(screenshotArtifact).toMatchObject({
+        mimeType: 'image/png',
+        contentPreview: '[png screenshot]',
+        sizeBytes: 3
+      });
+      expect(screenshotArtifact?.contentBase64).toBe(Buffer.from('png', 'utf8').toString('base64'));
+      const pdfArtifact = result.artifacts.find((artifact) => artifact.kind === 'pdf');
+      expect(pdfArtifact).toMatchObject({
+        mimeType: 'application/pdf',
+        contentPreview: '[pdf document]',
+        sizeBytes: 13
+      });
+      expect(pdfArtifact?.contentBase64).toBe(Buffer.from('%PDF-1.7 fake', 'utf8').toString('base64'));
 
       const keyEventTypes = fakeCdp.commands
         .filter((command) => command.method === 'Input.dispatchKeyEvent')
@@ -371,6 +389,9 @@ function cdpResultFor(method: string, params: Record<string, unknown>, state: Fa
   }
   if (method === 'Page.captureScreenshot') {
     return { data: Buffer.from('png', 'utf8').toString('base64') };
+  }
+  if (method === 'Page.printToPDF') {
+    return { data: Buffer.from('%PDF-1.7 fake', 'utf8').toString('base64') };
   }
   if (method === 'Page.getNavigationHistory') {
     return {

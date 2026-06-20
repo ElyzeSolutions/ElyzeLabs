@@ -337,8 +337,11 @@
         "packages/gateway/test/integration/browser-api.test.ts",
         "packages/gateway/test/integration/browser-managed-profiles.test.ts",
         "packages/gateway/test/integration/browser-auth-routing.test.ts",
+        "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
+        "scripts/testing/run-interactive-browser-certification.mjs",
         "scripts/testing/run-live-social-browser-certification.mjs",
         "scripts/testing/scenarios/live-social-browser.json",
+        "docs/runbooks/interactive-browser-certification.md",
         "docs/runbooks/live-social-browser-certification.md"
       ],
       "referenceEvidence": [
@@ -350,6 +353,7 @@
       "verification": {
         "commands": [
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/browser-service.test.ts packages/gateway/test/unit/browser-interactive-service.test.ts packages/gateway/test/unit/browser-session-vault.test.ts packages/gateway/test/integration/browser-api.test.ts packages/gateway/test/integration/browser-managed-profiles.test.ts packages/gateway/test/integration/browser-auth-routing.test.ts dashboard/src/pages/BrowserPage.test.tsx",
+          "pnpm test:interactive-browser:cert",
           "pnpm test:live-social-browser"
         ],
         "testPaths": [
@@ -359,12 +363,13 @@
           "packages/gateway/test/integration/browser-api.test.ts",
           "packages/gateway/test/integration/browser-managed-profiles.test.ts",
           "packages/gateway/test/integration/browser-auth-routing.test.ts",
+          "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
           "dashboard/src/pages/BrowserPage.test.tsx"
         ]
       },
       "remainingGaps": [
         "Archive the redacted OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_VERIFY=1 report for TikTok, Instagram, Pinterest, X, and Reddit as release evidence.",
-        "Promote interactive click/type/PDF control from compatible service surface to a fully certified provider with live site scenarios.",
+        "Run interactive click/type/PDF against a real external dynamic site with non-mutating selectors before claiming arbitrary live-site operation.",
         "Keep Scrapling/cookie routing as the default for read-only authenticated social scraping so the lower-detection edge is not lost while interactive browser support expands."
       ]
     },
@@ -467,10 +472,13 @@
       "elyzeEvidence": [
         "scripts/testing/run-browser-tests.mjs",
         "scripts/testing/run-browser-schedule-certification.mjs",
+        "scripts/testing/run-interactive-browser-certification.mjs",
         "scripts/testing/run-live-social-browser-certification.mjs",
         "scripts/testing/scenarios/live-social-browser.json",
+        "docs/runbooks/interactive-browser-certification.md",
         "docs/runbooks/live-social-browser-certification.md",
         "packages/gateway/test/integration/browser-auth-routing.test.ts",
+        "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
         "packages/gateway/test/integration/telegram-smoke-test.test.ts",
         "packages/gateway/test/integration/telegram-backlog-kanban.test.ts"
       ],
@@ -483,17 +491,19 @@
       "verification": {
         "commands": [
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/browser-auth-routing.test.ts packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/telegram-smoke-test.test.ts",
+          "pnpm test:interactive-browser:cert",
           "pnpm test:live-social-browser"
         ],
         "testPaths": [
           "packages/gateway/test/integration/browser-auth-routing.test.ts",
+          "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
           "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
           "packages/gateway/test/integration/telegram-smoke-test.test.ts"
         ]
       },
       "remainingGaps": [
         "Archive opt-in live scenario reports for real Telegram credentials and saved browser session profiles before claiming production readiness.",
-        "Persist binary screenshots/PDFs from the interactive provider when OPS_LIVE_SCENARIO_INTERACTIVE=1, while keeping report artifacts redacted.",
+        "Persist binary screenshots/PDFs from external live interactive scenarios while keeping report artifacts redacted.",
         "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
       ]
     },
