@@ -15,8 +15,15 @@ describe('best-in-class capability matrix', () => {
     const generated = JSON.parse(fs.readFileSync(generatedPath, 'utf8'));
 
     expect(generated.schema).toBe('ops.best-in-class-audit.v1');
-    expect(generated.readiness).toBe('ready');
-    expect(generated.totals.requiredGaps).toBe(0);
+    expect(generated.readiness).toBe('not_ready');
+    expect(generated.totals.requiredGaps).toBeGreaterThan(0);
+    expect(generated.requiredGaps.map((entry: { id: string }) => entry.id)).toEqual([
+      'telegram_live_smoke',
+      'managed_browser_profile',
+      'operator_kanban_workboard',
+      'chat_process_runtime',
+      'e2e_scenario_certification'
+    ]);
     expect(generated.statusCounts.ahead).toBeGreaterThan(0);
     expect(generated.statusCounts.parity).toBeGreaterThan(0);
     expect(generated.competitors.map((entry: { id: string }) => entry.id)).toEqual([
