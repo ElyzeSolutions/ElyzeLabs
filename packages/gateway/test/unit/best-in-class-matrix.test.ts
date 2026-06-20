@@ -16,9 +16,8 @@ describe('best-in-class capability matrix', () => {
 
     expect(generated.schema).toBe('ops.best-in-class-audit.v1');
     expect(generated.readiness).toBe('not_ready');
-    expect(generated.totals.requiredGaps).toBeGreaterThan(0);
+    expect(generated.totals.requiredGaps).toBe(4);
     expect(generated.requiredGaps.map((entry: { id: string }) => entry.id)).toEqual([
-      'telegram_live_smoke',
       'managed_browser_profile',
       'operator_kanban_workboard',
       'chat_process_runtime',
