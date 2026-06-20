@@ -2,7 +2,7 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "60782a7af2e49d28606dd05696ed03a89062e2684300a4935c4b5f3a62142fe0",
+  "sourceHash": "dddd78a8570ac31a33b833af0d44584410cb3087bd424528a001f5294488e252",
   "updatedAt": "2026-06-20",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
@@ -105,9 +105,8 @@
       "priority": "P1",
       "status": "partial",
       "remainingGaps": [
-        "Add dashboard chat visual/responsive screenshots similar to OpenClaw chat-flow coverage.",
-        "Make browser-profile auto-selection and tool evidence more explicit in Mission Control messages when the user asks for logged-in website work.",
-        "Run real Telegram-to-process conversations that ask the bot to code, create Kanban tasks, and fetch authenticated social-site information."
+        "Run real Telegram-to-process conversations that ask the bot to code, create Kanban tasks, and fetch authenticated social-site information.",
+        "Archive opt-in live Telegram evidence beside the deterministic chat/process certification report."
       ]
     },
     {
@@ -465,8 +464,12 @@
         "packages/runtime/src/adapters.ts",
         "packages/gateway/src/server.ts",
         "docs/api-contract.md",
+        "docs/runbooks/chat-process-runtime-certification.md",
+        "scripts/testing/run-chat-process-runtime-certification.mjs",
+        "scripts/testing/run-browser-tests.mjs",
         "packages/gateway/test/integration/runtime-certification.test.ts",
-        "packages/gateway/test/integration/gateway.test.ts"
+        "packages/gateway/test/integration/gateway.test.ts",
+        "packages/gateway/test/integration/browser-auth-routing.test.ts"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/chat.ts",
@@ -477,17 +480,21 @@
       ],
       "verification": {
         "commands": [
+          "pnpm test:chat-process:cert",
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/runtime-certification.test.ts"
         ],
         "testPaths": [
+          "dashboard/src/pages/MissionControlPage.test.tsx",
+          "scripts/testing/run-chat-process-runtime-certification.mjs",
+          "scripts/testing/run-browser-tests.mjs",
           "packages/gateway/test/integration/runtime-certification.test.ts",
-          "packages/gateway/test/integration/gateway.test.ts"
+          "packages/gateway/test/integration/gateway.test.ts",
+          "packages/gateway/test/integration/browser-auth-routing.test.ts"
         ]
       },
       "remainingGaps": [
-        "Add dashboard chat visual/responsive screenshots similar to OpenClaw chat-flow coverage.",
-        "Make browser-profile auto-selection and tool evidence more explicit in Mission Control messages when the user asks for logged-in website work.",
-        "Run real Telegram-to-process conversations that ask the bot to code, create Kanban tasks, and fetch authenticated social-site information."
+        "Run real Telegram-to-process conversations that ask the bot to code, create Kanban tasks, and fetch authenticated social-site information.",
+        "Archive opt-in live Telegram evidence beside the deterministic chat/process certification report."
       ]
     },
     {

@@ -438,8 +438,12 @@
         "packages/runtime/src/adapters.ts",
         "packages/gateway/src/server.ts",
         "docs/api-contract.md",
+        "docs/runbooks/chat-process-runtime-certification.md",
+        "scripts/testing/run-chat-process-runtime-certification.mjs",
+        "scripts/testing/run-browser-tests.mjs",
         "packages/gateway/test/integration/runtime-certification.test.ts",
-        "packages/gateway/test/integration/gateway.test.ts"
+        "packages/gateway/test/integration/gateway.test.ts",
+        "packages/gateway/test/integration/browser-auth-routing.test.ts"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/chat.ts",
@@ -450,17 +454,21 @@
       ],
       "verification": {
         "commands": [
+          "pnpm test:chat-process:cert",
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/runtime-certification.test.ts"
         ],
         "testPaths": [
+          "dashboard/src/pages/MissionControlPage.test.tsx",
+          "scripts/testing/run-chat-process-runtime-certification.mjs",
+          "scripts/testing/run-browser-tests.mjs",
           "packages/gateway/test/integration/runtime-certification.test.ts",
-          "packages/gateway/test/integration/gateway.test.ts"
+          "packages/gateway/test/integration/gateway.test.ts",
+          "packages/gateway/test/integration/browser-auth-routing.test.ts"
         ]
       },
       "remainingGaps": [
-        "Add dashboard chat visual/responsive screenshots similar to OpenClaw chat-flow coverage.",
-        "Make browser-profile auto-selection and tool evidence more explicit in Mission Control messages when the user asks for logged-in website work.",
-        "Run real Telegram-to-process conversations that ask the bot to code, create Kanban tasks, and fetch authenticated social-site information."
+        "Run real Telegram-to-process conversations that ask the bot to code, create Kanban tasks, and fetch authenticated social-site information.",
+        "Archive opt-in live Telegram evidence beside the deterministic chat/process certification report."
       ]
     },
     {

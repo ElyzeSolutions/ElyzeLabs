@@ -306,9 +306,9 @@ const ConversationBriefRow = memo(
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-white">{label}</p>
-        <div className="mt-1 flex items-center justify-between gap-3">
-          <span className={`text-sm ${toneClass}`}>{value}</span>
-          {detail ? <span className="text-sm text-[var(--shell-muted)]">{detail}</span> : null}
+        <div className="mt-1 flex min-w-0 items-center justify-between gap-3">
+          <span className={`min-w-0 truncate text-sm ${toneClass}`}>{value}</span>
+          {detail ? <span className="max-w-[56%] shrink-0 truncate text-right text-sm text-[var(--shell-muted)]">{detail}</span> : null}
         </div>
       </div>
     </div>
@@ -1037,6 +1037,11 @@ function MissionIntelligenceWorkspace({
 }) {
   const selectedInteraction = resolveConversationInteractionMode(model.selectedConversation.messages, latestRun);
   const selectedInteractionCopy = resolveInteractionModeCopy(selectedInteraction.mode);
+  const selectedBrowserProfile = selectedSession.browserSessionProfile ?? null;
+  const browserProfileValue = selectedBrowserProfile?.label ?? 'No sticky login';
+  const browserProfileDetail = selectedBrowserProfile
+    ? `${selectedBrowserProfile.health.state.replace(/_/g, ' ')} · Scrapling reads`
+    : 'Scrapling reads need login';
 
   return (
     <m.div
@@ -1044,7 +1049,7 @@ function MissionIntelligenceWorkspace({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className="grid min-h-0 flex-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_22rem]"
+      className="grid min-h-0 flex-1 gap-4 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable] xl:grid-cols-[minmax(0,1fr)_22rem] xl:overflow-hidden xl:pr-0"
     >
       <section className={`${PANEL_CLASS} flex min-h-[26rem] min-w-0 flex-col overflow-hidden lg:max-h-[34rem] 2xl:max-h-none xl:min-h-0`}>
         <div className="shrink-0 border-b border-white/8 p-4 sm:p-5">
@@ -1098,7 +1103,7 @@ function MissionIntelligenceWorkspace({
         </div>
       </section>
 
-      <aside className="flex min-h-0 flex-col gap-4 2xl:overflow-y-auto 2xl:pr-1">
+      <aside className="flex min-h-0 flex-col gap-4 xl:overflow-y-auto xl:pr-1">
         <section className={`${PANEL_CLASS} overflow-hidden`}>
           <div className="border-b border-white/8 p-6">
             <h3 className="text-lg font-medium text-white">Thread Posture</h3>
@@ -1123,6 +1128,13 @@ function MissionIntelligenceWorkspace({
               value={selectedSession.preferredRuntime || 'process'}
               detail={latestRun?.status || 'idle'}
               toneClass={runToneClass(latestRun?.status)}
+            />
+            <ConversationBriefRow
+              icon={Browsers}
+              label="Browser auth"
+              value={browserProfileValue}
+              detail={browserProfileDetail}
+              toneClass={selectedBrowserProfile ? 'text-[var(--shell-accent)]' : 'text-[var(--shell-text)]'}
             />
             <ConversationBriefRow
               icon={PaperPlaneTilt}
