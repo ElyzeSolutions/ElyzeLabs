@@ -36,7 +36,8 @@
         "live e2e-scenario registry",
         "messaging provider certification",
         "blueprint lifecycle",
-        "operator approval loops"
+        "operator approval loops",
+        "onboarding flow context guards"
       ]
     },
     {
@@ -52,7 +53,8 @@
         "Workboard E2E",
         "chat/tool-card UX",
         "doctor/onboarding breadth",
-        "model failover"
+        "model failover",
+        "bounded platform smoke tests"
       ]
     }
   ],
@@ -142,7 +144,10 @@
         "packages/gateway/src/server.ts",
         "packages/gateway/test/integration/telegram-prompt-governance.test.ts",
         "packages/gateway/test/integration/telegram-smoke-test.test.ts",
-        "docs/api-contract.md"
+        "docs/api-contract.md",
+        "scripts/testing/run-live-social-browser-certification.mjs",
+        "scripts/testing/scenarios/live-social-browser.json",
+        "docs/runbooks/live-social-browser-certification.md"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/src/lib/onboard/sandbox-messaging-preflight.ts",
@@ -151,7 +156,8 @@
       ],
       "verification": {
         "commands": [
-          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/telegram-smoke-test.test.ts packages/gateway/test/integration/telegram-prompt-governance.test.ts"
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/telegram-smoke-test.test.ts packages/gateway/test/integration/telegram-prompt-governance.test.ts",
+          "pnpm test:live-social-browser"
         ],
         "testPaths": [
           "packages/gateway/test/integration/telegram-smoke-test.test.ts",
@@ -159,8 +165,8 @@
         ]
       },
       "remainingGaps": [
-        "A live operator-run smoke test with real Telegram credentials still needs to be executed outside mocked integration tests.",
-        "Telegram-to-browser scenarios should verify the bot can choose authenticated browser profiles for Instagram, TikTok, Pinterest, X, and Reddit without the operator spelling out profile ids."
+        "Run OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM=1 against real Telegram credentials and attach the redacted report.",
+        "Run the saved-profile social scenarios from Telegram-facing prompts so Instagram, TikTok, Pinterest, X, and Reddit routing is proven without the operator spelling out profile ids."
       ]
     },
     {
@@ -330,7 +336,10 @@
         "packages/gateway/test/unit/browser-session-vault.test.ts",
         "packages/gateway/test/integration/browser-api.test.ts",
         "packages/gateway/test/integration/browser-managed-profiles.test.ts",
-        "packages/gateway/test/integration/browser-auth-routing.test.ts"
+        "packages/gateway/test/integration/browser-auth-routing.test.ts",
+        "scripts/testing/run-live-social-browser-certification.mjs",
+        "scripts/testing/scenarios/live-social-browser.json",
+        "docs/runbooks/live-social-browser-certification.md"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/tools/browser.md",
@@ -340,7 +349,8 @@
       ],
       "verification": {
         "commands": [
-          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/browser-service.test.ts packages/gateway/test/unit/browser-interactive-service.test.ts packages/gateway/test/unit/browser-session-vault.test.ts packages/gateway/test/integration/browser-api.test.ts packages/gateway/test/integration/browser-managed-profiles.test.ts packages/gateway/test/integration/browser-auth-routing.test.ts dashboard/src/pages/BrowserPage.test.tsx"
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/browser-service.test.ts packages/gateway/test/unit/browser-interactive-service.test.ts packages/gateway/test/unit/browser-session-vault.test.ts packages/gateway/test/integration/browser-api.test.ts packages/gateway/test/integration/browser-managed-profiles.test.ts packages/gateway/test/integration/browser-auth-routing.test.ts dashboard/src/pages/BrowserPage.test.tsx",
+          "pnpm test:live-social-browser"
         ],
         "testPaths": [
           "packages/gateway/test/unit/browser-service.test.ts",
@@ -353,7 +363,7 @@
         ]
       },
       "remainingGaps": [
-        "Run live authenticated capture scenarios for TikTok, Instagram, Pinterest, X, and Reddit and keep redacted screenshot/body artifacts.",
+        "Run OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_VERIFY=1 for TikTok, Instagram, Pinterest, X, and Reddit and keep the redacted report as release evidence.",
         "Promote interactive click/type/PDF control from compatible service surface to a fully certified provider with live site scenarios.",
         "Keep Scrapling/cookie routing as the default for read-only authenticated social scraping so the lower-detection edge is not lost while interactive browser support expands."
       ]
@@ -457,6 +467,9 @@
       "elyzeEvidence": [
         "scripts/testing/run-browser-tests.mjs",
         "scripts/testing/run-browser-schedule-certification.mjs",
+        "scripts/testing/run-live-social-browser-certification.mjs",
+        "scripts/testing/scenarios/live-social-browser.json",
+        "docs/runbooks/live-social-browser-certification.md",
         "packages/gateway/test/integration/browser-auth-routing.test.ts",
         "packages/gateway/test/integration/telegram-smoke-test.test.ts",
         "packages/gateway/test/integration/telegram-backlog-kanban.test.ts"
@@ -469,7 +482,8 @@
       ],
       "verification": {
         "commands": [
-          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/browser-auth-routing.test.ts packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/telegram-smoke-test.test.ts"
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/browser-auth-routing.test.ts packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/telegram-smoke-test.test.ts",
+          "pnpm test:live-social-browser"
         ],
         "testPaths": [
           "packages/gateway/test/integration/browser-auth-routing.test.ts",
@@ -478,9 +492,9 @@
         ]
       },
       "remainingGaps": [
-        "Create a first-class scenario manifest for live Telegram requests to Instagram, TikTok, Pinterest, X, and Reddit using saved browser session profiles.",
-        "Persist redacted request, response, screenshot, and decision artifacts per scenario so regressions are inspectable.",
-        "Wire a nightly or opt-in live lane that skips safely without secrets but runs fully when local credentials exist."
+        "Run the opt-in live scenario manifest against real Telegram credentials and saved browser session profiles before claiming production readiness.",
+        "Persist binary screenshots/PDFs from the interactive provider when OPS_LIVE_SCENARIO_INTERACTIVE=1, while keeping report artifacts redacted.",
+        "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
       ]
     },
     {

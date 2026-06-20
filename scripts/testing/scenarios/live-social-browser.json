@@ -1,0 +1,47 @@
+{
+  "schema": "ops.live-social-browser-scenarios.v1",
+  "version": 1,
+  "description": "Opt-in live certification scenarios for Telegram plus authenticated browser session profiles. Scenarios are intentionally read-only and redacted.",
+  "scenarios": [
+    {
+      "id": "instagram-authenticated-read",
+      "siteKey": "instagram",
+      "label": "Instagram saved login read",
+      "verifyUrl": "https://www.instagram.com/",
+      "domains": ["instagram.com"],
+      "prompt": "Use the saved Instagram login profile to check whether the authenticated Instagram shell is reachable."
+    },
+    {
+      "id": "tiktok-authenticated-read",
+      "siteKey": "tiktok",
+      "label": "TikTok saved login read",
+      "verifyUrl": "https://www.tiktok.com/foryou",
+      "domains": ["tiktok.com"],
+      "prompt": "Use the saved TikTok login profile to check whether the authenticated TikTok feed shell is reachable."
+    },
+    {
+      "id": "pinterest-authenticated-read",
+      "siteKey": "pinterest",
+      "label": "Pinterest saved login read",
+      "verifyUrl": "https://www.pinterest.com/",
+      "domains": ["pinterest.com"],
+      "prompt": "Use the saved Pinterest login profile to check whether the authenticated Pinterest shell is reachable."
+    },
+    {
+      "id": "x-authenticated-read",
+      "siteKey": "x",
+      "label": "X saved login read",
+      "verifyUrl": "https://x.com/home",
+      "domains": ["x.com", "twitter.com"],
+      "prompt": "Use the saved X login profile to check whether the authenticated X home shell is reachable."
+    },
+    {
+      "id": "reddit-authenticated-read",
+      "siteKey": "reddit",
+      "label": "Reddit saved login read",
+      "verifyUrl": "https://www.reddit.com/",
+      "domains": ["reddit.com"],
+      "prompt": "Use the saved Reddit login profile to check whether the authenticated Reddit shell is reachable."
+    }
+  ]
+}
