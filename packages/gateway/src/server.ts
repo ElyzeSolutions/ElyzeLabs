@@ -7282,10 +7282,10 @@ export async function buildGatewayApp(
     if (leftScoped !== rightScoped) {
       return rightScoped - leftScoped;
     }
-    const leftNeedsReconnect = computeBrowserSessionProfileHealth(left).needsReconnect;
-    const rightNeedsReconnect = computeBrowserSessionProfileHealth(right).needsReconnect;
-    if (leftNeedsReconnect !== rightNeedsReconnect) {
-      return leftNeedsReconnect ? 1 : -1;
+    const leftHealthRank = browserSessionProfileAutoSelectHealthRank(left);
+    const rightHealthRank = browserSessionProfileAutoSelectHealthRank(right);
+    if (leftHealthRank !== rightHealthRank) {
+      return leftHealthRank - rightHealthRank;
     }
     const leftVerifiedAt = left.lastVerifiedAt ?? '';
     const rightVerifiedAt = right.lastVerifiedAt ?? '';
@@ -7296,6 +7296,23 @@ export async function buildGatewayApp(
       return right.updatedAt.localeCompare(left.updatedAt);
     }
     return left.id.localeCompare(right.id);
+  };
+  const browserSessionProfileAutoSelectHealthRank = (profile: BrowserSessionProfileRecord): number => {
+    const health = computeBrowserSessionProfileHealth(profile);
+    switch (health.state) {
+      case 'healthy':
+        return 0;
+      case 'stale':
+        return 1;
+      case 'unverified':
+        return 2;
+      case 'expires_soon':
+        return 3;
+      case 'needs_reconnect':
+        return 4;
+      case 'disabled':
+        return 5;
+    }
   };
   const selectBestBrowserSessionProfileForSite = (
     session: SessionRecord,

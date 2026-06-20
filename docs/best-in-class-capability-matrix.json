@@ -1,7 +1,7 @@
 {
   "schema": "ops.best-in-class-capability-matrix.v1",
   "version": 1,
-  "updatedAt": "2026-05-31",
+  "updatedAt": "2026-06-20",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "statusDefinitions": {
     "ahead": "ElyzeLabs has stronger current behavior with local evidence and verification.",
@@ -18,6 +18,8 @@
       "focus": [
         "prompt layering",
         "skill curation",
+        "Kanban worker lanes",
+        "desktop chat ergonomics",
         "scheduled automation discipline",
         "multi-channel operations",
         "terminal ergonomics"
@@ -31,6 +33,8 @@
         "sandbox policy tiers",
         "deny-by-default egress",
         "endpoint groups",
+        "live e2e-scenario registry",
+        "messaging provider certification",
         "blueprint lifecycle",
         "operator approval loops"
       ]
@@ -44,6 +48,9 @@
         "channel routing",
         "DM pairing",
         "managed browser profile",
+        "interactive browser control",
+        "Workboard E2E",
+        "chat/tool-card UX",
         "doctor/onboarding breadth",
         "model failover"
       ]
@@ -106,7 +113,7 @@
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/agent/memory_manager.py",
-        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/memory/prompt-section.ts"
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/memory-core/src/prompt-section.ts"
       ],
       "verification": {
         "commands": [
@@ -124,8 +131,8 @@
       "area": "telegram",
       "priority": "P0",
       "requiredForBestInClass": true,
-      "status": "parity",
-      "requirement": "Telegram must support governed ingress, prompt-injection-safe memory behavior, bot identity validation, and an operator-triggered outbound smoke test with redacted evidence.",
+      "status": "partial",
+      "requirement": "Telegram must support governed ingress, prompt-injection-safe memory behavior, bot identity validation, operator-triggered outbound smoke tests, and real exchange scenarios with redacted evidence.",
       "referenceSignals": [
         "NemoClaw soft-fails optional Telegram reachability instead of blocking unrelated setup.",
         "OpenClaw doctor/onboarding surfaces risky channel and pairing policy.",
@@ -138,7 +145,7 @@
         "docs/api-contract.md"
       ],
       "referenceEvidence": [
-        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/src/lib/onboard/telegram-reachability.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/src/lib/onboard/sandbox-messaging-preflight.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/channels/channel-routing.md",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/gateway/doctor.md"
       ],
@@ -152,7 +159,8 @@
         ]
       },
       "remainingGaps": [
-        "A live operator-run smoke test with real Telegram credentials still needs to be executed outside mocked integration tests."
+        "A live operator-run smoke test with real Telegram credentials still needs to be executed outside mocked integration tests.",
+        "Telegram-to-browser scenarios should verify the bot can choose authenticated browser profiles for Instagram, TikTok, Pinterest, X, and Reddit without the operator spelling out profile ids."
       ]
     },
     {
@@ -305,36 +313,175 @@
       "area": "browser",
       "priority": "P1",
       "requiredForBestInClass": true,
-      "status": "parity",
-      "requirement": "Browser automation should have agent-only managed profiles, optional user-profile attach, deterministic tab/action controls, artifact preview, and policy-diff approvals.",
+      "status": "partial",
+      "requirement": "Browser automation should keep Scrapling-first authenticated capture for low-detection read workflows, add guided Playwright storage-state import, and expose deterministic interactive tab/click/type/screenshot/PDF controls as a complementary provider.",
       "referenceSignals": [
         "OpenClaw separates agent-managed browser profiles from real-user Chrome profile attachment.",
-        "OpenClaw documents deterministic tab/click/type/screenshot/PDF browser tools."
+        "OpenClaw documents deterministic tab/click/type/screenshot/PDF browser tools.",
+        "OpenClaw ships a broad browser extension with CDP, Playwright, browser-control, profile, and CLI action tests."
       ],
       "elyzeEvidence": [
         "packages/gateway/src/browser-service.ts",
+        "packages/gateway/src/browser-interactive-service.ts",
         "packages/gateway/src/server.ts",
         "dashboard/src/pages/BrowserPage.tsx",
         "packages/gateway/test/unit/browser-service.test.ts",
+        "packages/gateway/test/unit/browser-interactive-service.test.ts",
+        "packages/gateway/test/unit/browser-session-vault.test.ts",
         "packages/gateway/test/integration/browser-api.test.ts",
-        "packages/gateway/test/integration/browser-managed-profiles.test.ts"
+        "packages/gateway/test/integration/browser-managed-profiles.test.ts",
+        "packages/gateway/test/integration/browser-auth-routing.test.ts"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/tools/browser.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/tools/browser-control.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/browser/src/browser/client-fetch.attach-only.e2e.test.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/start/wizard.md"
       ],
       "verification": {
         "commands": [
-          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/browser-service.test.ts packages/gateway/test/integration/browser-api.test.ts packages/gateway/test/integration/browser-managed-profiles.test.ts dashboard/src/pages/BrowserPage.test.tsx"
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/browser-service.test.ts packages/gateway/test/unit/browser-interactive-service.test.ts packages/gateway/test/unit/browser-session-vault.test.ts packages/gateway/test/integration/browser-api.test.ts packages/gateway/test/integration/browser-managed-profiles.test.ts packages/gateway/test/integration/browser-auth-routing.test.ts dashboard/src/pages/BrowserPage.test.tsx"
         ],
         "testPaths": [
           "packages/gateway/test/unit/browser-service.test.ts",
+          "packages/gateway/test/unit/browser-interactive-service.test.ts",
+          "packages/gateway/test/unit/browser-session-vault.test.ts",
           "packages/gateway/test/integration/browser-api.test.ts",
           "packages/gateway/test/integration/browser-managed-profiles.test.ts",
+          "packages/gateway/test/integration/browser-auth-routing.test.ts",
           "dashboard/src/pages/BrowserPage.test.tsx"
         ]
       },
-      "remainingGaps": []
+      "remainingGaps": [
+        "Run live authenticated capture scenarios for TikTok, Instagram, Pinterest, X, and Reddit and keep redacted screenshot/body artifacts.",
+        "Promote interactive click/type/PDF control from compatible service surface to a fully certified provider with live site scenarios.",
+        "Keep Scrapling/cookie routing as the default for read-only authenticated social scraping so the lower-detection edge is not lost while interactive browser support expands."
+      ]
+    },
+    {
+      "id": "operator_kanban_workboard",
+      "area": "kanban",
+      "priority": "P1",
+      "requiredForBestInClass": true,
+      "status": "partial",
+      "requirement": "Operator Kanban should support drag/drop, keyboard transitions, Telegram task creation, scoped GitHub delivery truth, issue sync, repair actions, and responsive visual certification.",
+      "referenceSignals": [
+        "OpenClaw ships a Workboard controller, persistent workboard extension, CLI docs, browser tests, and E2E status persistence tests.",
+        "Hermes has Kanban CLI flows, worker lanes, toolsets, dispatcher plugins, dashboard docs, and broad Kanban regression tests."
+      ],
+      "elyzeEvidence": [
+        "dashboard/src/pages/BacklogPage.tsx",
+        "dashboard/src/components/backlog/GithubDeliveryCockpit.tsx",
+        "dashboard/src/pages/BacklogPage.test.tsx",
+        "dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx",
+        "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
+        "packages/gateway/test/integration/github-delivery-certification.test.ts"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/workboard.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/e2e/workboard.e2e.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/workboard/src/tools.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tools/kanban_tools.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tests/hermes_cli/test_kanban_worker_spawn_toolsets.py"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts dashboard/src/pages/BacklogPage.test.tsx dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/github-delivery-certification.test.ts"
+        ],
+        "testPaths": [
+          "dashboard/src/pages/BacklogPage.test.tsx",
+          "dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx",
+          "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
+          "packages/gateway/test/integration/github-delivery-certification.test.ts"
+        ]
+      },
+      "remainingGaps": [
+        "Run Playwright visual screenshots for the Backlog/Kanban board across desktop and mobile viewports to catch clipping, overflow, and drag/drop regressions.",
+        "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity.",
+        "Polish information density and naming so the board feels like a daily operator workbench instead of a feature checklist."
+      ]
+    },
+    {
+      "id": "chat_process_runtime",
+      "area": "chat_runtime",
+      "priority": "P1",
+      "requiredForBestInClass": true,
+      "status": "partial",
+      "requirement": "Chat should make the process runtime, persistent harnesses, provider-backed runtimes, authenticated browser profile selection, and tool evidence visible and reliable across dashboard and Telegram sessions.",
+      "referenceSignals": [
+        "OpenClaw has dense chat infrastructure for run lifecycle, tool cards, slash commands, session cache, responsive chat tests, and E2E chat flows.",
+        "Hermes desktop chat has rich composer, session sidebar, right-rail preview, gateway recovery, process fallback, and live sequential chat tests."
+      ],
+      "elyzeEvidence": [
+        "dashboard/src/pages/MissionControlPage.tsx",
+        "dashboard/src/pages/AgentsPage.tsx",
+        "packages/runtime/src/adapters.ts",
+        "packages/gateway/src/server.ts",
+        "docs/api-contract.md",
+        "packages/gateway/test/integration/runtime-certification.test.ts",
+        "packages/gateway/test/integration/gateway.test.ts"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/chat.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/e2e/chat-flow.e2e.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/chat/tool-cards.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/apps/desktop/src/app/chat/index.tsx",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tests/hermes_cli/test_gateway_proc_fallback.py"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/runtime-certification.test.ts"
+        ],
+        "testPaths": [
+          "packages/gateway/test/integration/runtime-certification.test.ts",
+          "packages/gateway/test/integration/gateway.test.ts"
+        ]
+      },
+      "remainingGaps": [
+        "Add dashboard chat visual/responsive screenshots similar to OpenClaw chat-flow coverage.",
+        "Make browser-profile auto-selection and tool evidence more explicit in Mission Control messages when the user asks for logged-in website work.",
+        "Run real Telegram-to-process conversations that ask the bot to code, create Kanban tasks, and fetch authenticated social-site information."
+      ]
+    },
+    {
+      "id": "e2e_scenario_certification",
+      "area": "testing",
+      "priority": "P0",
+      "requiredForBestInClass": true,
+      "status": "partial",
+      "requirement": "Best-in-class claims should be backed by a deterministic scenario registry that covers Telegram exchanges, authenticated browser sites, process fallback, Kanban delivery, UI screenshots, artifacts, redaction, and nightly/live lanes.",
+      "referenceSignals": [
+        "NemoClaw maintains live e2e-scenario suites, scenario registry support tests, messaging provider tests, network policy tests, and recovery tests.",
+        "OpenClaw keeps YAML QA scenarios for chat/channel/browser flows plus E2E UI tests for chat and Workboard."
+      ],
+      "elyzeEvidence": [
+        "scripts/testing/run-browser-tests.mjs",
+        "scripts/testing/run-browser-schedule-certification.mjs",
+        "packages/gateway/test/integration/browser-auth-routing.test.ts",
+        "packages/gateway/test/integration/telegram-smoke-test.test.ts",
+        "packages/gateway/test/integration/telegram-backlog-kanban.test.ts"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/messaging-providers.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/support-tests/e2e-scenario-registry.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/qa/scenarios/channels/channel-chat-baseline.yaml",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/qa/scenarios/ui/control-ui-chat-flow-playwright.yaml"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/browser-auth-routing.test.ts packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/telegram-smoke-test.test.ts"
+        ],
+        "testPaths": [
+          "packages/gateway/test/integration/browser-auth-routing.test.ts",
+          "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
+          "packages/gateway/test/integration/telegram-smoke-test.test.ts"
+        ]
+      },
+      "remainingGaps": [
+        "Create a first-class scenario manifest for live Telegram requests to Instagram, TikTok, Pinterest, X, and Reddit using saved browser session profiles.",
+        "Persist redacted request, response, screenshot, and decision artifacts per scenario so regressions are inspectable.",
+        "Wire a nightly or opt-in live lane that skips safely without secrets but runs fully when local credentials exist."
+      ]
     },
     {
       "id": "model_failover_profiles",

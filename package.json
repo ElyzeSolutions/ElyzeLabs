@@ -4,6 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=22 <23",
+    "pnpm": ">=10.30.3 <11"
+  },
   "scripts": {
     "dev": "pnpm dev:split",
     "dev:split": "bash -lc 'trap \"kill 0\" EXIT; pnpm dev:gateway & for i in {1..240}; do curl -fs http://127.0.0.1:8788/api/health/readiness >/dev/null && break; sleep 0.25; if [ \"$i\" -eq 240 ]; then echo \"Gateway readiness timeout (60s)\"; exit 1; fi; done; pnpm dev:dashboard'",
