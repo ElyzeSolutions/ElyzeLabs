@@ -143,6 +143,18 @@ function redactError(error) {
     .replace(/bot[0-9]+:[A-Za-z0-9_-]+/gu, 'bot[redacted]');
 }
 
+function redactEvidenceText(value, limit = 1200) {
+  return String(value ?? '')
+    .slice(0, limit)
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gu, 'Bearer [redacted]')
+    .replace(/bot[0-9]+:[A-Za-z0-9_-]+/gu, 'bot[redacted]')
+    .replace(/\b(cookie|set-cookie|authorization)\s*:\s*[^\n\r]+/giu, '$1: [redacted]')
+    .replace(
+      /\b([A-Za-z0-9_.-]*(?:token|secret|session|sid|csrf|auth|cookie)[A-Za-z0-9_.-]*)\s*=\s*[^;\s\n\r]+/giu,
+      '$1=[redacted]'
+    );
+}
+
 async function requestJson(url, { method = 'GET', headers = {}, body, timeoutMs = 20000 } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -198,6 +210,8 @@ function makeReport(flags, manifestPath, gatewayBaseUrl) {
       scenariosSelected: 0,
       profilesAvailable: 0,
       profilesMatched: 0,
+      telegramPromptScenarios: 0,
+      telegramPromptPassed: 0,
       passed: 0,
       blocked: 0,
       failed: 0,
@@ -207,13 +221,21 @@ function makeReport(flags, manifestPath, gatewayBaseUrl) {
       enabled: flags.telegram,
       status: flags.telegram ? 'pending' : 'skipped',
       smoke: null,
-      error: null
+      error: null,
+      promptScenarios: {
+        enabled: flags.telegramPrompts,
+        status: flags.telegramPrompts ? 'pending' : 'skipped',
+        ingressMode: flags.telegramIngressMode,
+        senderId: flags.telegramSenderId,
+        results: []
+      }
     },
     scenarios: [],
     steps: [],
     redaction: {
       secrets: 'API tokens, cookies, storage state bodies, Telegram bot tokens, and artifact base64 payloads are never written to this report.',
-      profileFields: 'Only profile id, label, site key, class, source presence, and health are recorded.'
+      profileFields: 'Only profile id, label, site key, class, source presence, and health are recorded.',
+      evidencePreviews: 'Browser artifact and terminal previews are length-limited and token/cookie patterns are redacted.'
     },
     followUpTasks: []
   };
@@ -286,6 +308,7 @@ function summarizeProfile(profile) {
     id: typeof profile.id === 'string' ? profile.id : 'unknown',
     label: typeof profile.label === 'string' ? profile.label : 'Untitled profile',
     siteKey: typeof profile.siteKey === 'string' ? profile.siteKey : null,
+    visibility: typeof profile.visibility === 'string' ? profile.visibility : null,
     profileClass: typeof profile.profileClass === 'string' ? profile.profileClass : null,
     browserKind: typeof profile.browserKind === 'string' ? profile.browserKind : null,
     useRealChrome: profile.useRealChrome === true,
@@ -331,7 +354,7 @@ function summarizeArtifacts(control) {
     kind: typeof artifact.kind === 'string' ? artifact.kind : null,
     mimeType: typeof artifact.mimeType === 'string' ? artifact.mimeType : null,
     sizeBytes: Number.isFinite(Number(artifact.sizeBytes)) ? Number(artifact.sizeBytes) : null,
-    contentPreview: typeof artifact.contentPreview === 'string' ? artifact.contentPreview.slice(0, 1000) : null,
+    contentPreview: typeof artifact.contentPreview === 'string' ? redactEvidenceText(artifact.contentPreview, 1000) : null,
     hasBase64Content: typeof artifact.contentBase64 === 'string' && artifact.contentBase64.length > 0
   }));
 }
@@ -350,6 +373,186 @@ function summarizeInteractiveControl(control) {
     artifacts: summarizeArtifacts(control),
     error: typeof control.error === 'string' ? control.error : null
   };
+}
+
+function parsePayloadJson(entry) {
+  if (isRecord(entry.payload)) {
+    return entry.payload;
+  }
+  if (typeof entry.payloadJson !== 'string') {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(entry.payloadJson);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function summarizeAuthProfileResolution(timeline) {
+  const events = Array.isArray(timeline) ? timeline.filter(isRecord) : [];
+  const authEvent = [...events].reverse().find((event) => event.type === 'browser.auth_profile.resolved');
+  if (!authEvent) {
+    return null;
+  }
+  const payload = parsePayloadJson(authEvent);
+  return {
+    source: typeof payload.source === 'string' ? payload.source : null,
+    reason: typeof payload.reason === 'string' ? payload.reason : null,
+    siteKey: typeof payload.siteKey === 'string' ? payload.siteKey : null,
+    selectedSessionProfileId:
+      typeof payload.selectedSessionProfileId === 'string' ? payload.selectedSessionProfileId : null,
+    selectedSessionProfileLabel:
+      typeof payload.selectedSessionProfileLabel === 'string'
+        ? payload.selectedSessionProfileLabel
+        : typeof payload.selectedLabel === 'string'
+          ? payload.selectedLabel
+          : null,
+    selectedSessionProfileStatus:
+      typeof payload.selectedSessionProfileStatus === 'string' ? payload.selectedSessionProfileStatus : null,
+    ignoredStickySessionProfileId:
+      typeof payload.ignoredStickySessionProfileId === 'string' ? payload.ignoredStickySessionProfileId : null
+  };
+}
+
+function summarizeTimeline(timeline) {
+  const events = Array.isArray(timeline) ? timeline.filter(isRecord) : [];
+  return {
+    eventTypes: events.map((event) => (typeof event.type === 'string' ? event.type : 'unknown')).slice(0, 80),
+    authProfileResolution: summarizeAuthProfileResolution(events)
+  };
+}
+
+function summarizeBrowserTrace(trace) {
+  if (!isRecord(trace)) {
+    return null;
+  }
+  const route = isRecord(trace.route) ? trace.route : {};
+  const artifacts = Array.isArray(trace.artifacts) ? trace.artifacts.filter(isRecord) : [];
+  return {
+    runStatus: typeof trace.runStatus === 'string' ? trace.runStatus : null,
+    ok: trace.ok === true,
+    provider: typeof trace.provider === 'string' ? trace.provider : null,
+    transport: typeof trace.transport === 'string' ? trace.transport : null,
+    healthState: typeof trace.healthState === 'string' ? trace.healthState : null,
+    selectedTool: typeof trace.selectedTool === 'string' ? trace.selectedTool : null,
+    attemptedTools: Array.isArray(trace.attemptedTools) ? trace.attemptedTools.map((entry) => String(entry)) : [],
+    blockedReason: typeof trace.blockedReason === 'string' ? trace.blockedReason : null,
+    fallbackReason: typeof trace.fallbackReason === 'string' ? trace.fallbackReason : null,
+    error: typeof trace.error === 'string' ? redactEvidenceText(trace.error, 600) : null,
+    promptInjectionDetected: trace.promptInjectionDetected === true,
+    requiresApproval: trace.requiresApproval === true,
+    route: {
+      primaryTool: typeof route.primaryTool === 'string' ? route.primaryTool : null,
+      riskClass: typeof route.riskClass === 'string' ? route.riskClass : null,
+      requiresApproval: route.requiresApproval === true,
+      urlCount: Array.isArray(route.urls) ? route.urls.length : 0
+    },
+    artifactCount: artifacts.length,
+    artifacts: artifacts.slice(0, 3).map((artifact) => ({
+      url: typeof artifact.url === 'string' ? artifact.url : null,
+      tool: typeof artifact.tool === 'string' ? artifact.tool : null,
+      extractionMode: typeof artifact.extractionMode === 'string' ? artifact.extractionMode : null,
+      previewText: redactEvidenceText(artifact.previewText, 1000)
+    }))
+  };
+}
+
+function summarizeTerminalPayload(payload) {
+  const run = isRecord(payload.run) ? payload.run : {};
+  const terminal = isRecord(payload.terminal) ? payload.terminal : {};
+  const chunks = Array.isArray(payload.chunks) ? payload.chunks.filter(isRecord) : [];
+  return {
+    runStatus: typeof run.status === 'string' ? run.status : null,
+    resultSummary: typeof run.resultSummary === 'string' ? redactEvidenceText(run.resultSummary, 800) : null,
+    error: typeof run.error === 'string' ? redactEvidenceText(run.error, 800) : null,
+    terminalStatus: typeof terminal.status === 'string' ? terminal.status : null,
+    chunkCount: chunks.length,
+    outputPreview: redactEvidenceText(
+      chunks
+        .map((chunk) => (typeof chunk.chunk === 'string' ? chunk.chunk : ''))
+        .join('')
+        .slice(-1200),
+      1200
+    )
+  };
+}
+
+function summarizeSessionPayload(payload) {
+  const session = isRecord(payload.session) ? payload.session : {};
+  const profile = isRecord(session.browserSessionProfile) ? session.browserSessionProfile : null;
+  const messages = Array.isArray(payload.messages) ? payload.messages.filter(isRecord) : [];
+  return {
+    sessionId: typeof session.id === 'string' ? session.id : null,
+    sessionKey: typeof session.sessionKey === 'string' ? session.sessionKey : null,
+    channel: typeof session.channel === 'string' ? session.channel : null,
+    preferredRuntime: typeof session.preferredRuntime === 'string' ? session.preferredRuntime : null,
+    stickyBrowserSessionProfile: profile ? summarizeProfile(profile) : null,
+    messageCount: messages.length,
+    latestMessages: messages.slice(-4).map((message) => ({
+      direction: typeof message.direction === 'string' ? message.direction : null,
+      source: typeof message.source === 'string' ? message.source : null,
+      sender: typeof message.sender === 'string' ? message.sender : null,
+      contentPreview: redactEvidenceText(message.content, 800)
+    }))
+  };
+}
+
+function createTelegramIngressPayload({ updateId, senderId, text, username }) {
+  return {
+    update_id: updateId,
+    message: {
+      text,
+      chat: { id: senderId, type: 'private' },
+      from: {
+        id: senderId,
+        username
+      },
+      mentioned: true
+    }
+  };
+}
+
+async function waitForRunTerminalStatus(gatewayBaseUrl, headers, runId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let latestPayload = null;
+  while (Date.now() < deadline) {
+    latestPayload = await requestJson(`${gatewayBaseUrl}/api/runs/${encodeURIComponent(runId)}/terminal`, {
+      headers,
+      timeoutMs: Math.min(timeoutMs, 15000)
+    });
+    const status = String(latestPayload?.terminal?.status ?? latestPayload?.run?.status ?? '').trim();
+    if (['completed', 'failed', 'aborted'].includes(status)) {
+      return latestPayload;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 750));
+  }
+  throw new Error(`run ${runId} terminal did not finish within ${timeoutMs.toString()}ms`);
+}
+
+async function waitForBrowserTrace(gatewayBaseUrl, headers, runId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let latestError = null;
+  while (Date.now() < deadline) {
+    try {
+      const payload = await requestJson(`${gatewayBaseUrl}/api/browser/history/${encodeURIComponent(runId)}`, {
+        headers,
+        timeoutMs: Math.min(timeoutMs, 15000)
+      });
+      if (isRecord(payload.trace)) {
+        return payload.trace;
+      }
+    } catch (error) {
+      latestError = error;
+      const statusCode = Number(error?.statusCode);
+      if (Number.isFinite(statusCode) && statusCode !== 404) {
+        throw error;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 750));
+  }
+  throw new Error(latestError ? `browser trace unavailable: ${redactError(latestError)}` : `browser trace unavailable for ${runId}`);
 }
 
 function resolveScenarioTimeoutMs(scenario, fallbackTimeoutMs) {
@@ -423,10 +626,10 @@ async function runScenario({ report, scenario, profiles, gatewayBaseUrl, headers
       const verification = isRecord(payload.verification) ? payload.verification : {};
       const run = isRecord(verification.run) ? verification.run : {};
       const runStatus = typeof run.status === 'string' ? run.status : null;
-      const runError = typeof run.error === 'string' ? run.error : null;
-      const resultSummary = typeof run.resultSummary === 'string' ? run.resultSummary : null;
+      const runError = typeof run.error === 'string' ? redactEvidenceText(run.error, 800) : null;
+      const resultSummary = typeof run.resultSummary === 'string' ? redactEvidenceText(run.resultSummary, 800) : null;
       result.verification = {
-        summary: typeof verification.summary === 'string' ? verification.summary : null,
+        summary: typeof verification.summary === 'string' ? redactEvidenceText(verification.summary, 800) : null,
         hasTrace: isRecord(verification.trace),
         runStatus,
         runError,
@@ -482,6 +685,174 @@ async function runScenario({ report, scenario, profiles, gatewayBaseUrl, headers
   return result;
 }
 
+async function runTelegramPromptScenarios({ report, scenarios, profiles, gatewayBaseUrl, headers, flags }) {
+  if (!flags.telegramPrompts) {
+    report.telegram.promptScenarios.status = 'skipped';
+    return;
+  }
+
+  const results = [];
+  const baseSenderId = flags.telegramSenderId;
+  const username = `live_social_cert_${Date.now().toString(36)}`;
+
+  for (const [index, scenario] of scenarios.entries()) {
+    const selected = selectProfile(profiles, scenario);
+    const telegramCandidates = selected.candidates.filter((candidate) => candidate.visibility !== 'session_only');
+    const profile = telegramCandidates[0] ?? selected.selected;
+    const timeoutMs = resolveScenarioTimeoutMs(scenario, flags.timeoutMs);
+    const result = {
+      id: scenario.id,
+      label: scenario.label,
+      siteKey: scenario.siteKey,
+      verifyUrl: scenario.verifyUrl,
+      status: 'skipped',
+      decision: null,
+      profile: profile ? summarizeProfile(profile) : null,
+      candidateCount: selected.candidates.length,
+      telegramVisibleCandidateCount: telegramCandidates.length,
+      ingress: null,
+      terminal: null,
+      browserTrace: null,
+      timeline: null,
+      session: null,
+      error: null
+    };
+
+    if (!profile) {
+      result.status = 'blocked';
+      result.decision = 'missing_session_profile';
+      report.followUpTasks.push(`Create or import an enabled browser session profile for Telegram ${scenario.siteKey} prompts.`);
+      results.push(result);
+      continue;
+    }
+
+    if (profile.lastVerificationStatus !== 'connected') {
+      result.status = 'blocked';
+      result.decision = 'profile_not_connected_for_auto_select';
+      report.followUpTasks.push(`Verify ${scenario.siteKey} profile ${profile.id} before Telegram prompt certification.`);
+      results.push(result);
+      continue;
+    }
+
+    if (profile.visibility === 'session_only') {
+      result.status = 'blocked';
+      result.decision = 'profile_not_visible_to_fresh_telegram_session';
+      report.followUpTasks.push(`Use a shared browser session profile for Telegram prompt certification of ${scenario.siteKey}.`);
+      results.push(result);
+      continue;
+    }
+
+    const senderId = `${baseSenderId}-${String(index + 1).padStart(2, '0')}`;
+    const prompt = [
+      `Live certification ${scenario.id}.`,
+      `${scenario.prompt}`,
+      `Open ${scenario.verifyUrl} with the matching saved ${scenario.siteKey} login through Scrapling/cookies.`,
+      'Infer the login automatically; do not ask for /browser use unless no matching profile is available.',
+      'Reply with a short redacted status only. Do not include private feed contents, tokens, cookies, emails, or account identifiers.'
+    ].join(' ');
+
+    try {
+      const ingressPath = flags.telegramIngressMode === 'webhook' ? '/api/telegram/webhook' : '/api/ingress/telegram';
+      const ingressHeaders =
+        flags.telegramIngressMode === 'webhook'
+          ? {}
+          : {
+              'x-ops-telegram-mode': flags.telegramIngressMode
+            };
+      const ingressPayload = await recordStep(report, `telegram-prompt:${scenario.id}:ingress`, () =>
+        requestJson(`${gatewayBaseUrl}${ingressPath}`, {
+          method: 'POST',
+          headers: ingressHeaders,
+          body: createTelegramIngressPayload({
+            updateId: Date.now() + index,
+            senderId,
+            username,
+            text: prompt
+          }),
+          timeoutMs
+        })
+      );
+      result.ingress = {
+        status: typeof ingressPayload.status === 'string' ? ingressPayload.status : null,
+        sessionId: typeof ingressPayload.sessionId === 'string' ? ingressPayload.sessionId : null,
+        runId: typeof ingressPayload.runId === 'string' ? ingressPayload.runId : null,
+        sessionKey: typeof ingressPayload.sessionKey === 'string' ? ingressPayload.sessionKey : null,
+        delegationDecision: isRecord(ingressPayload.delegationDecision) ? ingressPayload.delegationDecision : null
+      };
+
+      if (!result.ingress.runId || !result.ingress.sessionId) {
+        result.status = 'blocked';
+        result.decision = result.ingress.status ? `telegram_ingress_${result.ingress.status}` : 'telegram_ingress_missing_run';
+        result.error = redactEvidenceText(JSON.stringify(ingressPayload), 1000);
+        results.push(result);
+        continue;
+      }
+
+      const terminalPayload = await recordStep(report, `telegram-prompt:${scenario.id}:terminal`, () =>
+        waitForRunTerminalStatus(gatewayBaseUrl, headers, result.ingress.runId, timeoutMs)
+      );
+      result.terminal = summarizeTerminalPayload(terminalPayload);
+
+      const trace = await recordStep(report, `telegram-prompt:${scenario.id}:browser-trace`, () =>
+        waitForBrowserTrace(gatewayBaseUrl, headers, result.ingress.runId, Math.min(timeoutMs, 45000))
+      );
+      result.browserTrace = summarizeBrowserTrace(trace);
+
+      const timelinePayload = await recordStep(report, `telegram-prompt:${scenario.id}:timeline`, () =>
+        requestJson(`${gatewayBaseUrl}/api/runs/${encodeURIComponent(result.ingress.runId)}/timeline`, {
+          headers,
+          timeoutMs: Math.min(timeoutMs, 15000)
+        })
+      );
+      result.timeline = summarizeTimeline(timelinePayload.timeline);
+
+      const sessionPayload = await recordStep(report, `telegram-prompt:${scenario.id}:session`, () =>
+        requestJson(`${gatewayBaseUrl}/api/sessions/${encodeURIComponent(result.ingress.sessionId)}`, {
+          headers,
+          timeoutMs: Math.min(timeoutMs, 15000)
+        })
+      );
+      result.session = summarizeSessionPayload(sessionPayload);
+
+      const terminalStatus = result.terminal?.terminalStatus ?? result.terminal?.runStatus;
+      const authResolution = result.timeline?.authProfileResolution;
+      const selectedProfileId = authResolution?.selectedSessionProfileId ?? null;
+      if (selectedProfileId !== profile.id) {
+        result.status = 'failed';
+        result.decision = 'telegram_prompt_browser_profile_mismatch';
+        result.error = `Expected auto-selected profile ${profile.id}, got ${selectedProfileId ?? 'none'}.`;
+      } else if (result.browserTrace?.ok && terminalStatus === 'completed') {
+        result.status = 'passed';
+        result.decision = authResolution?.source === 'auto_site' ? 'telegram_prompt_auto_selected_profile' : `telegram_prompt_profile_${authResolution?.source ?? 'selected'}`;
+      } else if (result.browserTrace?.blockedReason === 'dynamic_render_required') {
+        result.status = 'blocked';
+        result.decision = 'scrapling_requires_interactive_fallback';
+        report.followUpTasks.push(`Run ${scenario.siteKey} through the interactive fallback lane; Scrapling reached a dynamic-render barrier.`);
+      } else {
+        result.status = 'failed';
+        result.decision = 'telegram_prompt_browser_trace_failed';
+        result.error = result.browserTrace?.error ?? result.terminal?.error ?? result.terminal?.resultSummary ?? 'Telegram prompt did not complete with browser evidence.';
+      }
+    } catch (error) {
+      result.status = scenarioStatusFromError(error);
+      result.decision = 'telegram_prompt_failed';
+      result.error = redactError(error);
+    }
+    results.push(result);
+  }
+
+  report.telegram.promptScenarios.results = results;
+  if (results.some((result) => result.status === 'failed')) {
+    report.telegram.promptScenarios.status = 'failed';
+  } else if (results.some((result) => result.status === 'blocked')) {
+    report.telegram.promptScenarios.status = 'blocked';
+  } else if (results.some((result) => result.status === 'passed')) {
+    report.telegram.promptScenarios.status = 'passed';
+  } else {
+    report.telegram.promptScenarios.status = 'skipped';
+  }
+}
+
 async function runTelegramSmoke({ report, gatewayBaseUrl, headers, flags }) {
   if (!flags.telegram) {
     report.telegram.status = 'skipped';
@@ -519,6 +890,8 @@ async function runTelegramSmoke({ report, gatewayBaseUrl, headers, flags }) {
 function updateSummary(report, profiles) {
   report.summary.profilesAvailable = profiles.length;
   report.summary.profilesMatched = report.scenarios.filter((scenario) => scenario.profile).length;
+  report.summary.telegramPromptScenarios = report.telegram.promptScenarios.results.length;
+  report.summary.telegramPromptPassed = report.telegram.promptScenarios.results.filter((scenario) => scenario.status === 'passed').length;
   report.summary.passed = report.scenarios.filter((scenario) => scenario.status === 'passed').length;
   report.summary.blocked = report.scenarios.filter((scenario) => scenario.status === 'blocked').length;
   report.summary.failed = report.scenarios.filter((scenario) => scenario.status === 'failed').length;
@@ -529,6 +902,9 @@ function finalizeStatus(report) {
   const scenarioStatuses = report.scenarios.map((scenario) => scenario.status);
   if (report.telegram.enabled) {
     scenarioStatuses.push(report.telegram.status);
+  }
+  if (report.telegram.promptScenarios.enabled) {
+    scenarioStatuses.push(report.telegram.promptScenarios.status);
   }
   if (scenarioStatuses.includes('failed')) {
     report.status = 'failed';
@@ -541,18 +917,40 @@ function finalizeStatus(report) {
   }
 }
 
+function markPendingLiveSectionsSkipped(report) {
+  if (report.telegram.status === 'pending') {
+    report.telegram.status = 'skipped';
+  }
+  if (report.telegram.promptScenarios.status === 'pending') {
+    report.telegram.promptScenarios.status = 'skipped';
+  }
+}
+
 async function main() {
   const config = readControlPlaneConfig();
   const manifestPath = process.env.OPS_LIVE_SCENARIO_MANIFEST?.trim()
     ? path.resolve(process.env.OPS_LIVE_SCENARIO_MANIFEST.trim())
     : DEFAULT_MANIFEST_PATH;
   const gatewayBaseUrl = resolveGatewayBaseUrl(config);
+  const telegramConfig = isRecord(config.channel) && isRecord(config.channel.telegram) ? config.channel.telegram : {};
+  const telegramIngressModeInput = process.env.OPS_LIVE_SCENARIO_TELEGRAM_MODE?.trim().toLowerCase();
+  const telegramIngressMode =
+    telegramIngressModeInput === 'webhook' || telegramIngressModeInput === 'ingress'
+      ? telegramIngressModeInput
+      : telegramConfig.useWebhook === true
+        ? 'webhook'
+        : 'ingress';
+  const telegramSenderId =
+    process.env.OPS_LIVE_SCENARIO_TELEGRAM_SENDER_ID?.trim() || `live-cert-${Date.now().toString(36)}`;
   const flags = {
     enabled: envFlag('OPS_RUN_LIVE_SOCIAL_BROWSER_CERT'),
     strict: envFlag('OPS_LIVE_SCENARIO_STRICT'),
     verify: envFlag('OPS_LIVE_SCENARIO_VERIFY'),
     interactive: envFlag('OPS_LIVE_SCENARIO_INTERACTIVE'),
     telegram: envFlag('OPS_LIVE_SCENARIO_TELEGRAM'),
+    telegramPrompts: envFlag('OPS_LIVE_SCENARIO_TELEGRAM_PROMPTS'),
+    telegramIngressMode,
+    telegramSenderId,
     siteFilter: envList('OPS_LIVE_SCENARIO_SITES'),
     telegramChatId: process.env.OPS_LIVE_SCENARIO_TELEGRAM_CHAT_ID?.trim() || null,
     telegramTopicId: process.env.OPS_LIVE_SCENARIO_TELEGRAM_TOPIC_ID?.trim() || null,
@@ -564,6 +962,7 @@ async function main() {
 
   if (!flags.enabled) {
     report.followUpTasks.push('Set OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 to run live local certification.');
+    markPendingLiveSectionsSkipped(report);
     writeReport(report);
     console.log(`live social browser certification skipped; report: ${path.relative(REPO_ROOT, REPORT_PATH)}`);
     return 0;
@@ -572,6 +971,7 @@ async function main() {
   const apiToken = resolveApiToken(config);
   if (!apiToken) {
     report.followUpTasks.push('Set OPS_API_TOKEN or OPS_LIVE_SCENARIO_API_TOKEN before running live certification.');
+    markPendingLiveSectionsSkipped(report);
     writeReport(report);
     console.log(`live social browser certification skipped without API token; report: ${path.relative(REPO_ROOT, REPORT_PATH)}`);
     return flags.strict ? 1 : 0;
@@ -584,6 +984,7 @@ async function main() {
   } catch (error) {
     report.status = 'failed';
     report.followUpTasks.push('Fix the live social browser scenario manifest JSON.');
+    markPendingLiveSectionsSkipped(report);
     writeReport(report);
     console.error(`live social browser certification failed: ${redactError(error)}`);
     return flags.strict ? 1 : 0;
@@ -614,6 +1015,7 @@ async function main() {
     report.status = 'skipped';
     report.followUpTasks.push('Start the gateway before running live certification.');
     report.followUpTasks.push('Use pnpm dev:gateway or pnpm start:gateway, then rerun with OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1.');
+    markPendingLiveSectionsSkipped(report);
     writeReport(report);
     console.log(`live social browser certification skipped; gateway unavailable: ${redactError(error)}`);
     return flags.strict ? 1 : 0;
@@ -633,6 +1035,7 @@ async function main() {
     report.scenarios.push(result);
   }
 
+  await runTelegramPromptScenarios({ report, scenarios, profiles, gatewayBaseUrl, headers, flags });
   await runTelegramSmoke({ report, gatewayBaseUrl, headers, flags });
   updateSummary(report, profiles);
   finalizeStatus(report);

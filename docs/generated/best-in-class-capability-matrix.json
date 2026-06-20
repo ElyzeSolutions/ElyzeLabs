@@ -2,8 +2,8 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "dddd78a8570ac31a33b833af0d44584410cb3087bd424528a001f5294488e252",
-  "updatedAt": "2026-06-20",
+  "sourceHash": "45d14f17bcfc86de68adeccd48d3f57c9376c9f4f05811b971f7dfd4327e9921",
+  "updatedAt": "2026-06-21",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
   "statusCounts": {
@@ -44,6 +44,7 @@
         "endpoint groups",
         "live e2e-scenario registry",
         "messaging provider certification",
+        "OpenAI-compatible provider compatibility",
         "blueprint lifecycle",
         "operator approval loops",
         "onboarding flow context guards"
@@ -63,7 +64,8 @@
         "chat/tool-card UX",
         "doctor/onboarding breadth",
         "model failover",
-        "bounded platform smoke tests"
+        "bounded platform smoke tests",
+        "context-engine projection bounds"
       ]
     }
   ],
@@ -75,7 +77,7 @@
       "status": "partial",
       "remainingGaps": [
         "Run OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM=1 against real Telegram credentials and attach the redacted report.",
-        "Run the saved-profile social scenarios from Telegram-facing prompts so Instagram, TikTok, Pinterest, X, and Reddit routing is proven without the operator spelling out profile ids."
+        "Archive a redacted OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM_PROMPTS=1 report where telegram.promptScenarios.status=passed for Instagram, TikTok, Pinterest, X, and Reddit."
       ]
     },
     {
@@ -116,6 +118,7 @@
       "status": "partial",
       "remainingGaps": [
         "Archive opt-in live scenario reports for real Telegram credentials and saved browser session profiles before claiming production readiness.",
+        "Add a fake OpenAI-compatible provider E2E that proves provider quirks, tool-result formatting, redaction, and fallback behavior through the same artifacted scenario registry.",
         "Persist binary screenshots/PDFs from external live interactive scenarios while keeping report artifacts redacted.",
         "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
       ]
@@ -150,7 +153,9 @@
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/agent/system_prompt.py",
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/agent/prompt_builder.py",
-        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/context-engine/types.ts"
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/context-engine/types.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/codex/src/app-server/attempt-context.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/agents/harness/prompt-compaction-hook-helpers.ts"
       ],
       "verification": {
         "commands": [
@@ -216,7 +221,8 @@
       "verification": {
         "commands": [
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/telegram-smoke-test.test.ts packages/gateway/test/integration/telegram-prompt-governance.test.ts",
-          "pnpm test:live-social-browser"
+          "pnpm test:live-social-browser",
+          "OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM_PROMPTS=1 pnpm test:live-social-browser"
         ],
         "testPaths": [
           "packages/gateway/test/integration/telegram-smoke-test.test.ts",
@@ -225,7 +231,7 @@
       },
       "remainingGaps": [
         "Run OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM=1 against real Telegram credentials and attach the redacted report.",
-        "Run the saved-profile social scenarios from Telegram-facing prompts so Instagram, TikTok, Pinterest, X, and Reddit routing is proven without the operator spelling out profile ids."
+        "Archive a redacted OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM_PROMPTS=1 report where telegram.promptScenarios.status=passed for Instagram, TikTok, Pinterest, X, and Reddit."
       ]
     },
     {
@@ -475,6 +481,8 @@
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/chat.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/e2e/chat-flow.e2e.test.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/chat/tool-cards.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/copilot/src/attempt.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/copilot/src/tool-bridge.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/apps/desktop/src/app/chat/index.tsx",
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tests/hermes_cli/test_gateway_proc_fallback.py"
       ],
@@ -519,6 +527,8 @@
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/messaging-providers.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/kimi-inference-compat.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/kimi-inference-compat-helpers.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/support-tests/e2e-scenario-registry.test.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/qa/scenarios/channels/channel-chat-baseline.yaml",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/qa/scenarios/ui/control-ui-chat-flow-playwright.yaml"
@@ -538,6 +548,7 @@
       },
       "remainingGaps": [
         "Archive opt-in live scenario reports for real Telegram credentials and saved browser session profiles before claiming production readiness.",
+        "Add a fake OpenAI-compatible provider E2E that proves provider quirks, tool-result formatting, redaction, and fallback behavior through the same artifacted scenario registry.",
         "Persist binary screenshots/PDFs from external live interactive scenarios while keeping report artifacts redacted.",
         "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
       ]
