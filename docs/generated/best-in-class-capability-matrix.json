@@ -2,7 +2,7 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "d7c05043cb28db3e0b622a7bd18cafdb3b6f8602c2de91589840ea736e27465b",
+  "sourceHash": "60782a7af2e49d28606dd05696ed03a89062e2684300a4935c4b5f3a62142fe0",
   "updatedAt": "2026-06-20",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
@@ -95,7 +95,6 @@
       "priority": "P1",
       "status": "partial",
       "remainingGaps": [
-        "Run Playwright visual screenshots for the Backlog/Kanban board across desktop and mobile viewports to catch clipping, overflow, and drag/drop regressions.",
         "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity.",
         "Polish information density and naming so the board feels like a daily operator workbench instead of a feature checklist."
       ]
@@ -422,7 +421,10 @@
         "dashboard/src/pages/BacklogPage.test.tsx",
         "dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx",
         "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
-        "packages/gateway/test/integration/github-delivery-certification.test.ts"
+        "packages/gateway/test/integration/github-delivery-certification.test.ts",
+        "scripts/testing/run-kanban-workboard-certification.mjs",
+        "scripts/testing/run-browser-tests.mjs",
+        "docs/runbooks/kanban-workboard-certification.md"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/workboard.ts",
@@ -433,17 +435,19 @@
       ],
       "verification": {
         "commands": [
+          "pnpm test:kanban-workboard:cert",
           "pnpm exec vitest run --config vitest.config.ts dashboard/src/pages/BacklogPage.test.tsx dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/github-delivery-certification.test.ts"
         ],
         "testPaths": [
           "dashboard/src/pages/BacklogPage.test.tsx",
           "dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx",
           "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
-          "packages/gateway/test/integration/github-delivery-certification.test.ts"
+          "packages/gateway/test/integration/github-delivery-certification.test.ts",
+          "scripts/testing/run-kanban-workboard-certification.mjs",
+          "scripts/testing/run-browser-tests.mjs"
         ]
       },
       "remainingGaps": [
-        "Run Playwright visual screenshots for the Backlog/Kanban board across desktop and mobile viewports to catch clipping, overflow, and drag/drop regressions.",
         "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity.",
         "Polish information density and naming so the board feels like a daily operator workbench instead of a feature checklist."
       ]

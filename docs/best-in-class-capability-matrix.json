@@ -390,7 +390,10 @@
         "dashboard/src/pages/BacklogPage.test.tsx",
         "dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx",
         "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
-        "packages/gateway/test/integration/github-delivery-certification.test.ts"
+        "packages/gateway/test/integration/github-delivery-certification.test.ts",
+        "scripts/testing/run-kanban-workboard-certification.mjs",
+        "scripts/testing/run-browser-tests.mjs",
+        "docs/runbooks/kanban-workboard-certification.md"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/workboard.ts",
@@ -401,17 +404,19 @@
       ],
       "verification": {
         "commands": [
+          "pnpm test:kanban-workboard:cert",
           "pnpm exec vitest run --config vitest.config.ts dashboard/src/pages/BacklogPage.test.tsx dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/github-delivery-certification.test.ts"
         ],
         "testPaths": [
           "dashboard/src/pages/BacklogPage.test.tsx",
           "dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx",
           "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
-          "packages/gateway/test/integration/github-delivery-certification.test.ts"
+          "packages/gateway/test/integration/github-delivery-certification.test.ts",
+          "scripts/testing/run-kanban-workboard-certification.mjs",
+          "scripts/testing/run-browser-tests.mjs"
         ]
       },
       "remainingGaps": [
-        "Run Playwright visual screenshots for the Backlog/Kanban board across desktop and mobile viewports to catch clipping, overflow, and drag/drop regressions.",
         "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity.",
         "Polish information density and naming so the board feels like a daily operator workbench instead of a feature checklist."
       ]
