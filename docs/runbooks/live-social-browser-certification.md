@@ -37,10 +37,20 @@ Add Telegram-facing social prompts that prove saved-profile inference without `/
 
 ```bash
 OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 \
+OPS_LIVE_SCENARIO_TELEGRAM=1 \
 OPS_LIVE_SCENARIO_TELEGRAM_PROMPTS=1 \
 OPS_LIVE_SCENARIO_SITES=instagram,tiktok,pinterest,x,reddit \
+OPS_LIVE_SCENARIO_TIMEOUT_MS=120000 \
 pnpm test:live-social-browser
 ```
+
+Archive a redacted release summary after a successful live run:
+
+```bash
+pnpm archive:live-social-browser
+```
+
+The archive is written to `docs/certifications/live-social-browser-latest.json`. It keeps only pass/fail gates, site keys, provider/routing decisions, Telegram smoke status, and profile health states. It omits profile ids, profile labels, chat ids, sender ids, cookies, tokens, storage state, terminal text, artifact previews, base64 payloads, and social-site content.
 
 Add the rendered interactive browser provider only when needed:
 
@@ -51,7 +61,7 @@ OPS_LIVE_SCENARIO_INTERACTIVE=1 \
 pnpm test:live-social-browser
 ```
 
-The report is written to `.ops/certifications/live-social-browser/certification-report.json`. It records profile routing decisions, verification summaries, interactive artifact previews, Telegram smoke status, and Telegram prompt scenario evidence. It never writes API tokens, cookies, storage-state bodies, Telegram bot tokens, or base64 screenshots.
+The raw local report is written to `.ops/certifications/live-social-browser/certification-report.json`. It records profile routing decisions, verification summaries, interactive artifact previews, Telegram smoke status, and Telegram prompt scenario evidence. It never writes API tokens, cookies, storage-state bodies, Telegram bot tokens, or base64 screenshots.
 
 Telegram prompt scenarios use Telegram-shaped ingress or webhook payloads against the live gateway and verify the resulting run timeline, browser trace, terminal state, and session messages. The important release signal is `telegram.promptScenarios.status=passed`, with `browser.auth_profile.resolved` showing `source=auto_site` or another explicit selected-profile source. Use `OPS_LIVE_SCENARIO_TELEGRAM_MODE=webhook` or `ingress` to override auto-detection from gateway config.
 

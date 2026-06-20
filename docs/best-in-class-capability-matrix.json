@@ -138,7 +138,7 @@
       "area": "telegram",
       "priority": "P0",
       "requiredForBestInClass": true,
-      "status": "partial",
+      "status": "parity",
       "requirement": "Telegram must support governed ingress, prompt-injection-safe memory behavior, bot identity validation, operator-triggered outbound smoke tests, and real exchange scenarios with redacted evidence.",
       "referenceSignals": [
         "NemoClaw soft-fails optional Telegram reachability instead of blocking unrelated setup.",
@@ -151,8 +151,10 @@
         "packages/gateway/test/integration/telegram-smoke-test.test.ts",
         "docs/api-contract.md",
         "scripts/testing/run-live-social-browser-certification.mjs",
+        "scripts/testing/archive-live-social-browser-certification.mjs",
         "scripts/testing/scenarios/live-social-browser.json",
-        "docs/runbooks/live-social-browser-certification.md"
+        "docs/runbooks/live-social-browser-certification.md",
+        "docs/certifications/live-social-browser-latest.json"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/src/lib/onboard/sandbox-messaging-preflight.ts",
@@ -163,17 +165,15 @@
         "commands": [
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/telegram-smoke-test.test.ts packages/gateway/test/integration/telegram-prompt-governance.test.ts",
           "pnpm test:live-social-browser",
-          "OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM_PROMPTS=1 pnpm test:live-social-browser"
+          "OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM=1 OPS_LIVE_SCENARIO_TELEGRAM_PROMPTS=1 OPS_LIVE_SCENARIO_SITES=instagram,tiktok,pinterest,x,reddit OPS_LIVE_SCENARIO_TIMEOUT_MS=120000 pnpm test:live-social-browser",
+          "pnpm archive:live-social-browser"
         ],
         "testPaths": [
           "packages/gateway/test/integration/telegram-smoke-test.test.ts",
           "packages/gateway/test/integration/telegram-prompt-governance.test.ts"
         ]
       },
-      "remainingGaps": [
-        "Run OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM=1 against real Telegram credentials and attach the redacted report.",
-        "Archive a redacted OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM_PROMPTS=1 report where telegram.promptScenarios.status=passed for Instagram, TikTok, Pinterest, X, and Reddit."
-      ]
+      "remainingGaps": []
     },
     {
       "id": "sandbox_policy_profiles",
@@ -346,9 +346,11 @@
         "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
         "scripts/testing/run-interactive-browser-certification.mjs",
         "scripts/testing/run-live-social-browser-certification.mjs",
+        "scripts/testing/archive-live-social-browser-certification.mjs",
         "scripts/testing/scenarios/live-social-browser.json",
         "docs/runbooks/interactive-browser-certification.md",
-        "docs/runbooks/live-social-browser-certification.md"
+        "docs/runbooks/live-social-browser-certification.md",
+        "docs/certifications/live-social-browser-latest.json"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/tools/browser.md",
@@ -360,7 +362,8 @@
         "commands": [
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/browser-service.test.ts packages/gateway/test/unit/browser-interactive-service.test.ts packages/gateway/test/unit/browser-session-vault.test.ts packages/gateway/test/integration/browser-api.test.ts packages/gateway/test/integration/browser-managed-profiles.test.ts packages/gateway/test/integration/browser-auth-routing.test.ts dashboard/src/pages/BrowserPage.test.tsx",
           "pnpm test:interactive-browser:cert",
-          "pnpm test:live-social-browser"
+          "pnpm test:live-social-browser",
+          "pnpm archive:live-social-browser"
         ],
         "testPaths": [
           "packages/gateway/test/unit/browser-service.test.ts",
@@ -374,9 +377,7 @@
         ]
       },
       "remainingGaps": [
-        "Archive the redacted OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_VERIFY=1 report for TikTok, Instagram, Pinterest, X, and Reddit as release evidence.",
-        "Run interactive click/type/PDF against a real external dynamic site with non-mutating selectors before claiming arbitrary live-site operation.",
-        "Keep Scrapling/cookie routing as the default for read-only authenticated social scraping so the lower-detection edge is not lost while interactive browser support expands."
+        "Run interactive click/type/PDF against a real external dynamic site with non-mutating selectors before claiming arbitrary live-site operation."
       ]
     },
     {
@@ -447,7 +448,9 @@
         "docs/api-contract.md",
         "docs/runbooks/chat-process-runtime-certification.md",
         "scripts/testing/run-chat-process-runtime-certification.mjs",
+        "scripts/testing/archive-live-social-browser-certification.mjs",
         "scripts/testing/run-browser-tests.mjs",
+        "docs/certifications/live-social-browser-latest.json",
         "packages/gateway/test/integration/runtime-certification.test.ts",
         "packages/gateway/test/integration/gateway.test.ts",
         "packages/gateway/test/integration/browser-auth-routing.test.ts"
@@ -464,6 +467,7 @@
       "verification": {
         "commands": [
           "pnpm test:chat-process:cert",
+          "pnpm archive:live-social-browser",
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/runtime-certification.test.ts"
         ],
         "testPaths": [
@@ -476,8 +480,7 @@
         ]
       },
       "remainingGaps": [
-        "Run real Telegram-to-process conversations that ask the bot to code, create Kanban tasks, and fetch authenticated social-site information.",
-        "Archive opt-in live Telegram evidence beside the deterministic chat/process certification report."
+        "Run real Telegram-to-process conversations that ask the bot to code and create Kanban tasks, then archive those redacted exchange reports beside the deterministic chat/process certification report."
       ]
     },
     {
@@ -497,9 +500,11 @@
         "scripts/testing/run-browser-schedule-certification.mjs",
         "scripts/testing/run-interactive-browser-certification.mjs",
         "scripts/testing/run-live-social-browser-certification.mjs",
+        "scripts/testing/archive-live-social-browser-certification.mjs",
         "scripts/testing/scenarios/live-social-browser.json",
         "docs/runbooks/interactive-browser-certification.md",
         "docs/runbooks/live-social-browser-certification.md",
+        "docs/certifications/live-social-browser-latest.json",
         "packages/gateway/test/integration/browser-auth-routing.test.ts",
         "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
         "packages/gateway/test/integration/telegram-smoke-test.test.ts",
@@ -517,7 +522,8 @@
         "commands": [
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/browser-auth-routing.test.ts packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/telegram-smoke-test.test.ts",
           "pnpm test:interactive-browser:cert",
-          "pnpm test:live-social-browser"
+          "pnpm test:live-social-browser",
+          "pnpm archive:live-social-browser"
         ],
         "testPaths": [
           "packages/gateway/test/integration/browser-auth-routing.test.ts",
@@ -527,7 +533,6 @@
         ]
       },
       "remainingGaps": [
-        "Archive opt-in live scenario reports for real Telegram credentials and saved browser session profiles before claiming production readiness.",
         "Add a fake OpenAI-compatible provider E2E that proves provider quirks, tool-result formatting, redaction, and fallback behavior through the same artifacted scenario registry.",
         "Persist binary screenshots/PDFs from external live interactive scenarios while keeping report artifacts redacted.",
         "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
