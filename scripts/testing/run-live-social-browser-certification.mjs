@@ -173,6 +173,11 @@ async function requestJson(url, { method = 'GET', headers = {}, body, timeoutMs 
       throw error;
     }
     return payload;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs.toString()}ms`);
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -347,6 +352,14 @@ function summarizeInteractiveControl(control) {
   };
 }
 
+function resolveScenarioTimeoutMs(scenario, fallbackTimeoutMs) {
+  const timeoutMs = Number(scenario.timeoutMs);
+  if (Number.isFinite(timeoutMs) && timeoutMs >= 5000) {
+    return timeoutMs;
+  }
+  return fallbackTimeoutMs;
+}
+
 function scenarioStatusFromError(error) {
   const statusCode = Number(error?.statusCode);
   if (statusCode === 401 || statusCode === 403 || statusCode === 404 || statusCode === 409) {
@@ -379,6 +392,7 @@ async function runScenario({ report, scenario, profiles, gatewayBaseUrl, headers
 
   const profile = selected.selected;
   const healthState = isRecord(profile.health) && typeof profile.health.state === 'string' ? profile.health.state : 'unverified';
+  const timeoutMs = resolveScenarioTimeoutMs(scenario, flags.timeoutMs);
   if (healthState === 'disabled' || (healthState === 'needs_reconnect' && !flags.verify)) {
     result.status = 'blocked';
     result.decision = 'profile_needs_reconnect';
@@ -403,7 +417,7 @@ async function runScenario({ report, scenario, profiles, gatewayBaseUrl, headers
           body: {
             verifyUrl: scenario.verifyUrl
           },
-          timeoutMs: flags.timeoutMs
+          timeoutMs
         })
       );
       const verification = isRecord(payload.verification) ? payload.verification : {};
@@ -449,7 +463,7 @@ async function runScenario({ report, scenario, profiles, gatewayBaseUrl, headers
             ],
             previewChars: 1200
           },
-          timeoutMs: flags.timeoutMs
+          timeoutMs
         })
       );
       result.interactive = summarizeInteractiveControl(payload.control);

@@ -44,6 +44,8 @@ pnpm test:live-social-browser
 
 The report is written to `.ops/certifications/live-social-browser/certification-report.json`. It records profile routing decisions, verification summaries, interactive artifact previews, and Telegram smoke status. It never writes API tokens, cookies, storage-state bodies, Telegram bot tokens, or base64 screenshots.
 
+X can take materially longer than the other social sites. The default manifest gives the X scenario a 180 second timeout so a slow but valid authenticated read is not mislabeled as a failed login.
+
 If verification fails with a missing Playwright or Chrome-for-Testing executable under `~/Library/Caches/ms-playwright`, rebuild Scrapling's browser cache before retrying:
 
 ```bash

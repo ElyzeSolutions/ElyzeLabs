@@ -33,6 +33,7 @@
       "label": "X saved login read",
       "verifyUrl": "https://x.com/home",
       "domains": ["x.com", "twitter.com"],
+      "timeoutMs": 180000,
       "prompt": "Use the saved X login profile to check whether the authenticated X home shell is reachable."
     },
     {

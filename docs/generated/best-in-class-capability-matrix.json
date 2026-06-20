@@ -2,7 +2,7 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "24b49e4238eae2f1ba4b2b954bdf8c4b24024ff0306a1c876b7d2a5c8f0d1ee3",
+  "sourceHash": "06bd1891b9f6e82e2cbb1a73a4f984362f316e07ff2c7db06f0049f6f0e8bb77",
   "updatedAt": "2026-06-20",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
@@ -84,7 +84,7 @@
       "priority": "P1",
       "status": "partial",
       "remainingGaps": [
-        "Run OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_VERIFY=1 for TikTok, Instagram, Pinterest, X, and Reddit and keep the redacted report as release evidence.",
+        "Archive the redacted OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_VERIFY=1 report for TikTok, Instagram, Pinterest, X, and Reddit as release evidence.",
         "Promote interactive click/type/PDF control from compatible service surface to a fully certified provider with live site scenarios.",
         "Keep Scrapling/cookie routing as the default for read-only authenticated social scraping so the lower-detection edge is not lost while interactive browser support expands."
       ]
@@ -117,7 +117,7 @@
       "priority": "P0",
       "status": "partial",
       "remainingGaps": [
-        "Run the opt-in live scenario manifest against real Telegram credentials and saved browser session profiles before claiming production readiness.",
+        "Archive opt-in live scenario reports for real Telegram credentials and saved browser session profiles before claiming production readiness.",
         "Persist binary screenshots/PDFs from the interactive provider when OPS_LIVE_SCENARIO_INTERACTIVE=1, while keeping report artifacts redacted.",
         "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
       ]
@@ -399,7 +399,7 @@
         ]
       },
       "remainingGaps": [
-        "Run OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_VERIFY=1 for TikTok, Instagram, Pinterest, X, and Reddit and keep the redacted report as release evidence.",
+        "Archive the redacted OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_VERIFY=1 report for TikTok, Instagram, Pinterest, X, and Reddit as release evidence.",
         "Promote interactive click/type/PDF control from compatible service surface to a fully certified provider with live site scenarios.",
         "Keep Scrapling/cookie routing as the default for read-only authenticated social scraping so the lower-detection edge is not lost while interactive browser support expands."
       ]
@@ -516,7 +516,7 @@
         ]
       },
       "remainingGaps": [
-        "Run the opt-in live scenario manifest against real Telegram credentials and saved browser session profiles before claiming production readiness.",
+        "Archive opt-in live scenario reports for real Telegram credentials and saved browser session profiles before claiming production readiness.",
         "Persist binary screenshots/PDFs from the interactive provider when OPS_LIVE_SCENARIO_INTERACTIVE=1, while keeping report artifacts redacted.",
         "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
       ]

@@ -5,7 +5,7 @@ Generated from `docs/best-in-class-capability-matrix.json` by `pnpm best-in-clas
 ## Summary
 
 - Schema: `ops.best-in-class-audit.v1`
-- Source hash: `24b49e4238eae2f1ba4b2b954bdf8c4b24024ff0306a1c876b7d2a5c8f0d1ee3`
+- Source hash: `06bd1891b9f6e82e2cbb1a73a4f984362f316e07ff2c7db06f0049f6f0e8bb77`
 - Updated at: 2026-06-20
 - Readiness: `not_ready`
 - Capabilities: 13
@@ -28,10 +28,10 @@ Generated from `docs/best-in-class-capability-matrix.json` by `pnpm best-in-clas
 | Capability | Area | Priority | Status | Gaps |
 | --- | --- | --- | --- | --- |
 | telegram_live_smoke | telegram | P0 | partial | Run OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM=1 against real Telegram credentials and attach the redacted report.; Run the saved-profile social scenarios from Telegram-facing prompts so Instagram, TikTok, Pinterest, X, and Reddit routing is proven without the operator spelling out profile ids. |
-| managed_browser_profile | browser | P1 | partial | Run OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_VERIFY=1 for TikTok, Instagram, Pinterest, X, and Reddit and keep the redacted report as release evidence.; Promote interactive click/type/PDF control from compatible service surface to a fully certified provider with live site scenarios.; Keep Scrapling/cookie routing as the default for read-only authenticated social scraping so the lower-detection edge is not lost while interactive browser support expands. |
+| managed_browser_profile | browser | P1 | partial | Archive the redacted OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_VERIFY=1 report for TikTok, Instagram, Pinterest, X, and Reddit as release evidence.; Promote interactive click/type/PDF control from compatible service surface to a fully certified provider with live site scenarios.; Keep Scrapling/cookie routing as the default for read-only authenticated social scraping so the lower-detection edge is not lost while interactive browser support expands. |
 | operator_kanban_workboard | kanban | P1 | partial | Run Playwright visual screenshots for the Backlog/Kanban board across desktop and mobile viewports to catch clipping, overflow, and drag/drop regressions.; Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity.; Polish information density and naming so the board feels like a daily operator workbench instead of a feature checklist. |
 | chat_process_runtime | chat_runtime | P1 | partial | Add dashboard chat visual/responsive screenshots similar to OpenClaw chat-flow coverage.; Make browser-profile auto-selection and tool evidence more explicit in Mission Control messages when the user asks for logged-in website work.; Run real Telegram-to-process conversations that ask the bot to code, create Kanban tasks, and fetch authenticated social-site information. |
-| e2e_scenario_certification | testing | P0 | partial | Run the opt-in live scenario manifest against real Telegram credentials and saved browser session profiles before claiming production readiness.; Persist binary screenshots/PDFs from the interactive provider when OPS_LIVE_SCENARIO_INTERACTIVE=1, while keeping report artifacts redacted.; Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available. |
+| e2e_scenario_certification | testing | P0 | partial | Archive opt-in live scenario reports for real Telegram credentials and saved browser session profiles before claiming production readiness.; Persist binary screenshots/PDFs from the interactive provider when OPS_LIVE_SCENARIO_INTERACTIVE=1, while keeping report artifacts redacted.; Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available. |
 
 ## Matrix
 
