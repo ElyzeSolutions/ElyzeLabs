@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { redactError, redactEvidenceText as redactText } from './redaction.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '../..');
@@ -166,24 +167,6 @@ function hashValue(value) {
     return null;
   }
   return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
-}
-
-function redactText(value, limit = 1200) {
-  return String(value ?? '')
-    .slice(0, limit)
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gu, 'Bearer [redacted]')
-    .replace(/gh[pousr]_[A-Za-z0-9_]+/giu, 'gh[redacted]')
-    .replace(/sk-[A-Za-z0-9_-]+/gu, 'sk-[redacted]')
-    .replace(/\b(cookie|set-cookie|authorization)\s*:\s*[^\n\r]+/giu, '$1: [redacted]')
-    .replace(
-      /\b([A-Za-z0-9_.-]*(?:token|secret|session|sid|csrf|auth|cookie)[A-Za-z0-9_.-]*)\s*=\s*[^;\s\n\r]+/giu,
-      '$1=[redacted]'
-    );
-}
-
-function redactError(error) {
-  const message = error instanceof Error ? error.message : String(error);
-  return redactText(message, 1200);
 }
 
 async function requestJson(url, { method = 'GET', headers = {}, body, timeoutMs = 30000 } = {}) {
@@ -408,6 +391,17 @@ function makeArchive(report) {
   };
 }
 
+function maybeWriteArchive(report) {
+  const archive = makeArchive(report);
+  if (archive.status !== 'passed' && fs.existsSync(ARCHIVE_PATH) && !envFlag('OPS_LIVE_GITHUB_DELIVERY_ARCHIVE_ALLOW_FAILED')) {
+    const existing = JSON.parse(fs.readFileSync(ARCHIVE_PATH, 'utf8'));
+    if (existing.status === 'passed') {
+      return;
+    }
+  }
+  writeJson(ARCHIVE_PATH, archive);
+}
+
 async function main() {
   const config = readControlPlaneConfig();
   const flags = {
@@ -425,7 +419,7 @@ async function main() {
     report.followUpTasks.push('Set OPS_RUN_LIVE_GITHUB_DELIVERY_CERT=1 to run live GitHub delivery certification.');
     report.followUpTasks.push('Set OPS_LIVE_GITHUB_DELIVERY_REPO=owner/repo and expose a token env such as OPS_GITHUB_PAT to the gateway.');
     writeJson(REPORT_PATH, report);
-    writeJson(ARCHIVE_PATH, makeArchive(report));
+    maybeWriteArchive(report);
     console.log(`live GitHub delivery certification skipped; report: ${path.relative(REPO_ROOT, REPORT_PATH)}`);
     return;
   }
@@ -434,7 +428,7 @@ async function main() {
     report.status = 'blocked';
     report.followUpTasks.push('Set OPS_API_TOKEN or OPS_LIVE_GITHUB_DELIVERY_API_TOKEN before running live certification.');
     writeJson(REPORT_PATH, report);
-    writeJson(ARCHIVE_PATH, makeArchive(report));
+    maybeWriteArchive(report);
     console.log(`live GitHub delivery certification blocked without API token; report: ${path.relative(REPO_ROOT, REPORT_PATH)}`);
     if (flags.strict) {
       process.exit(1);
@@ -446,7 +440,7 @@ async function main() {
     report.status = 'blocked';
     report.followUpTasks.push('Set OPS_LIVE_GITHUB_DELIVERY_REPO=owner/repo before running live certification.');
     writeJson(REPORT_PATH, report);
-    writeJson(ARCHIVE_PATH, makeArchive(report));
+    maybeWriteArchive(report);
     console.log(`live GitHub delivery certification blocked without target repo; report: ${path.relative(REPO_ROOT, REPORT_PATH)}`);
     if (flags.strict) {
       process.exit(1);
@@ -645,7 +639,7 @@ async function main() {
     report.followUpTasks = [];
   }
   writeJson(REPORT_PATH, report);
-  writeJson(ARCHIVE_PATH, makeArchive(report));
+  maybeWriteArchive(report);
 
   console.log(`live GitHub delivery certification ${report.status}; report: ${path.relative(REPO_ROOT, REPORT_PATH)}`);
   if ((report.status === 'failed' || report.status === 'blocked') && flags.strict) {

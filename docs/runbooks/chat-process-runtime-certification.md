@@ -68,6 +68,8 @@ The archive command refuses to overwrite an existing passed archive with failed 
 
 Tracked archives omit Telegram chat identifiers, sender identifiers, raw prompts, message bodies, bot tokens, API tokens, provider outputs, cookies, and storage state.
 
+Live process reports use the shared certification redactor in `scripts/testing/redaction.mjs`, which masks authorization headers, `x-api-key` style headers, provider keys, Telegram/GitHub tokens, JWTs, private key blocks, URL query secrets, URL userinfo, cookie headers, and database connection-string passwords before evidence is persisted.
+
 ## What It Proves
 
 - Mission Control exposes chat state, runtime posture, and browser auth posture in the main operator view.

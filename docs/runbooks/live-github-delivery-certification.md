@@ -52,6 +52,10 @@ Tracked redacted archive:
 
 - `docs/certifications/live-github-delivery-latest.json`
 
+Skipped or blocked runs write the local report but do not overwrite an existing passed tracked archive unless `OPS_LIVE_GITHUB_DELIVERY_ARCHIVE_ALLOW_FAILED=1` is set.
+
+Local report errors and response previews use the shared certification redactor in `scripts/testing/redaction.mjs`, which masks authorization headers, `x-api-key` style headers, provider keys, Telegram/GitHub tokens, JWTs, private key blocks, URL query secrets, URL userinfo, cookie headers, and database connection-string passwords before evidence is persisted.
+
 ## What It Proves
 
 - Repo connection creation uses `env:` or vault-style secret references, not raw PATs.

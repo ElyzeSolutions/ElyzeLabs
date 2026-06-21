@@ -2,7 +2,7 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "f3a3d04acb98a9bab5fb2813ea5e56c43d339e1e48b65929fb0161da0ac287cb",
+  "sourceHash": "5e36710c5c71a75d239bea4984c0b98ee711a0d25d3ece5ade9a37ef11e71906",
   "updatedAt": "2026-06-21T15:33:29.518Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
@@ -503,6 +503,7 @@
         "scripts/testing/run-interactive-browser-certification.mjs",
         "scripts/testing/run-live-interactive-browser-certification.mjs",
         "scripts/testing/run-live-social-browser-certification.mjs",
+        "scripts/testing/redaction.mjs",
         "scripts/testing/run-nightly-certification.mjs",
         "scripts/testing/archive-live-social-browser-certification.mjs",
         "scripts/testing/archive-live-telegram-process-certification.mjs",
@@ -525,6 +526,7 @@
         "scripts/testing/run-live-telegram-process-certification.mjs",
         "scripts/testing/scenarios/live-telegram-process.json",
         "scripts/testing/run-live-github-delivery-certification.mjs",
+        "scripts/testing/redaction.test.mjs",
         "docs/runbooks/live-github-delivery-certification.md",
         "docs/certifications/live-github-delivery-latest.json"
       ],
@@ -547,6 +549,7 @@
           "pnpm test:live-social-browser",
           "pnpm archive:live-social-browser",
           "pnpm test:live-telegram-process",
+          "node --test scripts/testing/redaction.test.mjs",
           "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process",
           "pnpm archive:live-telegram-process",
           "pnpm test:live-github-delivery",
@@ -563,6 +566,7 @@
           "scripts/testing/run-live-telegram-process-certification.mjs",
           "scripts/testing/archive-live-telegram-process-certification.mjs",
           "scripts/testing/scenarios/live-telegram-process.json",
+          "scripts/testing/redaction.test.mjs",
           "scripts/testing/run-live-github-delivery-certification.mjs"
         ]
       },

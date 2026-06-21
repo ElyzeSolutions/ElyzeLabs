@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { redactError, redactEvidenceText } from './redaction.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '../..');
@@ -134,25 +135,6 @@ function authHeaders(token) {
     'x-api-token': token,
     'x-ops-role': 'admin'
   };
-}
-
-function redactError(error) {
-  const message = error instanceof Error ? error.message : String(error);
-  return message
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gu, 'Bearer [redacted]')
-    .replace(/bot[0-9]+:[A-Za-z0-9_-]+/gu, 'bot[redacted]');
-}
-
-function redactEvidenceText(value, limit = 1200) {
-  return String(value ?? '')
-    .slice(0, limit)
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gu, 'Bearer [redacted]')
-    .replace(/bot[0-9]+:[A-Za-z0-9_-]+/gu, 'bot[redacted]')
-    .replace(/\b(cookie|set-cookie|authorization)\s*:\s*[^\n\r]+/giu, '$1: [redacted]')
-    .replace(
-      /\b([A-Za-z0-9_.-]*(?:token|secret|session|sid|csrf|auth|cookie)[A-Za-z0-9_.-]*)\s*=\s*[^;\s\n\r]+/giu,
-      '$1=[redacted]'
-    );
 }
 
 async function requestJson(url, { method = 'GET', headers = {}, body, timeoutMs = 20000 } = {}) {
