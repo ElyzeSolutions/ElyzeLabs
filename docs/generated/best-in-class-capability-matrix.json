@@ -2,7 +2,7 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "05ab5edbf788867b416f9582b5ac8e64a671df11dbd66ca29bd4c20f5963f7b7",
+  "sourceHash": "2fe48d7ba99dae0dfafdbf182306d847139386321fba72dfe3f7e6732354041d",
   "updatedAt": "2026-06-21T15:33:29.518Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
@@ -85,7 +85,7 @@
       "priority": "P0",
       "status": "partial",
       "remainingGaps": [
-        "Provision stable live Telegram provider credentials and authenticated browser session profiles, run live social/Telegram lanes to passed archives alongside the passed live GitHub delivery archive, and flip scheduled live lanes from opt-in evidence to a required green nightly gate."
+        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, add that archive to the required freshness gate, and keep live refresh lanes green before the 168-hour archive window expires."
       ]
     }
   ],
@@ -561,7 +561,7 @@
         ]
       },
       "remainingGaps": [
-        "Provision stable live Telegram provider credentials and authenticated browser session profiles, run live social/Telegram lanes to passed archives alongside the passed live GitHub delivery archive, and flip scheduled live lanes from opt-in evidence to a required green nightly gate."
+        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, add that archive to the required freshness gate, and keep live refresh lanes green before the 168-hour archive window expires."
       ]
     },
     {

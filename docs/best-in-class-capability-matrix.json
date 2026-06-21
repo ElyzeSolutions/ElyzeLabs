@@ -576,7 +576,7 @@
         ]
       },
       "remainingGaps": [
-        "Provision stable live Telegram provider credentials and authenticated browser session profiles, run live social/Telegram lanes to passed archives alongside the passed live GitHub delivery archive, and flip scheduled live lanes from opt-in evidence to a required green nightly gate."
+        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, add that archive to the required freshness gate, and keep live refresh lanes green before the 168-hour archive window expires."
       ]
     },
     {

@@ -1,23 +1,26 @@
 {
   "schema": "ops.nightly-certification-archive.v1",
   "version": 1,
-  "archivedAt": "2026-06-21T15:36:56.572Z",
+  "archivedAt": "2026-06-21T20:36:37.168Z",
   "sourceReport": {
     "path": ".ops/certifications/nightly/certification-report.json",
     "schema": "ops.nightly-certification.v1",
-    "generatedAt": "2026-06-21T15:36:56.572Z"
+    "generatedAt": "2026-06-21T20:36:37.167Z"
   },
   "status": "passed",
   "mode": {
     "dryRun": false,
     "includeLive": false,
-    "strictLive": false
+    "strictLive": false,
+    "requireLiveEvidence": true,
+    "liveEvidenceMaxAgeHours": 168
   },
   "summary": {
-    "total": 10,
+    "total": 13,
     "deterministic": 6,
     "live": 4,
-    "passed": 6,
+    "liveEvidence": 3,
+    "passed": 9,
     "failed": 0,
     "blocked": 0,
     "skipped": 4,
@@ -28,6 +31,9 @@
     "liveLanesOptIn": true,
     "liveLanesSelected": false,
     "liveLanesPassed": false,
+    "liveEvidenceRequired": true,
+    "liveEvidenceMaxAgeHours": 168,
+    "liveEvidenceFresh": true,
     "redactedArchiveWritten": true
   },
   "lanes": [
@@ -120,6 +126,33 @@
       "reportStatus": null,
       "reportPath": ".ops/certifications/live-github-delivery/certification-report.json",
       "command": "pnpm test:live-github-delivery"
+    },
+    {
+      "id": "interactive_browser_live_archive",
+      "kind": "live_evidence",
+      "trigger": "archive_freshness",
+      "status": "passed",
+      "reportStatus": "passed",
+      "reportPath": "docs/certifications/interactive-browser-live-latest.json",
+      "command": "read tracked live archive"
+    },
+    {
+      "id": "live_social_browser_archive",
+      "kind": "live_evidence",
+      "trigger": "archive_freshness",
+      "status": "passed",
+      "reportStatus": "passed",
+      "reportPath": "docs/certifications/live-social-browser-latest.json",
+      "command": "read tracked live archive"
+    },
+    {
+      "id": "live_github_delivery_archive",
+      "kind": "live_evidence",
+      "trigger": "archive_freshness",
+      "status": "passed",
+      "reportStatus": "passed",
+      "reportPath": "docs/certifications/live-github-delivery-latest.json",
+      "command": "read tracked live archive"
     }
   ],
   "redaction": {
@@ -127,6 +160,6 @@
     "trackedArchive": "Tracked archive omits command output and any live artifact payloads."
   },
   "followUpTasks": [
-    "Run with OPS_NIGHTLY_CERT_INCLUDE_LIVE=1 after stable live credentials and browser session profiles are available."
+    "Run with OPS_NIGHTLY_CERT_INCLUDE_LIVE=1 to refresh live lanes before archived evidence reaches its max age."
   ]
 }

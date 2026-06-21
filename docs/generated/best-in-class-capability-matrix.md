@@ -5,7 +5,7 @@ Generated from `docs/best-in-class-capability-matrix.json` by `pnpm best-in-clas
 ## Summary
 
 - Schema: `ops.best-in-class-audit.v1`
-- Source hash: `05ab5edbf788867b416f9582b5ac8e64a671df11dbd66ca29bd4c20f5963f7b7`
+- Source hash: `2fe48d7ba99dae0dfafdbf182306d847139386321fba72dfe3f7e6732354041d`
 - Updated at: 2026-06-21T15:33:29.518Z
 - Readiness: `not_ready`
 - Capabilities: 13
@@ -28,7 +28,7 @@ Generated from `docs/best-in-class-capability-matrix.json` by `pnpm best-in-clas
 | Capability | Area | Priority | Status | Gaps |
 | --- | --- | --- | --- | --- |
 | chat_process_runtime | chat_runtime | P1 | partial | Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report. The current live process chat run remains blocked by provider auth: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report. |
-| e2e_scenario_certification | testing | P0 | partial | Provision stable live Telegram provider credentials and authenticated browser session profiles, run live social/Telegram lanes to passed archives alongside the passed live GitHub delivery archive, and flip scheduled live lanes from opt-in evidence to a required green nightly gate. |
+| e2e_scenario_certification | testing | P0 | partial | Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, add that archive to the required freshness gate, and keep live refresh lanes green before the 168-hour archive window expires. |
 
 ## Matrix
 
