@@ -368,6 +368,134 @@ function summarizeProcessChatLiveCheck(payload) {
   };
 }
 
+function summarizeEffectiveRouting(payload) {
+  const routes = Array.isArray(payload.routes) ? payload.routes.filter(isRecord) : [];
+  const firstRoute = routes[0] ?? {};
+  const selected = isRecord(firstRoute.selected) ? firstRoute.selected : null;
+  const checks = Array.isArray(firstRoute.checks) ? firstRoute.checks.filter(isRecord) : [];
+  return {
+    available: routes.length > 0,
+    selected: selected !== null,
+    selectedProvider: selected && typeof selected.provider === 'string' ? selected.provider : null,
+    selectedModel: selected && typeof selected.model === 'string' ? selected.model : null,
+    selectedProfileId: selected && typeof selected.authProfileId === 'string' ? selected.authProfileId : null,
+    checks: checks.slice(0, 8).map((check) => ({
+      provider: typeof check.provider === 'string' ? check.provider : null,
+      authProfileId: typeof check.authProfileId === 'string' ? check.authProfileId : null,
+      eligible: typeof check.eligible === 'boolean' ? check.eligible : null,
+      reason: typeof check.reason === 'string' ? check.reason : null
+    }))
+  };
+}
+
+function classifyProcessProviderFailure(attempt) {
+  const fields = [
+    attempt?.status,
+    attempt?.detail,
+    attempt?.routing?.available === false ? 'routing unavailable' : '',
+    attempt?.routing?.selected === false ? 'no selected route' : '',
+    ...(Array.isArray(attempt?.routing?.checks)
+      ? attempt.routing.checks.flatMap((check) => [check.reason, check.provider, check.authProfileId])
+      : [])
+  ];
+  const text = fields
+    .filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
+    .join(' ')
+    .toLowerCase();
+
+  if (text.includes('provider_auth_profile_cooldown') || text.includes('cooldown')) {
+    return 'provider_profile_cooldown';
+  }
+  if (text.includes('billing') || text.includes('quota') || text.includes('insufficient') || text.includes('credit')) {
+    return 'provider_billing_or_quota';
+  }
+  if (
+    text.includes('user not found') ||
+    text.includes('expired') ||
+    text.includes('invalid api key') ||
+    text.includes('invalid key') ||
+    text.includes('unauthorized') ||
+    text.includes('forbidden') ||
+    text.includes('401') ||
+    text.includes('403')
+  ) {
+    return 'provider_auth_invalid';
+  }
+  if (text.includes('rate limit') || text.includes('rate_limit') || text.includes('429')) {
+    return 'provider_rate_limited';
+  }
+  if (text.includes('no selected route') || text.includes('not configured') || text.includes('missing credential')) {
+    return 'provider_profile_ineligible';
+  }
+  if (text.includes('model not found') || text.includes('unsupported model') || text.includes('model unavailable')) {
+    return 'model_unavailable';
+  }
+  if (text.includes('timed out') || text.includes('timeout') || text.includes('fetch failed') || text.includes('econn')) {
+    return 'provider_network';
+  }
+  if (text.includes('routing unavailable')) {
+    return 'routing_preflight_unavailable';
+  }
+  return 'provider_live_check_failed';
+}
+
+function remediationForProcessFailure(reasonCode) {
+  if (reasonCode === 'provider_auth_invalid') {
+    return 'Rotate or replace the provider credential, then rerun the live Telegram process lane.';
+  }
+  if (reasonCode === 'provider_billing_or_quota') {
+    return 'Enable billing, raise quota, or put a funded provider-backed model first in OPS_LIVE_TELEGRAM_PROCESS_MODEL_CANDIDATES.';
+  }
+  if (reasonCode === 'provider_profile_cooldown') {
+    return 'Clear or wait out the LLM auth-profile cooldown before using this candidate.';
+  }
+  if (reasonCode === 'provider_rate_limited') {
+    return 'Wait for the provider rate limit window or move a different provider-backed candidate earlier.';
+  }
+  if (reasonCode === 'provider_profile_ineligible') {
+    return 'Configure an eligible auth profile for this provider/model or remove the candidate from the live certification list.';
+  }
+  if (reasonCode === 'model_unavailable') {
+    return 'Replace the unavailable model with a currently supported provider-backed process model.';
+  }
+  if (reasonCode === 'provider_network') {
+    return 'Check gateway network egress and provider reachability, then rerun the live lane.';
+  }
+  if (reasonCode === 'routing_preflight_unavailable') {
+    return 'Check /api/llm/routing/effective and LLM routing policy before rerunning the live lane.';
+  }
+  return 'Inspect the redacted candidate detail and rerun with OPS_LIVE_TELEGRAM_PROCESS_MODEL set to a known-good provider-backed model.';
+}
+
+function summarizeProcessModelAttempts(attempts) {
+  const byReason = {};
+  const recommendations = [];
+  for (const attempt of attempts) {
+    const reasonCode = typeof attempt.reasonCode === 'string' ? attempt.reasonCode : classifyProcessProviderFailure(attempt);
+    byReason[reasonCode] = (byReason[reasonCode] ?? 0) + 1;
+    const recommendation = remediationForProcessFailure(reasonCode);
+    if (!recommendations.includes(recommendation)) {
+      recommendations.push(recommendation);
+    }
+  }
+  return {
+    attempted: attempts.length,
+    byReason,
+    recommendations
+  };
+}
+
+async function checkEffectiveProcessRoute({ gatewayBaseUrl, headers, processModel, timeoutMs }) {
+  const query = new URLSearchParams({
+    runtime: 'process',
+    model: processModel
+  });
+  return requestJson(`${gatewayBaseUrl}/api/llm/routing/effective?${query.toString()}`, {
+    headers,
+    timeoutMs: Math.min(timeoutMs, 15000)
+  });
+}
+
 async function waitForRun(gatewayBaseUrl, headers, runId, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let latest = null;
@@ -513,7 +641,12 @@ function makeReport({ flags, registry, gatewayBaseUrl, marker }) {
       selectedProvider: null,
       selectedModel: null,
       explicitModelRequested: flags.explicitProcessModelRequested,
-      rawModelStoredInTrackedArchive: false
+      rawModelStoredInTrackedArchive: false,
+      routingPreflight: {
+        enabled: true,
+        endpoint: '/api/llm/routing/effective'
+      },
+      failureSummary: null
     },
     summary: {
       scenariosTotal: Array.isArray(registry.scenarios) ? registry.scenarios.length : 0,
@@ -716,22 +849,59 @@ async function selectProcessProviderChatModel({ report, registry, gatewayBaseUrl
   const id = 'telegram_process_provider_chat_live_check';
   const attempts = [];
   for (const candidate of processModelCandidates) {
+    let routing = null;
+    try {
+      const routingPayload = await recordStep(report, `${id}:routing:${attempts.length + 1}`, () =>
+        checkEffectiveProcessRoute({ gatewayBaseUrl, headers, processModel: candidate, timeoutMs })
+      );
+      routing = summarizeEffectiveRouting(routingPayload);
+      if (!routing.selected) {
+        const attempt = {
+          status: 'skipped',
+          ok: false,
+          provider: null,
+          model: candidate,
+          detail: 'No eligible process route selected before live generation.',
+          routing
+        };
+        attempt.reasonCode = classifyProcessProviderFailure(attempt);
+        attempt.recommendation = remediationForProcessFailure(attempt.reasonCode);
+        attempts.push(attempt);
+        continue;
+      }
+    } catch (error) {
+      routing = {
+        available: false,
+        selected: false,
+        selectedProvider: null,
+        selectedModel: null,
+        selectedProfileId: null,
+        checks: [],
+        error: redactError(error)
+      };
+    }
+
     try {
       const payload = await recordStep(report, `${id}:${attempts.length + 1}`, () =>
         checkProcessProviderChat({ gatewayBaseUrl, headers, processModel: candidate, timeoutMs })
       );
       const liveCheck = summarizeProcessChatLiveCheck(payload);
-      attempts.push({
+      const attempt = {
         status: liveCheck.status,
         ok: liveCheck.ok,
         provider: liveCheck.provider,
         model: liveCheck.model,
-        detail: liveCheck.detail
-      });
+        detail: liveCheck.detail,
+        routing
+      };
+      attempt.reasonCode = liveCheck.ok === true ? null : classifyProcessProviderFailure(attempt);
+      attempt.recommendation = attempt.reasonCode ? remediationForProcessFailure(attempt.reasonCode) : null;
+      attempts.push(attempt);
       if (liveCheck.status === 'ok' && liveCheck.ok === true) {
         report.gates.processProviderChatReady = true;
         report.processModelSelection.selectedProvider = liveCheck.provider;
         report.processModelSelection.selectedModel = liveCheck.model ?? candidate;
+        report.processModelSelection.failureSummary = summarizeProcessModelAttempts(attempts.filter((entry) => entry.ok !== true));
         pushScenario(report, {
           id,
           label: scenarioLabel(registry, id),
@@ -742,22 +912,28 @@ async function selectProcessProviderChatModel({ report, registry, gatewayBaseUrl
         return liveCheck.model ?? candidate;
       }
     } catch (error) {
-      attempts.push({
+      const attempt = {
         status: 'error',
         ok: false,
         provider: null,
         model: candidate,
-        detail: redactError(error)
-      });
+        detail: redactError(error),
+        routing
+      };
+      attempt.reasonCode = classifyProcessProviderFailure(attempt);
+      attempt.recommendation = remediationForProcessFailure(attempt.reasonCode);
+      attempts.push(attempt);
     }
   }
 
   report.gates.processProviderChatReady = false;
+  report.processModelSelection.failureSummary = summarizeProcessModelAttempts(attempts);
   pushScenario(report, {
     id,
     label: scenarioLabel(registry, id),
     status: 'failed',
-    attempts
+    attempts,
+    failureSummary: report.processModelSelection.failureSummary
   });
   const lastAttempt = attempts[attempts.length - 1] ?? null;
   throw new Error(

@@ -41,6 +41,8 @@ It uses `OPS_API_TOKEN` and `TELEGRAM_CHAT_ID` from the environment or `.env`. O
 
 By default the live process lane probes a short provider-backed candidate list and sets `/model` to the first route that can complete a real chat request. Put a preferred model first with `OPS_LIVE_TELEGRAM_PROCESS_MODEL`, or provide a comma-separated fallback list with `OPS_LIVE_TELEGRAM_PROCESS_MODEL_CANDIDATES`.
 
+Before sending a live generation request, the lane preflights each candidate through `/api/llm/routing/effective?runtime=process&model=...`. Failed candidates are recorded with a redacted `reasonCode` and remediation hint, so provider-auth, billing/quota, cooldown, rate-limit, model-unavailable, routing, and network failures are distinguishable in the local report.
+
 The live lane verifies:
 
 - `POST /api/telegram/smoke-test` can authenticate the bot and deliver to the operator target.
@@ -61,6 +63,7 @@ Tracked archives omit Telegram chat identifiers, sender identifiers, raw prompts
 - Runtime certification keeps process/provider readiness and Telegram routing truthfully separated.
 - Provider readiness is generation-level: metadata/list endpoints are not accepted as proof that the selected process chat model can answer.
 - Provider model selection is evidence-driven: the certification records the selected provider/model and redacted per-candidate failure details before it sends the Telegram `/model` command.
+- Provider model selection is routing-aware: ineligible auth profiles and cooled-down routes are skipped before expensive live generation attempts.
 - Browser auth profile routing stays explicit and persists selected profiles on sessions.
 - Mission Control renders at desktop, tablet, and mobile viewport sizes without global horizontal overflow, missing core chat/runtime/browser-auth text, clipped watched elements, or broken screenshot artifacts.
 - Scrapling/cookie-backed authenticated reads remain the default visible route for logged-in site reads.
