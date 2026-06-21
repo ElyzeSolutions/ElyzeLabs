@@ -2,8 +2,8 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "67faf9d8886af09738f4524523a00e63017544ee8a0656e3740202c2adb514cb",
-  "updatedAt": "2026-06-21T14:43:06.000Z",
+  "sourceHash": "235ec9d639f3755aac630e1428324faaf245d77e9cfec27287f963c5f183dd7c",
+  "updatedAt": "2026-06-21T15:01:46.000Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
   "statusCounts": {
@@ -94,7 +94,7 @@
       "priority": "P0",
       "status": "partial",
       "remainingGaps": [
-        "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
+        "Provision stable live credentials/session profiles and flip scheduled live lanes from opt-in evidence to a required green nightly gate."
       ]
     }
   ],
@@ -505,15 +505,19 @@
         "scripts/testing/run-interactive-browser-certification.mjs",
         "scripts/testing/run-live-interactive-browser-certification.mjs",
         "scripts/testing/run-live-social-browser-certification.mjs",
+        "scripts/testing/run-nightly-certification.mjs",
         "scripts/testing/archive-live-social-browser-certification.mjs",
+        ".github/workflows/nightly-certification.yml",
         "scripts/testing/scenarios/fake-provider-e2e.json",
         "scripts/testing/scenarios/live-social-browser.json",
         "docs/runbooks/fake-provider-e2e-certification.md",
         "docs/runbooks/interactive-browser-certification.md",
         "docs/runbooks/live-social-browser-certification.md",
+        "docs/runbooks/nightly-certification.md",
         "docs/certifications/fake-provider-e2e-latest.json",
         "docs/certifications/interactive-browser-live-latest.json",
         "docs/certifications/live-social-browser-latest.json",
+        "docs/certifications/nightly-certification-latest.json",
         "packages/gateway/test/integration/fake-provider-e2e.test.ts",
         "packages/gateway/test/integration/browser-auth-routing.test.ts",
         "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
@@ -535,6 +539,8 @@
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/browser-auth-routing.test.ts packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/telegram-smoke-test.test.ts",
           "pnpm test:fake-provider-e2e:cert",
           "pnpm test:interactive-browser:cert",
+          "OPS_NIGHTLY_CERT_DRY_RUN=1 pnpm test:nightly-cert",
+          "pnpm test:nightly-cert",
           "OPS_RUN_LIVE_INTERACTIVE_BROWSER_CERT=1 pnpm test:interactive-browser:live",
           "pnpm test:live-social-browser",
           "pnpm archive:live-social-browser",
@@ -547,12 +553,14 @@
           "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
           "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
           "packages/gateway/test/integration/telegram-smoke-test.test.ts",
+          "scripts/testing/run-nightly-certification.mjs",
+          ".github/workflows/nightly-certification.yml",
           "scripts/testing/run-live-telegram-process-certification.mjs",
           "scripts/testing/scenarios/live-telegram-process.json"
         ]
       },
       "remainingGaps": [
-        "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
+        "Provision stable live credentials/session profiles and flip scheduled live lanes from opt-in evidence to a required green nightly gate."
       ]
     },
     {

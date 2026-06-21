@@ -1,0 +1,123 @@
+{
+  "schema": "ops.nightly-certification-archive.v1",
+  "version": 1,
+  "archivedAt": "2026-06-21T15:05:15.323Z",
+  "sourceReport": {
+    "path": ".ops/certifications/nightly/certification-report.json",
+    "schema": "ops.nightly-certification.v1",
+    "generatedAt": "2026-06-21T15:05:15.322Z"
+  },
+  "status": "passed",
+  "mode": {
+    "dryRun": false,
+    "includeLive": false,
+    "strictLive": false
+  },
+  "summary": {
+    "total": 9,
+    "deterministic": 6,
+    "live": 3,
+    "passed": 6,
+    "failed": 0,
+    "blocked": 0,
+    "skipped": 3,
+    "planned": 0
+  },
+  "gates": {
+    "deterministicLanesRequired": true,
+    "liveLanesOptIn": true,
+    "liveLanesSelected": false,
+    "liveLanesPassed": false,
+    "redactedArchiveWritten": true
+  },
+  "lanes": [
+    {
+      "id": "best_in_class_matrix",
+      "kind": "deterministic",
+      "trigger": "always",
+      "status": "passed",
+      "reportStatus": null,
+      "reportPath": "docs/generated/best-in-class-capability-matrix.json",
+      "command": "pnpm best-in-class:matrix:check"
+    },
+    {
+      "id": "fake_provider_e2e",
+      "kind": "deterministic",
+      "trigger": "always",
+      "status": "passed",
+      "reportStatus": "passed",
+      "reportPath": ".ops/certifications/fake-provider-e2e/certification-report.json",
+      "command": "pnpm test:fake-provider-e2e:cert"
+    },
+    {
+      "id": "interactive_browser",
+      "kind": "deterministic",
+      "trigger": "always",
+      "status": "passed",
+      "reportStatus": "passed",
+      "reportPath": ".ops/certifications/interactive-browser/certification-report.json",
+      "command": "pnpm test:interactive-browser:cert"
+    },
+    {
+      "id": "kanban_workboard",
+      "kind": "deterministic",
+      "trigger": "always",
+      "status": "passed",
+      "reportStatus": "passed",
+      "reportPath": ".ops/certifications/kanban-workboard/certification-report.json",
+      "command": "pnpm test:kanban-workboard:cert"
+    },
+    {
+      "id": "chat_process_runtime",
+      "kind": "deterministic",
+      "trigger": "always",
+      "status": "passed",
+      "reportStatus": "passed",
+      "reportPath": ".ops/certifications/chat-process-runtime/certification-report.json",
+      "command": "pnpm test:chat-process:cert"
+    },
+    {
+      "id": "browser_schedule",
+      "kind": "deterministic",
+      "trigger": "always",
+      "status": "passed",
+      "reportStatus": "passed",
+      "reportPath": ".ops/certifications/browser-schedule/certification-report.json",
+      "command": "pnpm test:browser-schedule:cert"
+    },
+    {
+      "id": "interactive_browser_live",
+      "kind": "live",
+      "trigger": "opt_in",
+      "status": "skipped",
+      "reportStatus": null,
+      "reportPath": ".ops/certifications/interactive-browser-live/certification-report.json",
+      "command": "pnpm test:interactive-browser:live"
+    },
+    {
+      "id": "live_social_browser",
+      "kind": "live",
+      "trigger": "opt_in",
+      "status": "skipped",
+      "reportStatus": null,
+      "reportPath": ".ops/certifications/live-social-browser/certification-report.json",
+      "command": "pnpm test:live-social-browser"
+    },
+    {
+      "id": "live_telegram_process",
+      "kind": "live",
+      "trigger": "opt_in",
+      "status": "skipped",
+      "reportStatus": null,
+      "reportPath": ".ops/certifications/live-telegram-process/certification-report.json",
+      "command": "pnpm test:live-telegram-process"
+    }
+  ],
+  "redaction": {
+    "localReport": "Local report keeps redacted command output previews only.",
+    "trackedArchive": "Tracked archive omits command output and any live artifact payloads."
+  },
+  "followUpTasks": [
+    "Run with OPS_NIGHTLY_CERT_INCLUDE_LIVE=1 after stable live credentials and browser session profiles are available."
+  ]
+}
