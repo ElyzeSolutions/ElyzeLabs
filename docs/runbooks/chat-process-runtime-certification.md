@@ -29,6 +29,31 @@ Reports are written under `.ops/certifications/chat-process-runtime/`:
 
 These artifacts are ignored by git. Archive them with release evidence when making a chat/process runtime claim.
 
+## Live Telegram Process Lane
+
+The deterministic lane does not contact Telegram. Run this opt-in live lane when certifying real operator chat behavior:
+
+```bash
+OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process
+```
+
+It uses `OPS_API_TOKEN` and `TELEGRAM_CHAT_ID` from the environment or `.env`. Override with `OPS_LIVE_TELEGRAM_PROCESS_API_TOKEN`, `OPS_LIVE_TELEGRAM_PROCESS_CHAT_ID`, `OPS_LIVE_TELEGRAM_PROCESS_TOPIC_ID`, `OPS_LIVE_TELEGRAM_PROCESS_CHAT_TYPE`, or `OPS_LIVE_TELEGRAM_PROCESS_TIMEOUT_MS`.
+
+By default the live process lane sets `/model openrouter/openai/gpt-5-mini` after `/runtime process` so the run uses a provider-backed process route instead of the fail-closed local placeholder. Override with `OPS_LIVE_TELEGRAM_PROCESS_MODEL`.
+
+The live lane verifies:
+
+- `POST /api/telegram/smoke-test` can authenticate the bot and deliver to the operator target.
+- `/runtime process` works through real Telegram ingress.
+- `/model <provider-backed-process-model>` works through real Telegram ingress.
+- A Telegram process-runtime prompt completes and replies with a synthetic marker.
+- `/task` creates a real Kanban/backlog card through Telegram.
+- `/backlog` returns a Telegram backlog snapshot after task creation.
+
+The local report is written to `.ops/certifications/live-telegram-process/certification-report.json`. A passed run writes the redacted release archive to `docs/certifications/live-telegram-process-latest.json`.
+
+Tracked archives omit Telegram chat identifiers, sender identifiers, raw prompts, message bodies, bot tokens, API tokens, provider outputs, cookies, and storage state.
+
 ## What It Proves
 
 - Mission Control exposes chat state, runtime posture, and browser auth posture in the main operator view.
@@ -39,6 +64,6 @@ These artifacts are ignored by git. Archive them with release evidence when maki
 
 ## Non-Goals
 
-- It does not send messages through the live Telegram Bot API. Run an opt-in live Telegram scenario before claiming live delivery parity.
+- The deterministic command does not send messages through the live Telegram Bot API. Run `OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process` before claiming live delivery parity.
 - It does not fetch live TikTok, Instagram, Pinterest, Reddit, or X content. Run the live social browser certification for that.
 - It does not replace the full interactive browser certification for click/type/PDF operation.

@@ -33,6 +33,7 @@
     "test:fake-provider-e2e:cert": "node scripts/testing/run-fake-provider-e2e-certification.mjs",
     "test:kanban-workboard:cert": "node scripts/testing/run-kanban-workboard-certification.mjs",
     "test:chat-process:cert": "node scripts/testing/run-chat-process-runtime-certification.mjs",
+    "test:live-telegram-process": "node scripts/testing/run-live-telegram-process-certification.mjs",
     "test:live-social-browser": "node scripts/testing/run-live-social-browser-certification.mjs",
     "archive:live-social-browser": "node scripts/testing/archive-live-social-browser-certification.mjs",
     "test:roadmap-closure": "tsx scripts/testing/run-roadmap-closure.ts",

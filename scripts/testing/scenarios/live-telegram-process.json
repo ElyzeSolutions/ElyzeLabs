@@ -1,0 +1,39 @@
+{
+  "schema": "ops.live-telegram-process-scenarios.v1",
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "telegram_delivery_smoke",
+      "kind": "telegram_smoke",
+      "claim": "The live gateway can authenticate the Telegram bot and deliver a diagnostic message to the configured operator target."
+    },
+    {
+      "id": "telegram_runtime_process_switch",
+      "kind": "telegram_command",
+      "claim": "A real Telegram command can set the active operator session to the process runtime."
+    },
+    {
+      "id": "telegram_process_model_select",
+      "kind": "telegram_command",
+      "claim": "A real Telegram command can bind the process runtime to a provider-backed model route instead of the fail-closed local placeholder."
+    },
+    {
+      "id": "telegram_process_code_reply",
+      "kind": "telegram_process_run",
+      "claim": "A real Telegram operator prompt can queue a process-runtime chat run and receive a code-oriented answer."
+    },
+    {
+      "id": "telegram_kanban_task_create",
+      "kind": "telegram_kanban",
+      "claim": "A real Telegram operator command can create a Kanban/backlog task that is queryable through the gateway."
+    },
+    {
+      "id": "telegram_backlog_snapshot",
+      "kind": "telegram_command",
+      "claim": "A real Telegram command can retrieve the current backlog snapshot after task creation."
+    }
+  ],
+  "redaction": {
+    "trackedArchive": "Tracked archives keep only pass/fail gates, redacted IDs, marker hashes, command outcomes, and item state. Telegram identifiers, raw prompts, message bodies, bot tokens, API tokens, and provider outputs are omitted."
+  }
+}
