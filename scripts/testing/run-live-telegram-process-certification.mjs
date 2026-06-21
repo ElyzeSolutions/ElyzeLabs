@@ -375,11 +375,14 @@ function summarizeEffectiveRouting(payload) {
   const checks = Array.isArray(firstRoute.checks) ? firstRoute.checks.filter(isRecord) : [];
   return {
     available: routes.length > 0,
+    reason: typeof firstRoute.reason === 'string' ? firstRoute.reason : null,
+    requestedModel: typeof firstRoute.requestedModel === 'string' ? firstRoute.requestedModel : null,
     selected: selected !== null,
     selectedProvider: selected && typeof selected.provider === 'string' ? selected.provider : null,
     selectedModel: selected && typeof selected.model === 'string' ? selected.model : null,
     selectedProfileId: selected && typeof selected.authProfileId === 'string' ? selected.authProfileId : null,
     checks: checks.slice(0, 8).map((check) => ({
+      model: typeof check.model === 'string' ? check.model : null,
       provider: typeof check.provider === 'string' ? check.provider : null,
       authProfileId: typeof check.authProfileId === 'string' ? check.authProfileId : null,
       eligible: typeof check.eligible === 'boolean' ? check.eligible : null,
@@ -471,6 +474,32 @@ function remediationForProcessFailure(reasonCode) {
     return 'Check /api/llm/routing/effective and LLM routing policy before rerunning the live lane.';
   }
   return 'Inspect the redacted candidate detail and rerun with OPS_LIVE_TELEGRAM_PROCESS_MODEL set to a known-good provider-backed model.';
+}
+
+function normalizeModelForCompare(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function requestedCandidatePreflightFailure(routing, candidate) {
+  if (!isRecord(routing)) {
+    return null;
+  }
+  const candidateKey = normalizeModelForCompare(candidate);
+  const selectedModel = normalizeModelForCompare(routing.selectedModel);
+  const requestedCheck = Array.isArray(routing.checks)
+    ? routing.checks.find((check) => normalizeModelForCompare(check.model) === candidateKey)
+    : null;
+  if (requestedCheck && requestedCheck.eligible === false) {
+    const reason = typeof requestedCheck.reason === 'string' ? requestedCheck.reason : 'requested_model_ineligible';
+    return `Requested process model is not eligible before live generation: ${reason}.`;
+  }
+  if (routing.reason === 'invalid_model_config') {
+    return 'Requested process model has invalid model config before live generation.';
+  }
+  if (selectedModel && selectedModel !== candidateKey) {
+    return `Routing selected ${routing.selectedModel} instead of requested ${candidate}.`;
+  }
+  return null;
 }
 
 function summarizeProcessModelAttempts(attempts) {
@@ -878,6 +907,8 @@ async function selectProcessProviderChatModel({ report, registry, gatewayBaseUrl
     } catch (error) {
       routing = {
         available: false,
+        reason: null,
+        requestedModel: candidate,
         selected: false,
         selectedProvider: null,
         selectedModel: null,
@@ -885,6 +916,21 @@ async function selectProcessProviderChatModel({ report, registry, gatewayBaseUrl
         checks: [],
         error: redactError(error)
       };
+    }
+    const preflightFailure = requestedCandidatePreflightFailure(routing, candidate);
+    if (preflightFailure) {
+      const attempt = {
+        status: 'skipped',
+        ok: false,
+        provider: routing.selectedProvider,
+        model: candidate,
+        detail: preflightFailure,
+        routing
+      };
+      attempt.reasonCode = classifyProcessProviderFailure(attempt);
+      attempt.recommendation = remediationForProcessFailure(attempt.reasonCode);
+      attempts.push(attempt);
+      continue;
     }
 
     try {
