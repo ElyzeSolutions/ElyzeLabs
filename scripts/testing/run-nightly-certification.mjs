@@ -144,6 +144,28 @@ function evaluateLiveEvidenceGate(expectation, nowMs) {
   }
 
   const archive = readJsonIfPresent(expectation.archivePath);
+  if (!archive && expectation.optionalUntilPresent === true) {
+    return {
+      id: expectation.id,
+      label: expectation.label,
+      kind: 'live_evidence',
+      trigger: 'archive_freshness',
+      command: 'read tracked live archive',
+      status: 'skipped',
+      reportStatus: null,
+      reportPath: path.relative(REPO_ROOT, expectation.archivePath),
+      exitCode: null,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: 0,
+      archiveStatus: null,
+      archiveAgeHours: null,
+      maxAgeHours: liveEvidenceMaxAgeHours,
+      requiredGates: expectation.requiredGates,
+      missingGates: expectation.requiredGates,
+      output: 'Skipped until the first passed live Telegram process archive is created.'
+    };
+  }
   const time = archive ? resolveArchiveTime(archive) : null;
   const ageHours = time ? (nowMs - time.timestamp) / (60 * 60 * 1000) : null;
   const missingGates = archive
@@ -463,6 +485,24 @@ const liveEvidenceExpectations = [
       'gates.repairReceiptRecorded',
       'gates.trackedArchiveRedacted'
     ]
+  },
+  {
+    id: 'live_telegram_process_archive',
+    label: 'Live Telegram process archived evidence',
+    archivePath: path.join(REPO_ROOT, 'docs', 'certifications', 'live-telegram-process-latest.json'),
+    optionalUntilPresent: true,
+    requiredGates: [
+      'gates.telegramSmokeDelivered',
+      'gates.runtimeCommandApplied',
+      'gates.processModelCommandApplied',
+      'gates.processProviderChatReady',
+      'gates.processRunCompleted',
+      'gates.processRuntimeUsed',
+      'gates.processReplyContainedMarker',
+      'gates.kanbanTaskCreatedFromTelegram',
+      'gates.backlogSnapshotReturned',
+      'gates.trackedArchiveRedacted'
+    ]
   }
 ];
 
@@ -472,6 +512,8 @@ const steps = [...lanes.map(runStep), ...liveEvidenceExpectations.map((expectati
 const status = finalStatus(steps);
 const liveSteps = steps.filter((step) => step.kind === 'live');
 const liveEvidenceSteps = steps.filter((step) => step.kind === 'live_evidence');
+const liveEvidenceRequiredFresh = requireLiveEvidence && liveEvidenceSteps.every((step) => step.status !== 'failed');
+const liveEvidencePending = liveEvidenceSteps.some((step) => step.status === 'skipped');
 const report = {
   schema: 'ops.nightly-certification.v1',
   version: 1,
@@ -502,7 +544,8 @@ const report = {
     liveLanesPassed: includeLive && liveSteps.every((step) => step.status === 'passed'),
     liveEvidenceRequired: requireLiveEvidence,
     liveEvidenceMaxAgeHours,
-    liveEvidenceFresh: requireLiveEvidence && liveEvidenceSteps.every((step) => step.status === 'passed'),
+    liveEvidenceFresh: liveEvidenceRequiredFresh,
+    liveEvidencePending,
     redactedArchiveWritten: true
   },
   lanes: steps,
@@ -519,8 +562,15 @@ const report = {
         ]
     : status === 'passed'
       ? includeLive
-        ? []
-        : ['Run with OPS_NIGHTLY_CERT_INCLUDE_LIVE=1 to refresh live lanes before archived evidence reaches its max age.']
+        ? liveEvidencePending
+          ? ['Produce docs/certifications/live-telegram-process-latest.json with OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and pnpm archive:live-telegram-process.']
+          : []
+        : [
+            ...(liveEvidencePending
+              ? ['Produce docs/certifications/live-telegram-process-latest.json with OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and pnpm archive:live-telegram-process.']
+              : []),
+            'Run with OPS_NIGHTLY_CERT_INCLUDE_LIVE=1 to refresh live lanes before archived evidence reaches its max age.'
+          ]
       : ['Inspect the failed or blocked lane reports under .ops/certifications and rerun pnpm test:nightly-cert.']
 };
 

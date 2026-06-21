@@ -55,6 +55,14 @@ The live lane verifies:
 
 The local report is written to `.ops/certifications/live-telegram-process/certification-report.json`. A passed run writes the redacted release archive to `docs/certifications/live-telegram-process-latest.json`.
 
+Archive the latest local report explicitly with:
+
+```bash
+pnpm archive:live-telegram-process
+```
+
+The archive command refuses to overwrite an existing passed archive with failed evidence unless `OPS_LIVE_TELEGRAM_PROCESS_ARCHIVE_ALLOW_FAILED=1` is set.
+
 Tracked archives omit Telegram chat identifiers, sender identifiers, raw prompts, message bodies, bot tokens, API tokens, provider outputs, cookies, and storage state.
 
 ## What It Proves

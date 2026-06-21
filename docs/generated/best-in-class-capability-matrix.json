@@ -2,7 +2,7 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "2fe48d7ba99dae0dfafdbf182306d847139386321fba72dfe3f7e6732354041d",
+  "sourceHash": "59a774d3676baa4308df172d44a8b340f48a9b8255f0c1fb11fe29f91e68641a",
   "updatedAt": "2026-06-21T15:33:29.518Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
@@ -76,7 +76,7 @@
       "priority": "P1",
       "status": "partial",
       "remainingGaps": [
-        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report. The current live process chat run remains blocked by provider auth: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report."
+        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run remains blocked by provider auth: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report."
       ]
     },
     {
@@ -85,7 +85,7 @@
       "priority": "P0",
       "status": "partial",
       "remainingGaps": [
-        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, add that archive to the required freshness gate, and keep live refresh lanes green before the 168-hour archive window expires."
+        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass, and will enforce live Telegram process freshness as soon as a passed archive exists. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, and keep live refresh lanes green before the 168-hour archive window expires."
       ]
     }
   ],
@@ -450,6 +450,7 @@
         "packages/gateway/test/integration/browser-auth-routing.test.ts",
         "packages/gateway/test/integration/model-routing.test.ts",
         "scripts/testing/run-live-telegram-process-certification.mjs",
+        "scripts/testing/archive-live-telegram-process-certification.mjs",
         "scripts/testing/scenarios/live-telegram-process.json"
       ],
       "referenceEvidence": [
@@ -468,7 +469,8 @@
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/runtime-certification.test.ts",
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/model-routing.test.ts",
           "pnpm test:live-telegram-process",
-          "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process"
+          "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process",
+          "pnpm archive:live-telegram-process"
         ],
         "testPaths": [
           "dashboard/src/pages/MissionControlPage.test.tsx",
@@ -479,11 +481,12 @@
           "packages/gateway/test/integration/browser-auth-routing.test.ts",
           "packages/gateway/test/integration/model-routing.test.ts",
           "scripts/testing/run-live-telegram-process-certification.mjs",
+          "scripts/testing/archive-live-telegram-process-certification.mjs",
           "scripts/testing/scenarios/live-telegram-process.json"
         ]
       },
       "remainingGaps": [
-        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report. The current live process chat run remains blocked by provider auth: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report."
+        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run remains blocked by provider auth: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report."
       ]
     },
     {
@@ -502,6 +505,7 @@
         "scripts/testing/run-live-social-browser-certification.mjs",
         "scripts/testing/run-nightly-certification.mjs",
         "scripts/testing/archive-live-social-browser-certification.mjs",
+        "scripts/testing/archive-live-telegram-process-certification.mjs",
         ".github/workflows/nightly-certification.yml",
         "scripts/testing/scenarios/fake-provider-e2e.json",
         "scripts/testing/scenarios/live-social-browser.json",
@@ -544,6 +548,7 @@
           "pnpm archive:live-social-browser",
           "pnpm test:live-telegram-process",
           "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process",
+          "pnpm archive:live-telegram-process",
           "pnpm test:live-github-delivery",
           "OPS_RUN_LIVE_GITHUB_DELIVERY_CERT=1 pnpm test:live-github-delivery"
         ],
@@ -556,12 +561,13 @@
           "scripts/testing/run-nightly-certification.mjs",
           ".github/workflows/nightly-certification.yml",
           "scripts/testing/run-live-telegram-process-certification.mjs",
+          "scripts/testing/archive-live-telegram-process-certification.mjs",
           "scripts/testing/scenarios/live-telegram-process.json",
           "scripts/testing/run-live-github-delivery-certification.mjs"
         ]
       },
       "remainingGaps": [
-        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, add that archive to the required freshness gate, and keep live refresh lanes green before the 168-hour archive window expires."
+        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass, and will enforce live Telegram process freshness as soon as a passed archive exists. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, and keep live refresh lanes green before the 168-hour archive window expires."
       ]
     },
     {

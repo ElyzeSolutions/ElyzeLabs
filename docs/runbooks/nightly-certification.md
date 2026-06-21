@@ -16,7 +16,7 @@ Run deterministic local/nightly gates:
 pnpm test:nightly-cert
 ```
 
-By default this also verifies tracked live evidence archives for live interactive browser, live social browser, and live GitHub delivery. The archives must be `passed`, include their critical sub-gates, and be no older than `168` hours.
+By default this also verifies tracked live evidence archives for live interactive browser, live social browser, and live GitHub delivery. It also verifies live Telegram process evidence once `docs/certifications/live-telegram-process-latest.json` exists. The archives must be `passed`, include their critical sub-gates, and be no older than `168` hours. Until the first live Telegram process archive exists, the nightly report sets `liveEvidencePending=true` and keeps a follow-up task instead of treating that not-yet-produced artifact as passed.
 
 Change the live-evidence freshness window:
 
@@ -75,8 +75,9 @@ These are required by default unless `OPS_NIGHTLY_CERT_REQUIRE_LIVE_EVIDENCE=0` 
 - `docs/certifications/interactive-browser-live-latest.json`
 - `docs/certifications/live-social-browser-latest.json`
 - `docs/certifications/live-github-delivery-latest.json`
+- `docs/certifications/live-telegram-process-latest.json` after the first passed live Telegram process run
 
-The gate checks archive status, timestamp freshness, and critical sub-gates such as CDP click/type artifacts, Scrapling preservation for authenticated social reads, shared-profile auto-selection, GitHub write acceptance, and redacted archive output.
+The gate checks archive status, timestamp freshness, and critical sub-gates such as CDP click/type artifacts, Scrapling preservation for authenticated social reads, shared-profile auto-selection, GitHub write acceptance, provider-backed process replies through Telegram, Kanban task creation from Telegram, and redacted archive output.
 
 ## Artifacts
 
