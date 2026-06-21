@@ -1,7 +1,7 @@
 {
   "schema": "ops.best-in-class-capability-matrix.v1",
   "version": 1,
-  "updatedAt": "2026-06-21T09:17:00.000Z",
+  "updatedAt": "2026-06-21T14:43:06.000Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "statusDefinitions": {
     "ahead": "ElyzeLabs has stronger current behavior with local evidence and verification.",
@@ -425,8 +425,7 @@
         ]
       },
       "remainingGaps": [
-        "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity.",
-        "Polish information density and naming so the board feels like a daily operator workbench instead of a feature checklist."
+        "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity."
       ]
     },
     {

@@ -92,7 +92,8 @@ const report = {
         'contract-aware transition buttons',
         'drag/drop task transitions',
         'operator task creation from the board',
-        'Telegram task handoff command generation'
+        'Telegram task handoff command generation',
+        'operator focus strip counts and lane filters'
       ]
     },
     {
@@ -143,7 +144,7 @@ const report = {
   ],
   remainingNonGoals: [
     'This lane does not exercise a live GitHub repository token; live delivery sync remains a separate release-evidence run.',
-    'This lane does not redesign the workboard information architecture; it protects the current UI from functional and responsive regressions.'
+    'This lane does not replace live operator review of final naming and density; it protects the current UI from functional and responsive regressions.'
   ],
   steps
 };

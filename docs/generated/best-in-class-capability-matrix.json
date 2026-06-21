@@ -2,8 +2,8 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "bb94c199ca32917b48afdf0bdff803b6970c827765b7f14ca5bbe6811d8c2c80",
-  "updatedAt": "2026-06-21T09:17:00.000Z",
+  "sourceHash": "67faf9d8886af09738f4524523a00e63017544ee8a0656e3740202c2adb514cb",
+  "updatedAt": "2026-06-21T14:43:06.000Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
   "statusCounts": {
@@ -76,8 +76,7 @@
       "priority": "P1",
       "status": "partial",
       "remainingGaps": [
-        "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity.",
-        "Polish information density and naming so the board feels like a daily operator workbench instead of a feature checklist."
+        "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity."
       ]
     },
     {
@@ -430,8 +429,7 @@
         ]
       },
       "remainingGaps": [
-        "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity.",
-        "Polish information density and naming so the board feels like a daily operator workbench instead of a feature checklist."
+        "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity."
       ]
     },
     {

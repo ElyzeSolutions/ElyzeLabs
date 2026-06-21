@@ -5,8 +5,8 @@ Generated from `docs/best-in-class-capability-matrix.json` by `pnpm best-in-clas
 ## Summary
 
 - Schema: `ops.best-in-class-audit.v1`
-- Source hash: `bb94c199ca32917b48afdf0bdff803b6970c827765b7f14ca5bbe6811d8c2c80`
-- Updated at: 2026-06-21T09:17:00.000Z
+- Source hash: `67faf9d8886af09738f4524523a00e63017544ee8a0656e3740202c2adb514cb`
+- Updated at: 2026-06-21T14:43:06.000Z
 - Readiness: `not_ready`
 - Capabilities: 13
 - Required for best-in-class: 12
@@ -27,7 +27,7 @@ Generated from `docs/best-in-class-capability-matrix.json` by `pnpm best-in-clas
 
 | Capability | Area | Priority | Status | Gaps |
 | --- | --- | --- | --- | --- |
-| operator_kanban_workboard | kanban | P1 | partial | Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity.; Polish information density and naming so the board feels like a daily operator workbench instead of a feature checklist. |
+| operator_kanban_workboard | kanban | P1 | partial | Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity. |
 | chat_process_runtime | chat_runtime | P1 | partial | Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, generation-level provider chat preflight, process chat replies, /task Kanban creation, and /backlog snapshots. The current live process chat run remains blocked by provider auth: OpenRouter returns User not found and Google reports an expired API key, and the provider live-check now fails before the Telegram chat prompt when that generation path is broken. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report. |
 | e2e_scenario_certification | testing | P0 | partial | Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available. |
 

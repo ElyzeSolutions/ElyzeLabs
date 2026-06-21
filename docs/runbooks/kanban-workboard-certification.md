@@ -31,6 +31,7 @@ These artifacts are ignored by git. Archive them with release evidence when maki
 ## What It Proves
 
 - Contract-aware Kanban transitions, drag/drop, keyboard movement, and board task creation still work.
+- The operator focus strip summarizes dispatchable work, WIP pressure, verification queue, stalled work, and delivery risk while driving lane filters.
 - Telegram task creation maps into backlog workflow contracts.
 - GitHub delivery cockpit renders API truth, blocker diagnostics, journal parity, and repair receipts.
 - Backlog renders at desktop, tablet, and mobile viewport sizes without global horizontal overflow, missing core workboard text, clipped watched elements, or broken screenshot artifacts.
@@ -38,4 +39,4 @@ These artifacts are ignored by git. Archive them with release evidence when maki
 ## Non-Goals
 
 - It does not exercise a live GitHub repository token. Run a live delivery-sync scenario before claiming real-repo parity.
-- It does not redesign the board information architecture. It protects the current implementation from functional and responsive regressions.
+- It does not replace live operator review of final naming and density. It protects the current implementation from functional and responsive regressions.
