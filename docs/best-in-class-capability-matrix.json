@@ -325,7 +325,7 @@
       "area": "browser",
       "priority": "P1",
       "requiredForBestInClass": true,
-      "status": "partial",
+      "status": "parity",
       "requirement": "Browser automation should keep Scrapling-first authenticated capture for low-detection read workflows, add guided Playwright storage-state import, and expose deterministic interactive tab/click/type/screenshot/PDF controls as a complementary provider.",
       "referenceSignals": [
         "OpenClaw separates agent-managed browser profiles from real-user Chrome profile attachment.",
@@ -345,11 +345,13 @@
         "packages/gateway/test/integration/browser-auth-routing.test.ts",
         "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
         "scripts/testing/run-interactive-browser-certification.mjs",
+        "scripts/testing/run-live-interactive-browser-certification.mjs",
         "scripts/testing/run-live-social-browser-certification.mjs",
         "scripts/testing/archive-live-social-browser-certification.mjs",
         "scripts/testing/scenarios/live-social-browser.json",
         "docs/runbooks/interactive-browser-certification.md",
         "docs/runbooks/live-social-browser-certification.md",
+        "docs/certifications/interactive-browser-live-latest.json",
         "docs/certifications/live-social-browser-latest.json"
       ],
       "referenceEvidence": [
@@ -362,6 +364,7 @@
         "commands": [
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/browser-service.test.ts packages/gateway/test/unit/browser-interactive-service.test.ts packages/gateway/test/unit/browser-session-vault.test.ts packages/gateway/test/integration/browser-api.test.ts packages/gateway/test/integration/browser-managed-profiles.test.ts packages/gateway/test/integration/browser-auth-routing.test.ts dashboard/src/pages/BrowserPage.test.tsx",
           "pnpm test:interactive-browser:cert",
+          "OPS_RUN_LIVE_INTERACTIVE_BROWSER_CERT=1 pnpm test:interactive-browser:live",
           "pnpm test:live-social-browser",
           "pnpm archive:live-social-browser"
         ],
@@ -376,9 +379,7 @@
           "dashboard/src/pages/BrowserPage.test.tsx"
         ]
       },
-      "remainingGaps": [
-        "Run interactive click/type/PDF against a real external dynamic site with non-mutating selectors before claiming arbitrary live-site operation."
-      ]
+      "remainingGaps": []
     },
     {
       "id": "operator_kanban_workboard",
@@ -499,11 +500,13 @@
         "scripts/testing/run-browser-tests.mjs",
         "scripts/testing/run-browser-schedule-certification.mjs",
         "scripts/testing/run-interactive-browser-certification.mjs",
+        "scripts/testing/run-live-interactive-browser-certification.mjs",
         "scripts/testing/run-live-social-browser-certification.mjs",
         "scripts/testing/archive-live-social-browser-certification.mjs",
         "scripts/testing/scenarios/live-social-browser.json",
         "docs/runbooks/interactive-browser-certification.md",
         "docs/runbooks/live-social-browser-certification.md",
+        "docs/certifications/interactive-browser-live-latest.json",
         "docs/certifications/live-social-browser-latest.json",
         "packages/gateway/test/integration/browser-auth-routing.test.ts",
         "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
@@ -522,6 +525,7 @@
         "commands": [
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/browser-auth-routing.test.ts packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/telegram-smoke-test.test.ts",
           "pnpm test:interactive-browser:cert",
+          "OPS_RUN_LIVE_INTERACTIVE_BROWSER_CERT=1 pnpm test:interactive-browser:live",
           "pnpm test:live-social-browser",
           "pnpm archive:live-social-browser"
         ],
@@ -534,7 +538,6 @@
       },
       "remainingGaps": [
         "Add a fake OpenAI-compatible provider E2E that proves provider quirks, tool-result formatting, redaction, and fallback behavior through the same artifacted scenario registry.",
-        "Persist binary screenshots/PDFs from external live interactive scenarios while keeping report artifacts redacted.",
         "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
       ]
     },

@@ -29,6 +29,7 @@
     "test:browser": "node scripts/testing/run-browser-tests.mjs",
     "test:browser-schedule:cert": "node scripts/testing/run-browser-schedule-certification.mjs",
     "test:interactive-browser:cert": "node scripts/testing/run-interactive-browser-certification.mjs",
+    "test:interactive-browser:live": "node scripts/testing/run-live-interactive-browser-certification.mjs",
     "test:kanban-workboard:cert": "node scripts/testing/run-kanban-workboard-certification.mjs",
     "test:chat-process:cert": "node scripts/testing/run-chat-process-runtime-certification.mjs",
     "test:live-social-browser": "node scripts/testing/run-live-social-browser-certification.mjs",
