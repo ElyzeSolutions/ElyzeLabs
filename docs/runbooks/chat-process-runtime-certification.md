@@ -41,7 +41,7 @@ It uses `OPS_API_TOKEN` and `TELEGRAM_CHAT_ID` from the environment or `.env`. O
 
 By default the live process lane probes a short provider-backed candidate list and sets `/model` to the first route that can complete a real chat request. Put a preferred model first with `OPS_LIVE_TELEGRAM_PROCESS_MODEL`, or provide a comma-separated fallback list with `OPS_LIVE_TELEGRAM_PROCESS_MODEL_CANDIDATES`.
 
-Before sending a live generation request, the lane preflights each candidate through `/api/llm/routing/effective?runtime=process&model=...`. Failed candidates are recorded with a redacted `reasonCode` and remediation hint, so provider-auth, billing/quota, cooldown, rate-limit, model-unavailable, routing, and network failures are distinguishable in the local report.
+Before sending a live generation request, the lane preflights each candidate through `/api/llm/routing/effective?runtime=process&model=...`. Failed candidates are recorded with a redacted `reasonCode` and remediation hint, so provider-auth, billing/quota, cooldown, rate-limit, invalid model config/model-unavailable, routing, and network failures are distinguishable in the local report.
 
 The live lane verifies:
 

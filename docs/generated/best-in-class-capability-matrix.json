@@ -2,7 +2,7 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "59a774d3676baa4308df172d44a8b340f48a9b8255f0c1fb11fe29f91e68641a",
+  "sourceHash": "5ffe31f0d55bf205b8cd43a2bc1b308c1eb9dfa930fa1a38d9f3a37c98d14136",
   "updatedAt": "2026-06-21T15:33:29.518Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
@@ -76,7 +76,7 @@
       "priority": "P1",
       "status": "partial",
       "remainingGaps": [
-        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run remains blocked by provider auth: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report."
+        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run proves Telegram delivery plus /runtime process, then blocks on provider readiness: OpenRouter returns User not found, Google reports an expired API key, and two OpenRouter candidates are rejected as invalid_model_config/model_unavailable. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report."
       ]
     },
     {
@@ -486,7 +486,7 @@
         ]
       },
       "remainingGaps": [
-        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run remains blocked by provider auth: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report."
+        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run proves Telegram delivery plus /runtime process, then blocks on provider readiness: OpenRouter returns User not found, Google reports an expired API key, and two OpenRouter candidates are rejected as invalid_model_config/model_unavailable. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report."
       ]
     },
     {

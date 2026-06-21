@@ -427,7 +427,13 @@ function classifyProcessProviderFailure(attempt) {
   if (text.includes('no selected route') || text.includes('not configured') || text.includes('missing credential')) {
     return 'provider_profile_ineligible';
   }
-  if (text.includes('model not found') || text.includes('unsupported model') || text.includes('model unavailable')) {
+  if (
+    text.includes('invalid_model_config') ||
+    text.includes('invalid model config') ||
+    text.includes('model not found') ||
+    text.includes('unsupported model') ||
+    text.includes('model unavailable')
+  ) {
     return 'model_unavailable';
   }
   if (text.includes('timed out') || text.includes('timeout') || text.includes('fetch failed') || text.includes('econn')) {
@@ -456,7 +462,7 @@ function remediationForProcessFailure(reasonCode) {
     return 'Configure an eligible auth profile for this provider/model or remove the candidate from the live certification list.';
   }
   if (reasonCode === 'model_unavailable') {
-    return 'Replace the unavailable model with a currently supported provider-backed process model.';
+    return 'Replace the unavailable or invalid model config with a currently supported provider-backed process model.';
   }
   if (reasonCode === 'provider_network') {
     return 'Check gateway network egress and provider reachability, then rerun the live lane.';
