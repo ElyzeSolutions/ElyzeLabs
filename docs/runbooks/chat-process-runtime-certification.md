@@ -39,7 +39,7 @@ OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process
 
 It uses `OPS_API_TOKEN` and `TELEGRAM_CHAT_ID` from the environment or `.env`. Override with `OPS_LIVE_TELEGRAM_PROCESS_API_TOKEN`, `OPS_LIVE_TELEGRAM_PROCESS_CHAT_ID`, `OPS_LIVE_TELEGRAM_PROCESS_TOPIC_ID`, `OPS_LIVE_TELEGRAM_PROCESS_CHAT_TYPE`, or `OPS_LIVE_TELEGRAM_PROCESS_TIMEOUT_MS`.
 
-By default the live process lane sets `/model openrouter/openai/gpt-5-mini` after `/runtime process` so the run uses a provider-backed process route instead of the fail-closed local placeholder. Override with `OPS_LIVE_TELEGRAM_PROCESS_MODEL`.
+By default the live process lane probes a short provider-backed candidate list and sets `/model` to the first route that can complete a real chat request. Put a preferred model first with `OPS_LIVE_TELEGRAM_PROCESS_MODEL`, or provide a comma-separated fallback list with `OPS_LIVE_TELEGRAM_PROCESS_MODEL_CANDIDATES`.
 
 The live lane verifies:
 
@@ -60,6 +60,7 @@ Tracked archives omit Telegram chat identifiers, sender identifiers, raw prompts
 - Mission Control exposes chat state, runtime posture, and browser auth posture in the main operator view.
 - Runtime certification keeps process/provider readiness and Telegram routing truthfully separated.
 - Provider readiness is generation-level: metadata/list endpoints are not accepted as proof that the selected process chat model can answer.
+- Provider model selection is evidence-driven: the certification records the selected provider/model and redacted per-candidate failure details before it sends the Telegram `/model` command.
 - Browser auth profile routing stays explicit and persists selected profiles on sessions.
 - Mission Control renders at desktop, tablet, and mobile viewport sizes without global horizontal overflow, missing core chat/runtime/browser-auth text, clipped watched elements, or broken screenshot artifacts.
 - Scrapling/cookie-backed authenticated reads remain the default visible route for logged-in site reads.

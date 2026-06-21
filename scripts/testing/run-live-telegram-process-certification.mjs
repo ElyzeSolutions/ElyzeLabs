@@ -12,6 +12,14 @@ const SCENARIO_PATH = path.join(SCRIPT_DIR, 'scenarios/live-telegram-process.jso
 const REPORT_DIR = path.join(REPO_ROOT, '.ops/certifications/live-telegram-process');
 const REPORT_PATH = path.join(REPORT_DIR, 'certification-report.json');
 const ARCHIVE_PATH = path.join(REPO_ROOT, 'docs/certifications/live-telegram-process-latest.json');
+const DEFAULT_PROCESS_MODEL_CANDIDATES = [
+  'openrouter/openai/gpt-5-mini',
+  'openrouter/openai/gpt-4.1-mini',
+  'openrouter/google/gemini-2.5-flash',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-flash-lite-latest'
+];
 
 const truthyValues = new Set(['1', 'true', 'yes', 'y', 'on']);
 const falsyValues = new Set(['0', 'false', 'no', 'n', 'off']);
@@ -174,6 +182,39 @@ function hashValue(value) {
     return null;
   }
   return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+}
+
+function splitModelList(value) {
+  if (typeof value !== 'string') {
+    return [];
+  }
+  return value
+    .split(/[,\n]/u)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function uniqueStrings(values) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+function resolveProcessModelCandidates() {
+  const explicit = process.env.OPS_LIVE_TELEGRAM_PROCESS_MODEL?.trim();
+  const configuredCandidates = splitModelList(process.env.OPS_LIVE_TELEGRAM_PROCESS_MODEL_CANDIDATES);
+  if (explicit) {
+    return uniqueStrings([explicit, ...configuredCandidates]);
+  }
+  return uniqueStrings([...configuredCandidates, ...DEFAULT_PROCESS_MODEL_CANDIDATES]);
 }
 
 async function requestJson(url, { method = 'GET', headers = {}, body, timeoutMs = 20000 } = {}) {
@@ -467,6 +508,13 @@ function makeReport({ flags, registry, gatewayBaseUrl, marker }) {
       topicConfigured: flags.topicConfigured,
       rawIdentifiersStored: false
     },
+    processModelSelection: {
+      candidateCount: flags.processModelCandidates.length,
+      selectedProvider: null,
+      selectedModel: null,
+      explicitModelRequested: flags.explicitProcessModelRequested,
+      rawModelStoredInTrackedArchive: false
+    },
     summary: {
       scenariosTotal: Array.isArray(registry.scenarios) ? registry.scenarios.length : 0,
       passed: 0,
@@ -533,6 +581,7 @@ function makeArchive(report) {
     registry: report.registry,
     marker: report.marker,
     target: report.target,
+    processModelSelection: report.processModelSelection,
     summary: report.summary,
     gates: report.gates,
     scenarios: report.scenarios,
@@ -650,38 +699,74 @@ async function runProcessModelSelect({ report, registry, gatewayBaseUrl, target,
   });
 }
 
-async function runProcessProviderChatLiveCheck({ report, registry, gatewayBaseUrl, headers, processModel, timeoutMs }) {
+async function checkProcessProviderChat({ gatewayBaseUrl, headers, processModel, timeoutMs }) {
+  return requestJson(`${gatewayBaseUrl}/api/onboarding/provider-keys/live-check`, {
+    method: 'POST',
+    headers,
+    body: {
+      actor: 'live-telegram-process-cert',
+      processChatModel: processModel,
+      policy: 'orchestrator'
+    },
+    timeoutMs: Math.min(timeoutMs, 30000)
+  });
+}
+
+async function selectProcessProviderChatModel({ report, registry, gatewayBaseUrl, headers, processModelCandidates, timeoutMs }) {
   const id = 'telegram_process_provider_chat_live_check';
-  const payload = await recordStep(report, id, () =>
-    requestJson(`${gatewayBaseUrl}/api/onboarding/provider-keys/live-check`, {
-      method: 'POST',
-      headers,
-      body: {
-        actor: 'live-telegram-process-cert',
-        processChatModel: processModel,
-        policy: 'orchestrator'
-      },
-      timeoutMs: Math.min(timeoutMs, 30000)
-    })
-  );
-  const liveCheck = summarizeProcessChatLiveCheck(payload);
-  const passed = liveCheck.status === 'ok' && liveCheck.ok === true;
-  report.gates.processProviderChatReady = passed;
+  const attempts = [];
+  for (const candidate of processModelCandidates) {
+    try {
+      const payload = await recordStep(report, `${id}:${attempts.length + 1}`, () =>
+        checkProcessProviderChat({ gatewayBaseUrl, headers, processModel: candidate, timeoutMs })
+      );
+      const liveCheck = summarizeProcessChatLiveCheck(payload);
+      attempts.push({
+        status: liveCheck.status,
+        ok: liveCheck.ok,
+        provider: liveCheck.provider,
+        model: liveCheck.model,
+        detail: liveCheck.detail
+      });
+      if (liveCheck.status === 'ok' && liveCheck.ok === true) {
+        report.gates.processProviderChatReady = true;
+        report.processModelSelection.selectedProvider = liveCheck.provider;
+        report.processModelSelection.selectedModel = liveCheck.model ?? candidate;
+        pushScenario(report, {
+          id,
+          label: scenarioLabel(registry, id),
+          status: 'passed',
+          liveCheck,
+          attempts
+        });
+        return liveCheck.model ?? candidate;
+      }
+    } catch (error) {
+      attempts.push({
+        status: 'error',
+        ok: false,
+        provider: null,
+        model: candidate,
+        detail: redactError(error)
+      });
+    }
+  }
+
+  report.gates.processProviderChatReady = false;
   pushScenario(report, {
     id,
     label: scenarioLabel(registry, id),
-    status: passed ? 'passed' : 'failed',
-    liveCheck
+    status: 'failed',
+    attempts
   });
-  if (!passed) {
-    throw new Error(
-      `Process chat provider live check failed: provider=${liveCheck.provider ?? 'unknown'} model=${
-        liveCheck.model ?? 'default'
-      } ${
-        liveCheck.status ?? 'unknown'
-      }: ${liveCheck.detail ?? 'missing detail'}`
-    );
-  }
+  const lastAttempt = attempts[attempts.length - 1] ?? null;
+  throw new Error(
+    `No provider-backed process model passed live chat checks across ${attempts.length.toString()} candidate(s). Last: provider=${
+      lastAttempt?.provider ?? 'unknown'
+    } model=${lastAttempt?.model ?? 'unknown'} ${lastAttempt?.status ?? 'unknown'}: ${
+      lastAttempt?.detail ?? 'missing detail'
+    }`
+  );
 }
 
 async function runProcessCodeReply({ report, registry, gatewayBaseUrl, headers, target, marker, timeoutMs, updateId }) {
@@ -847,7 +932,8 @@ async function main() {
     timeoutMs: Number.isFinite(Number(process.env.OPS_LIVE_TELEGRAM_PROCESS_TIMEOUT_MS))
       ? Math.max(10000, Number(process.env.OPS_LIVE_TELEGRAM_PROCESS_TIMEOUT_MS))
       : 120000,
-    processModel: process.env.OPS_LIVE_TELEGRAM_PROCESS_MODEL?.trim() || 'openrouter/openai/gpt-5-mini',
+    processModelCandidates: resolveProcessModelCandidates(),
+    explicitProcessModelRequested: Boolean(process.env.OPS_LIVE_TELEGRAM_PROCESS_MODEL?.trim()),
     targetConfigured: Boolean(target?.target),
     topicConfigured: Boolean(target?.topic)
   };
@@ -889,22 +975,22 @@ async function main() {
     await runSmoke({ report, registry, gatewayBaseUrl, headers, target, timeoutMs: flags.timeoutMs });
     await startFreshSession({ report, gatewayBaseUrl, target, timeoutMs: flags.timeoutMs, updateId: baseUpdateId + 1 });
     await runRuntimeSwitch({ report, registry, gatewayBaseUrl, target, timeoutMs: flags.timeoutMs, updateId: baseUpdateId + 2 });
+    const selectedProcessModel = await selectProcessProviderChatModel({
+      report,
+      registry,
+      gatewayBaseUrl,
+      headers,
+      processModelCandidates: flags.processModelCandidates,
+      timeoutMs: flags.timeoutMs
+    });
     await runProcessModelSelect({
       report,
       registry,
       gatewayBaseUrl,
       target,
-      processModel: flags.processModel,
+      processModel: selectedProcessModel,
       timeoutMs: flags.timeoutMs,
       updateId: baseUpdateId + 3
-    });
-    await runProcessProviderChatLiveCheck({
-      report,
-      registry,
-      gatewayBaseUrl,
-      headers,
-      processModel: flags.processModel,
-      timeoutMs: flags.timeoutMs
     });
     await runProcessCodeReply({
       report,
