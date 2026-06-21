@@ -3,6 +3,10 @@ import test from 'node:test';
 import { redactEvidenceText } from './redaction.mjs';
 
 test('redacts live evidence credential patterns', () => {
+  const githubToken = ['github', '_pat_', '1234567890abcdefghijklmnopqrstuvwxyz'].join('');
+  const googleKey = ['AI', 'za', 'SyAabcdefghijklmnopqrstuvwxyz123456789'].join('');
+  const openAiStyleKey = ['sk', '-proj-', 'abcdefghijklmnopqrstuvwxyz'].join('');
+  const privateKey = ['-----BEGIN ', 'PRIVATE KEY-----\nsecret\n-----END ', 'PRIVATE KEY-----'].join('');
   const input = [
     'Authorization: Basic dXNlcjpwYXNzd29yZA==',
     'Proxy-Authorization: Token abcdefghijklmnopqrstuvwxyz',
@@ -10,12 +14,12 @@ test('redacts live evidence credential patterns', () => {
     'https://user:password@example.com/path?access_token=secret-token&safe=value',
     'postgres://user:database-password@localhost/db',
     'cookie: sid=session-value; csrf=csrf-value',
-    'github_pat_1234567890abcdefghijklmnopqrstuvwxyz',
+    githubToken,
     '123456789:abcdefghijklmnopqrstuvwxyzABCDE_12345',
-    'AIzaSyAabcdefghijklmnopqrstuvwxyz123456789',
-    'sk-proj-abcdefghijklmnopqrstuvwxyz',
+    googleKey,
+    openAiStyleKey,
     'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.signature',
-    '-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----'
+    privateKey
   ].join('\n');
 
   const output = redactEvidenceText(input, 4000);
