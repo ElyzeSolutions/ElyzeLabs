@@ -46,6 +46,7 @@ The live lane verifies:
 - `POST /api/telegram/smoke-test` can authenticate the bot and deliver to the operator target.
 - `/runtime process` works through real Telegram ingress.
 - `/model <provider-backed-process-model>` works through real Telegram ingress.
+- `POST /api/onboarding/provider-keys/live-check` can complete a tiny live chat request through the selected provider-backed process model.
 - A Telegram process-runtime prompt completes and replies with a synthetic marker.
 - `/task` creates a real Kanban/backlog card through Telegram.
 - `/backlog` returns a Telegram backlog snapshot after task creation.
@@ -58,6 +59,7 @@ Tracked archives omit Telegram chat identifiers, sender identifiers, raw prompts
 
 - Mission Control exposes chat state, runtime posture, and browser auth posture in the main operator view.
 - Runtime certification keeps process/provider readiness and Telegram routing truthfully separated.
+- Provider readiness is generation-level: metadata/list endpoints are not accepted as proof that the selected process chat model can answer.
 - Browser auth profile routing stays explicit and persists selected profiles on sessions.
 - Mission Control renders at desktop, tablet, and mobile viewport sizes without global horizontal overflow, missing core chat/runtime/browser-auth text, clipped watched elements, or broken screenshot artifacts.
 - Scrapling/cookie-backed authenticated reads remain the default visible route for logged-in site reads.

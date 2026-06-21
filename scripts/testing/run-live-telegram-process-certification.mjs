@@ -310,6 +310,23 @@ function summarizeSmoke(smoke) {
   };
 }
 
+function summarizeProcessChatLiveCheck(payload) {
+  const live = isRecord(payload.live) ? payload.live : {};
+  const providers = isRecord(live.providers) ? live.providers : {};
+  const processChat = isRecord(providers.processChat) ? providers.processChat : {};
+  return {
+    overall: typeof live.overall === 'string' ? live.overall : null,
+    status: typeof processChat.status === 'string' ? processChat.status : null,
+    configured: processChat.configured === true,
+    tested: processChat.tested === true,
+    ok: typeof processChat.ok === 'boolean' ? processChat.ok : null,
+    provider: typeof processChat.provider === 'string' ? processChat.provider : null,
+    model: typeof processChat.model === 'string' ? processChat.model : null,
+    latencyMs: Number.isFinite(Number(processChat.latencyMs)) ? Number(processChat.latencyMs) : null,
+    detail: typeof processChat.detail === 'string' ? redactText(processChat.detail, 500) : null
+  };
+}
+
 async function waitForRun(gatewayBaseUrl, headers, runId, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let latest = null;
@@ -461,6 +478,7 @@ function makeReport({ flags, registry, gatewayBaseUrl, marker }) {
       telegramSmokeDelivered: false,
       runtimeCommandApplied: false,
       processModelCommandApplied: false,
+      processProviderChatReady: false,
       processRunCompleted: false,
       processRuntimeUsed: false,
       processReplyContainedMarker: false,
@@ -630,6 +648,40 @@ async function runProcessModelSelect({ report, registry, gatewayBaseUrl, target,
       rawStoredInTrackedArchive: false
     }
   });
+}
+
+async function runProcessProviderChatLiveCheck({ report, registry, gatewayBaseUrl, headers, processModel, timeoutMs }) {
+  const id = 'telegram_process_provider_chat_live_check';
+  const payload = await recordStep(report, id, () =>
+    requestJson(`${gatewayBaseUrl}/api/onboarding/provider-keys/live-check`, {
+      method: 'POST',
+      headers,
+      body: {
+        actor: 'live-telegram-process-cert',
+        processChatModel: processModel,
+        policy: 'orchestrator'
+      },
+      timeoutMs: Math.min(timeoutMs, 30000)
+    })
+  );
+  const liveCheck = summarizeProcessChatLiveCheck(payload);
+  const passed = liveCheck.status === 'ok' && liveCheck.ok === true;
+  report.gates.processProviderChatReady = passed;
+  pushScenario(report, {
+    id,
+    label: scenarioLabel(registry, id),
+    status: passed ? 'passed' : 'failed',
+    liveCheck
+  });
+  if (!passed) {
+    throw new Error(
+      `Process chat provider live check failed: provider=${liveCheck.provider ?? 'unknown'} model=${
+        liveCheck.model ?? 'default'
+      } ${
+        liveCheck.status ?? 'unknown'
+      }: ${liveCheck.detail ?? 'missing detail'}`
+    );
+  }
 }
 
 async function runProcessCodeReply({ report, registry, gatewayBaseUrl, headers, target, marker, timeoutMs, updateId }) {
@@ -845,6 +897,14 @@ async function main() {
       processModel: flags.processModel,
       timeoutMs: flags.timeoutMs,
       updateId: baseUpdateId + 3
+    });
+    await runProcessProviderChatLiveCheck({
+      report,
+      registry,
+      gatewayBaseUrl,
+      headers,
+      processModel: flags.processModel,
+      timeoutMs: flags.timeoutMs
     });
     await runProcessCodeReply({
       report,

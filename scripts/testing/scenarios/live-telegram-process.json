@@ -18,6 +18,11 @@
       "claim": "A real Telegram command can bind the process runtime to a provider-backed model route instead of the fail-closed local placeholder."
     },
     {
+      "id": "telegram_process_provider_chat_live_check",
+      "kind": "provider_live_check",
+      "claim": "The selected provider-backed process model can complete a live chat request before the Telegram process prompt is queued."
+    },
+    {
       "id": "telegram_process_code_reply",
       "kind": "telegram_process_run",
       "claim": "A real Telegram operator prompt can queue a process-runtime chat run and receive a code-oriented answer."

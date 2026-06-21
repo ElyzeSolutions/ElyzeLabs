@@ -4133,6 +4133,11 @@ interface ProviderLiveCheckResult {
   detail: string;
 }
 
+interface ProviderProcessChatLiveCheckResult extends ProviderLiveCheckResult {
+  provider: LlmProviderKey | null;
+  model: string | null;
+}
+
 interface ProviderLiveDiagnostics {
   checkedAt: string;
   overall: 'ok' | 'degraded' | 'failed';
@@ -4140,6 +4145,7 @@ interface ProviderLiveDiagnostics {
     telegram: ProviderLiveCheckResult;
     openrouter: ProviderLiveCheckResult;
     google: ProviderLiveCheckResult;
+    processChat: ProviderProcessChatLiveCheckResult;
     github: ProviderLiveCheckResult;
     voyage: ProviderLiveCheckResult;
   };
@@ -9149,7 +9155,12 @@ export async function buildGatewayApp(
     };
   };
 
-  const runProviderLiveDiagnostics = async (): Promise<ProviderLiveDiagnostics> => {
+  const runProviderLiveDiagnostics = async (
+    options: {
+      processChatModel?: string | null;
+      processPolicy?: LlmRoutePolicy;
+    } = {}
+  ): Promise<ProviderLiveDiagnostics> => {
     const checkedAt = utcNow();
     const timeoutMs = 8_000;
     const tryResolveVaultSecret = (name: string): string => {
@@ -9219,6 +9230,33 @@ export async function buildGatewayApp(
       detail
     });
 
+    const makeProcessChatUntested = (input: {
+      configured: boolean;
+      status: ProviderLiveCheckStatus;
+      detail: string;
+      provider: LlmProviderKey | null;
+      model: string | null;
+    }): ProviderProcessChatLiveCheckResult => ({
+      configured: input.configured,
+      tested: false,
+      ok: null,
+      status: input.status,
+      latencyMs: null,
+      detail: input.detail,
+      provider: input.provider,
+      model: input.model
+    });
+
+    const withProcessChatRoute = (
+      result: ProviderLiveCheckResult,
+      provider: LlmProviderKey,
+      model: string | null
+    ): ProviderProcessChatLiveCheckResult => ({
+      ...result,
+      provider,
+      model
+    });
+
     const probeHttpJson = async (
       url: string,
       init: RequestInit,
@@ -9265,6 +9303,8 @@ export async function buildGatewayApp(
     const telegramKey = resolveTelegramApiKeyForLive();
     const githubToken = resolveGithubToken();
     const voyageKey = resolveVoyageApiKeyForLive();
+    const processPolicy = options.processPolicy ?? 'orchestrator';
+    const requestedProcessChatModel = normalizeModelInput(options.processChatModel ?? null);
 
     const openrouterProbe: Promise<ProviderLiveCheckResult> = !openrouterKey
       ? Promise.resolve(makeMissing('OpenRouter key not configured.'))
@@ -9392,21 +9432,191 @@ export async function buildGatewayApp(
           }
         );
 
-    const [openrouter, google, telegram, github, voyage] = await Promise.all([
+    const processChatProbe = async (): Promise<ProviderProcessChatLiveCheckResult> => {
+      const route: LlmFallbackTarget | null =
+        requestedProcessChatModel === null
+          ? selectBudgetEligibleRoute('process', null, processPolicy).selected
+          : {
+              runtime: 'process',
+              model: requestedProcessChatModel
+            };
+      if (!route) {
+        return makeProcessChatUntested({
+          configured: false,
+          status: 'skipped',
+          detail: `No eligible process chat route selected for ${processPolicy} policy.`,
+          provider: null,
+          model: requestedProcessChatModel
+        });
+      }
+
+      const routeModel = normalizeModelInput(route.model);
+      const provider = inferProvider(routeModel);
+      if (route.runtime !== 'process') {
+        return makeProcessChatUntested({
+          configured: false,
+          status: 'skipped',
+          detail: `Selected route is ${route.runtime}, not process.`,
+          provider,
+          model: routeModel
+        });
+      }
+      if (!provider) {
+        return makeProcessChatUntested({
+          configured: false,
+          status: 'skipped',
+          detail: 'Selected process route is local and does not require provider chat.',
+          provider,
+          model: routeModel
+        });
+      }
+
+      const budgetCheck = evaluateRouteBudget({
+        runtime: route.runtime,
+        model: routeModel
+      });
+      if (!budgetCheck.eligible) {
+        const reason = budgetCheck.reason ?? 'route_unavailable';
+        const missingAuth =
+          reason.includes('provider_auth_profile_unconfigured') ||
+          reason.includes('provider_auth_profiles_unavailable');
+        return makeProcessChatUntested({
+          configured: !missingAuth,
+          status: missingAuth ? 'missing' : 'error',
+          detail: `Process chat route is not eligible: ${reason}.`,
+          provider,
+          model: routeModel
+        });
+      }
+
+      if (provider === 'openrouter') {
+        if (!openrouterKey) {
+          return makeProcessChatUntested({
+            configured: false,
+            status: 'missing',
+            detail: 'OpenRouter key not configured for selected process chat route.',
+            provider,
+            model: routeModel
+          });
+        }
+        const payloadModel = extractOpenRouterModelAlias(routeModel) ?? routeModel;
+        if (!payloadModel) {
+          return makeProcessChatUntested({
+            configured: true,
+            status: 'error',
+            detail: 'Selected OpenRouter process chat model is empty.',
+            provider,
+            model: routeModel
+          });
+        }
+        const result = await probeHttpJson(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${openrouterKey}`
+            },
+            body: JSON.stringify({
+              model: payloadModel,
+              messages: [{ role: 'user', content: 'Reply with exactly: ok' }],
+              temperature: 0,
+              max_tokens: 8
+            })
+          },
+          (payload, response) => {
+            const record = isRecord(payload) ? payload : null;
+            const choices = record && Array.isArray(record.choices) ? record.choices : [];
+            const firstChoice = choices.find(isRecord);
+            const message = firstChoice && isRecord(firstChoice.message) ? firstChoice.message : null;
+            const content = message && typeof message.content === 'string' ? message.content.trim() : '';
+            if (response.ok && content.length > 0) {
+              return { ok: true, detail: `HTTP ${response.status}, chat completion returned content` };
+            }
+            const error = record && isRecord(record.error) ? record.error : null;
+            const detail =
+              error && typeof error.message === 'string'
+                ? error.message
+                : record && typeof record.error === 'string'
+                  ? record.error
+                  : `HTTP ${response.status}`;
+            return { ok: false, detail };
+          }
+        );
+        return withProcessChatRoute(result, provider, routeModel);
+      }
+
+      if (!googleKey) {
+        return makeProcessChatUntested({
+          configured: false,
+          status: 'missing',
+          detail: 'Google key not configured for selected process chat route.',
+          provider,
+          model: routeModel
+        });
+      }
+      if (!routeModel) {
+        return makeProcessChatUntested({
+          configured: true,
+          status: 'error',
+          detail: 'Selected Google process chat model is empty.',
+          provider,
+          model: routeModel
+        });
+      }
+      const result = await probeHttpJson(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+          routeModel
+        )}:generateContent?key=${encodeURIComponent(googleKey)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: 'Reply with exactly: ok' }] }],
+            generationConfig: {
+              temperature: 0,
+              maxOutputTokens: 8
+            }
+          })
+        },
+        (payload, response) => {
+          const record = isRecord(payload) ? payload : null;
+          const candidates = record && Array.isArray(record.candidates) ? record.candidates : [];
+          const firstCandidate = candidates.find(isRecord);
+          const content = firstCandidate && isRecord(firstCandidate.content) ? firstCandidate.content : null;
+          const parts = content && Array.isArray(content.parts) ? content.parts : [];
+          const text = parts
+            .map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : ''))
+            .join('')
+            .trim();
+          if (response.ok && text.length > 0) {
+            return { ok: true, detail: `HTTP ${response.status}, generateContent returned content` };
+          }
+          const error = record && isRecord(record.error) ? record.error : null;
+          const detail = error && typeof error.message === 'string' ? error.message : `HTTP ${response.status}`;
+          return { ok: false, detail };
+        }
+      );
+      return withProcessChatRoute(result, provider, routeModel);
+    };
+
+    const [openrouter, google, telegram, github, voyage, processChat] = await Promise.all([
       openrouterProbe,
       googleProbe,
       telegramProbe,
       githubProbe,
-      voyageProbe
+      voyageProbe,
+      processChatProbe()
     ]);
 
-    const requiredReady =
-      telegram.status === 'ok' &&
-      github.status === 'ok' &&
-      (openrouter.status === 'ok' || google.status === 'ok');
-    const requiredFailure = [telegram, openrouter, google, github].some((item) => item.status === 'error');
-    const optionalFailure = [voyage].some((item) => item.status === 'error');
-    const hasSkipped = [telegram, openrouter, google, github, voyage].some((item) => item.status === 'skipped');
+    const requiredReady = telegram.status === 'ok' && github.status === 'ok' && processChat.status === 'ok';
+    const requiredFailure = [telegram, github, processChat].some((item) => item.status === 'error');
+    const optionalFailure = [openrouter, google, voyage].some((item) => item.status === 'error');
+    const hasSkipped = [telegram, openrouter, google, github, voyage, processChat].some(
+      (item) => item.status === 'skipped'
+    );
     const overall: ProviderLiveDiagnostics['overall'] = requiredFailure
       ? 'failed'
       : requiredReady && !optionalFailure && !hasSkipped
@@ -9420,6 +9630,7 @@ export async function buildGatewayApp(
         telegram,
         openrouter,
         google,
+        processChat,
         github,
         voyage
       }
@@ -51959,9 +52170,15 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
     if (!hasValidApiToken(request, config.server.apiToken)) {
       return jsonError(reply, 'Unauthorized', 401);
     }
-    const actor = 'dashboard';
+    const body = isRecord(request.body) ? request.body : {};
+    const actor = typeof body.actor === 'string' && body.actor.trim().length > 0 ? body.actor.trim() : 'dashboard';
+    const processPolicy: LlmRoutePolicy = body.policy === 'worker' ? 'worker' : 'orchestrator';
+    const processChatModel = normalizeModelInput(body.processChatModel ?? body.model ?? null);
     const providerKeys = providerKeyDiagnostics();
-    const live = await runProviderLiveDiagnostics();
+    const live = await runProviderLiveDiagnostics({
+      processChatModel,
+      processPolicy
+    });
     const now = live.checkedAt;
     writePersistedOnboardingState((current) => ({
       ...current,
