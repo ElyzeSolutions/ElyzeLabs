@@ -2,7 +2,7 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "5e36710c5c71a75d239bea4984c0b98ee711a0d25d3ece5ade9a37ef11e71906",
+  "sourceHash": "80703b70bee58397ef0ba6a72f6ffbddf5e37627b10afbc45288e9b6413235ce",
   "updatedAt": "2026-06-21T15:33:29.518Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
@@ -398,6 +398,7 @@
         "scripts/testing/run-browser-tests.mjs",
         "docs/runbooks/kanban-workboard-certification.md",
         "scripts/testing/run-live-github-delivery-certification.mjs",
+        "scripts/testing/live-github-delivery-archive.test.mjs",
         "docs/runbooks/live-github-delivery-certification.md",
         "docs/certifications/live-github-delivery-latest.json"
       ],
@@ -413,6 +414,7 @@
           "pnpm test:kanban-workboard:cert",
           "pnpm exec vitest run --config vitest.config.ts dashboard/src/pages/BacklogPage.test.tsx dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/github-delivery-certification.test.ts",
           "pnpm test:live-github-delivery",
+          "node --test scripts/testing/live-github-delivery-archive.test.mjs",
           "OPS_RUN_LIVE_GITHUB_DELIVERY_CERT=1 pnpm test:live-github-delivery"
         ],
         "testPaths": [
@@ -422,7 +424,8 @@
           "packages/gateway/test/integration/github-delivery-certification.test.ts",
           "scripts/testing/run-kanban-workboard-certification.mjs",
           "scripts/testing/run-browser-tests.mjs",
-          "scripts/testing/run-live-github-delivery-certification.mjs"
+          "scripts/testing/run-live-github-delivery-certification.mjs",
+          "scripts/testing/live-github-delivery-archive.test.mjs"
         ]
       },
       "remainingGaps": []
@@ -526,6 +529,7 @@
         "scripts/testing/run-live-telegram-process-certification.mjs",
         "scripts/testing/scenarios/live-telegram-process.json",
         "scripts/testing/run-live-github-delivery-certification.mjs",
+        "scripts/testing/live-github-delivery-archive.test.mjs",
         "scripts/testing/redaction.test.mjs",
         "docs/runbooks/live-github-delivery-certification.md",
         "docs/certifications/live-github-delivery-latest.json"
@@ -553,6 +557,7 @@
           "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process",
           "pnpm archive:live-telegram-process",
           "pnpm test:live-github-delivery",
+          "node --test scripts/testing/live-github-delivery-archive.test.mjs",
           "OPS_RUN_LIVE_GITHUB_DELIVERY_CERT=1 pnpm test:live-github-delivery"
         ],
         "testPaths": [
@@ -567,7 +572,8 @@
           "scripts/testing/archive-live-telegram-process-certification.mjs",
           "scripts/testing/scenarios/live-telegram-process.json",
           "scripts/testing/redaction.test.mjs",
-          "scripts/testing/run-live-github-delivery-certification.mjs"
+          "scripts/testing/run-live-github-delivery-certification.mjs",
+          "scripts/testing/live-github-delivery-archive.test.mjs"
         ]
       },
       "remainingGaps": [
