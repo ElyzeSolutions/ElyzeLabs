@@ -2,7 +2,7 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "12a0f788532f2161f92c06bc7d15aae30045ba3f7122bd28c52c87be0fecb3bf",
+  "sourceHash": "fc823b0541a8ec7dc1e9e3e85149c49c8c06349886d84a95e6d4a95f08b37945",
   "updatedAt": "2026-06-21",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
@@ -95,7 +95,6 @@
       "priority": "P0",
       "status": "partial",
       "remainingGaps": [
-        "Add a fake OpenAI-compatible provider E2E that proves provider quirks, tool-result formatting, redaction, and fallback behavior through the same artifacted scenario registry.",
         "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
       ]
     }
@@ -495,15 +494,20 @@
       "elyzeEvidence": [
         "scripts/testing/run-browser-tests.mjs",
         "scripts/testing/run-browser-schedule-certification.mjs",
+        "scripts/testing/run-fake-provider-e2e-certification.mjs",
         "scripts/testing/run-interactive-browser-certification.mjs",
         "scripts/testing/run-live-interactive-browser-certification.mjs",
         "scripts/testing/run-live-social-browser-certification.mjs",
         "scripts/testing/archive-live-social-browser-certification.mjs",
+        "scripts/testing/scenarios/fake-provider-e2e.json",
         "scripts/testing/scenarios/live-social-browser.json",
+        "docs/runbooks/fake-provider-e2e-certification.md",
         "docs/runbooks/interactive-browser-certification.md",
         "docs/runbooks/live-social-browser-certification.md",
+        "docs/certifications/fake-provider-e2e-latest.json",
         "docs/certifications/interactive-browser-live-latest.json",
         "docs/certifications/live-social-browser-latest.json",
+        "packages/gateway/test/integration/fake-provider-e2e.test.ts",
         "packages/gateway/test/integration/browser-auth-routing.test.ts",
         "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
         "packages/gateway/test/integration/telegram-smoke-test.test.ts",
@@ -520,6 +524,7 @@
       "verification": {
         "commands": [
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/browser-auth-routing.test.ts packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/telegram-smoke-test.test.ts",
+          "pnpm test:fake-provider-e2e:cert",
           "pnpm test:interactive-browser:cert",
           "OPS_RUN_LIVE_INTERACTIVE_BROWSER_CERT=1 pnpm test:interactive-browser:live",
           "pnpm test:live-social-browser",
@@ -527,13 +532,13 @@
         ],
         "testPaths": [
           "packages/gateway/test/integration/browser-auth-routing.test.ts",
+          "packages/gateway/test/integration/fake-provider-e2e.test.ts",
           "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
           "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
           "packages/gateway/test/integration/telegram-smoke-test.test.ts"
         ]
       },
       "remainingGaps": [
-        "Add a fake OpenAI-compatible provider E2E that proves provider quirks, tool-result formatting, redaction, and fallback behavior through the same artifacted scenario registry.",
         "Promote the opt-in live lane to a scheduled local/nightly certification once stable credentials and session profiles are available."
       ]
     },

@@ -1,0 +1,65 @@
+{
+  "schema": "ops.fake-provider-e2e-certification-archive.v1",
+  "version": 1,
+  "archivedAt": "2026-06-21T08:25:57.258Z",
+  "sourceReport": {
+    "path": ".ops/certifications/fake-provider-e2e/certification-report.json",
+    "schema": "ops.fake-provider-e2e-certification.v1",
+    "generatedAt": "2026-06-21T08:25:57.258Z"
+  },
+  "status": "passed",
+  "registry": {
+    "path": "scripts/testing/scenarios/fake-provider-e2e.json",
+    "schema": "ops.fake-provider-e2e-scenarios.v1",
+    "scenarioCount": 2
+  },
+  "summary": "Fake OpenAI-compatible provider E2E is certified for provider-specific tool-call quirks, tool-result reply formatting, redacted archives, and configured fallback recovery.",
+  "gates": {
+    "scenarioRegistryLoaded": true,
+    "googleToolCallNormalized": true,
+    "toolResultReplyFormatted": true,
+    "providerFallbackRecovered": true,
+    "trackedArchiveRedacted": true
+  },
+  "scenarios": [
+    {
+      "id": "gemini_compact_tool_call",
+      "provider": "google",
+      "model": "gemini-2.5-pro",
+      "status": "passed",
+      "claims": [
+        "Compact provider-specific execute_command calls are normalized into argv-based execution plans.",
+        "Native tool sessions use provider_api execution path with tool_first_native invocation.",
+        "Final operator replies keep tool results and strip provider/runtime boilerplate."
+      ],
+      "evidence": [
+        "packages/gateway/test/integration/fake-provider-e2e.test.ts"
+      ]
+    },
+    {
+      "id": "openrouter_fallback_recovery",
+      "provider": "openrouter",
+      "model": "openrouter/minimax/minimax-m2.5",
+      "status": "passed",
+      "claims": [
+        "A saturated fake primary Google provider produces a queue retry with an explicit fallback route.",
+        "The fake OpenRouter-compatible fallback completes the run and delivers the recovered answer.",
+        "The operator-visible answer omits the primary provider saturation error."
+      ],
+      "evidence": [
+        "packages/gateway/test/integration/fake-provider-e2e.test.ts"
+      ]
+    }
+  ],
+  "command": "pnpm test:fake-provider-e2e:cert",
+  "evidence": [
+    "packages/gateway/test/integration/fake-provider-e2e.test.ts",
+    "scripts/testing/scenarios/fake-provider-e2e.json",
+    "scripts/testing/run-fake-provider-e2e-certification.mjs"
+  ],
+  "redaction": {
+    "localReport": "Local report keeps a redacted Vitest output preview only.",
+    "trackedArchive": "Tracked archive omits provider HTTP payload contents, API keys, bearer tokens, and full test logs."
+  },
+  "followUpTasks": []
+}
