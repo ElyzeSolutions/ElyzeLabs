@@ -43,6 +43,14 @@ function envFlag(name, fallback = false) {
   return fallback;
 }
 
+function positiveNumberEnv(name, fallback, minimum) {
+  const parsed = Number(process.env[name]);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(minimum, parsed);
+}
+
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
@@ -281,6 +289,26 @@ async function recordStep(report, id, run) {
     });
     throw error;
   }
+}
+
+function recordLatencyObservation(report, id, observedMs, maxMs) {
+  const passed = Number.isFinite(observedMs) && observedMs <= maxMs;
+  report.latency.observations.push({
+    id,
+    observedMs,
+    maxMs,
+    status: passed ? 'passed' : 'failed'
+  });
+  return passed;
+}
+
+function finalizeLatencyStatus(report) {
+  const requiredObservationIds = ['telegram_process_code_reply', 'live_telegram_process_e2e'];
+  report.latency.status = requiredObservationIds.every((id) =>
+    report.latency.observations.some((observation) => observation.id === id && observation.status === 'passed')
+  )
+    ? 'passed'
+    : 'failed';
 }
 
 function createTelegramPayload({ target, updateId, text }) {
@@ -683,6 +711,14 @@ function makeReport({ flags, registry, gatewayBaseUrl, marker }) {
       },
       failureSummary: null
     },
+    latency: {
+      status: flags.enabled ? 'pending' : 'skipped',
+      thresholds: {
+        processReplyMaxMs: flags.processReplyMaxMs,
+        endToEndMaxMs: flags.endToEndMaxMs
+      },
+      observations: []
+    },
     summary: {
       scenariosTotal: Array.isArray(registry.scenarios) ? registry.scenarios.length : 0,
       passed: 0,
@@ -698,8 +734,10 @@ function makeReport({ flags, registry, gatewayBaseUrl, marker }) {
       processRunCompleted: false,
       processRuntimeUsed: false,
       processReplyContainedMarker: false,
+      processReplyWithinLatencySlo: false,
       kanbanTaskCreatedFromTelegram: false,
       backlogSnapshotReturned: false,
+      endToEndWithinLatencySlo: false,
       trackedArchiveRedacted: true
     },
     scenarios: [],
@@ -735,6 +773,10 @@ function updateSummary(report) {
   }
 }
 
+function allReportGatesPassed(report) {
+  return Object.values(report.gates).every((value) => value === true);
+}
+
 function makeArchive(report) {
   return {
     schema: 'ops.live-telegram-process-certification-archive.v1',
@@ -750,6 +792,7 @@ function makeArchive(report) {
     marker: report.marker,
     target: report.target,
     processModelSelection: report.processModelSelection,
+    latency: report.latency,
     summary: report.summary,
     gates: report.gates,
     scenarios: report.scenarios,
@@ -999,6 +1042,7 @@ async function selectProcessProviderChatModel({ report, registry, gatewayBaseUrl
 
 async function runProcessCodeReply({ report, registry, gatewayBaseUrl, headers, target, marker, timeoutMs, updateId }) {
   const id = 'telegram_process_code_reply';
+  const startedMs = Date.now();
   const text = [
     `Live Telegram process certification ${marker}.`,
     'Use the provider-backed process runtime and answer with one concise JavaScript line:',
@@ -1039,18 +1083,31 @@ async function runProcessCodeReply({ report, registry, gatewayBaseUrl, headers, 
     )
   );
   const messages = summarizeMessages(messageResult.messages, marker);
+  const elapsedMs = Date.now() - startedMs;
   const processRuntimeUsed = run.runtime === 'process' || run.effectiveRuntime === 'process' || run.executionPathRuntime === 'process';
   const passed = run.status === 'completed' && processRuntimeUsed && run.triggerSource === 'telegram' && messages.markerSeen;
+  const latencyPassed = recordLatencyObservation(
+    report,
+    'telegram_process_code_reply',
+    elapsedMs,
+    report.latency.thresholds.processReplyMaxMs
+  );
   report.gates.processRunCompleted = run.status === 'completed';
   report.gates.processRuntimeUsed = processRuntimeUsed;
   report.gates.processReplyContainedMarker = messages.markerSeen;
+  report.gates.processReplyWithinLatencySlo = latencyPassed;
   pushScenario(report, {
     id,
     label: scenarioLabel(registry, id),
-    status: passed ? 'passed' : 'failed',
+    status: passed && latencyPassed ? 'passed' : 'failed',
     ingress,
     run,
-    messages
+    messages,
+    latency: {
+      observedMs: elapsedMs,
+      maxMs: report.latency.thresholds.processReplyMaxMs,
+      status: latencyPassed ? 'passed' : 'failed'
+    }
   });
   return {
     runId: payload.runId,
@@ -1149,6 +1206,7 @@ async function startFreshSession({ report, gatewayBaseUrl, target, timeoutMs, up
 }
 
 async function main() {
+  const startedMs = Date.now();
   const registry = readJson(SCENARIO_PATH);
   const config = readControlPlaneConfig();
   const gatewayBaseUrl = resolveGatewayBaseUrl(config);
@@ -1157,9 +1215,9 @@ async function main() {
   const flags = {
     enabled: envFlag('OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT'),
     strict: envFlag('OPS_LIVE_TELEGRAM_PROCESS_STRICT', true),
-    timeoutMs: Number.isFinite(Number(process.env.OPS_LIVE_TELEGRAM_PROCESS_TIMEOUT_MS))
-      ? Math.max(10000, Number(process.env.OPS_LIVE_TELEGRAM_PROCESS_TIMEOUT_MS))
-      : 120000,
+    timeoutMs: positiveNumberEnv('OPS_LIVE_TELEGRAM_PROCESS_TIMEOUT_MS', 120000, 10000),
+    processReplyMaxMs: positiveNumberEnv('OPS_LIVE_TELEGRAM_PROCESS_REPLY_MAX_MS', 120000, 10000),
+    endToEndMaxMs: positiveNumberEnv('OPS_LIVE_TELEGRAM_PROCESS_E2E_MAX_MS', 300000, 30000),
     processModelCandidates: resolveProcessModelCandidates(),
     explicitProcessModelRequested: Boolean(process.env.OPS_LIVE_TELEGRAM_PROCESS_MODEL?.trim()),
     targetConfigured: Boolean(target?.target),
@@ -1179,12 +1237,14 @@ async function main() {
   const apiToken = resolveApiToken(config);
   if (!apiToken) {
     report.status = 'skipped';
+    report.latency.status = 'skipped';
     report.followUpTasks.push('Set OPS_API_TOKEN or OPS_LIVE_TELEGRAM_PROCESS_API_TOKEN before running live certification.');
     writeJson(REPORT_PATH, report);
     return flags.strict ? 1 : 0;
   }
   if (!target) {
     report.status = 'skipped';
+    report.latency.status = 'skipped';
     report.followUpTasks.push('Set TELEGRAM_CHAT_ID or OPS_LIVE_TELEGRAM_PROCESS_CHAT_ID before running live certification.');
     writeJson(REPORT_PATH, report);
     return flags.strict ? 1 : 0;
@@ -1253,7 +1313,20 @@ async function main() {
     report.followUpTasks.push(redactError(error));
   }
 
+  const endToEndPassed = recordLatencyObservation(
+    report,
+    'live_telegram_process_e2e',
+    Date.now() - startedMs,
+    report.latency.thresholds.endToEndMaxMs
+  );
+  report.gates.endToEndWithinLatencySlo = endToEndPassed;
+  finalizeLatencyStatus(report);
+
   updateSummary(report);
+  if (report.status === 'passed' && !allReportGatesPassed(report)) {
+    report.status = 'failed';
+    report.followUpTasks.push('One or more required live Telegram process gates failed after scenario execution.');
+  }
   maybeWriteArchive(report);
   writeJson(REPORT_PATH, report);
 

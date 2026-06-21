@@ -17,8 +17,10 @@ const REQUIRED_GATES = [
   'processRunCompleted',
   'processRuntimeUsed',
   'processReplyContainedMarker',
+  'processReplyWithinLatencySlo',
   'kanbanTaskCreatedFromTelegram',
   'backlogSnapshotReturned',
+  'endToEndWithinLatencySlo',
   'trackedArchiveRedacted'
 ];
 
@@ -83,6 +85,26 @@ function summarizeProcessModelSelection(selection) {
   };
 }
 
+function summarizeLatency(latency) {
+  const thresholds = isRecord(latency.thresholds) ? latency.thresholds : {};
+  const observations = Array.isArray(latency.observations)
+    ? latency.observations.filter(isRecord).map((observation) => ({
+        id: readString(observation.id),
+        observedMs: Number(observation.observedMs ?? 0),
+        maxMs: Number(observation.maxMs ?? 0),
+        status: readStatus(observation.status)
+      }))
+    : [];
+  return {
+    status: readStatus(latency.status),
+    thresholds: {
+      processReplyMaxMs: Number(thresholds.processReplyMaxMs ?? 0),
+      endToEndMaxMs: Number(thresholds.endToEndMaxMs ?? 0)
+    },
+    observations
+  };
+}
+
 function buildGates(report) {
   const gates = isRecord(report.gates) ? report.gates : {};
   return Object.fromEntries(REQUIRED_GATES.map((gate) => [gate, gates[gate] === true]));
@@ -125,6 +147,7 @@ function makeArchive(report, inputPath, outputPath) {
     processModelSelection: summarizeProcessModelSelection(
       isRecord(report.processModelSelection) ? report.processModelSelection : {}
     ),
+    latency: summarizeLatency(isRecord(report.latency) ? report.latency : {}),
     summary: {
       scenariosTotal: Number(report.summary?.scenariosTotal ?? 0),
       passed: Number(report.summary?.passed ?? 0),

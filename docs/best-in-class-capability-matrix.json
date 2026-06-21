@@ -442,7 +442,8 @@
       "referenceSignals": [
         "OpenClaw has dense chat infrastructure for run lifecycle, tool cards, slash commands, session cache, responsive chat tests, and E2E chat flows.",
         "OpenClaw's latest harness work preserves replacement/timed-out session state, isolates compaction cleanup, and surfaces returned tool errors.",
-        "Hermes desktop chat has rich composer, session sidebar, right-rail preview, gateway recovery, process fallback, and live sequential chat tests."
+        "Hermes desktop chat has rich composer, session sidebar, right-rail preview, gateway recovery, process fallback, and live sequential chat tests.",
+        "NemoClaw now treats real hosted agent-turn latency as a live E2E requirement with archived artifacts."
       ],
       "elyzeEvidence": [
         "dashboard/src/pages/MissionControlPage.tsx",
@@ -496,7 +497,7 @@
         ]
       },
       "remainingGaps": [
-        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run proves Telegram delivery plus /runtime process; invalid model configs are skipped before live generation, and the remaining live blocker is provider auth readiness: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report."
+        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, latency SLO gates, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run proves Telegram delivery plus /runtime process; invalid model configs are skipped before live generation, and the remaining live blocker is provider auth readiness: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report with passing latency evidence."
       ]
     },
     {

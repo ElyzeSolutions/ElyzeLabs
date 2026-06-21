@@ -41,6 +41,8 @@ It uses `OPS_API_TOKEN` and `TELEGRAM_CHAT_ID` from the environment or `.env`. O
 
 By default the live process lane probes a short provider-backed candidate list and sets `/model` to the first route that can complete a real chat request. Put a preferred model first with `OPS_LIVE_TELEGRAM_PROCESS_MODEL`, or provide a comma-separated fallback list with `OPS_LIVE_TELEGRAM_PROCESS_MODEL_CANDIDATES`.
 
+The lane also records operator-facing latency SLOs in both the local report and the tracked archive. By default, the provider-backed Telegram process reply must complete within `120000` ms and the full live lane must complete within `300000` ms. Override those budgets with `OPS_LIVE_TELEGRAM_PROCESS_REPLY_MAX_MS` and `OPS_LIVE_TELEGRAM_PROCESS_E2E_MAX_MS` when certifying slower hosted providers.
+
 Before sending a live generation request, the lane preflights each candidate through `/api/llm/routing/effective?runtime=process&model=...` and verifies the requested candidate itself is the selected eligible route. Failed candidates are recorded with a redacted `reasonCode` and remediation hint, so provider-auth, billing/quota, cooldown, rate-limit, invalid model config/model-unavailable, routing fallback, and network failures are distinguishable in the local report.
 
 The live lane verifies:
@@ -50,6 +52,7 @@ The live lane verifies:
 - `/model <provider-backed-process-model>` works through real Telegram ingress.
 - `POST /api/onboarding/provider-keys/live-check` can complete a tiny live chat request through the selected provider-backed process model.
 - A Telegram process-runtime prompt completes and replies with a synthetic marker.
+- The process reply and full live lane finish inside the configured latency SLOs.
 - `/task` creates a real Kanban/backlog card through Telegram.
 - `/backlog` returns a Telegram backlog snapshot after task creation.
 
@@ -72,6 +75,7 @@ Tracked archives omit Telegram chat identifiers, sender identifiers, raw prompts
 - Provider readiness is generation-level: metadata/list endpoints are not accepted as proof that the selected process chat model can answer.
 - Provider model selection is evidence-driven: the certification records the selected provider/model and redacted per-candidate failure details before it sends the Telegram `/model` command.
 - Provider model selection is routing-aware: ineligible auth profiles and cooled-down routes are skipped before expensive live generation attempts.
+- Provider-backed runtime claims include responsiveness evidence, not just eventual success.
 - Browser auth profile routing stays explicit and persists selected profiles on sessions.
 - Mission Control renders at desktop, tablet, and mobile viewport sizes without global horizontal overflow, missing core chat/runtime/browser-auth text, clipped watched elements, or broken screenshot artifacts.
 - Scrapling/cookie-backed authenticated reads remain the default visible route for logged-in site reads.
