@@ -256,6 +256,19 @@ const lanes = [
       OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT: includeLive ? '1' : undefined,
       OPS_LIVE_TELEGRAM_PROCESS_STRICT: strictLive ? '1' : '0'
     }
+  },
+  {
+    id: 'live_github_delivery',
+    label: 'Live GitHub delivery certification',
+    kind: 'live',
+    trigger: 'opt_in',
+    selected: includeLive,
+    command: ['pnpm', 'test:live-github-delivery'],
+    reportPath: path.join(REPO_ROOT, '.ops', 'certifications', 'live-github-delivery', 'certification-report.json'),
+    env: {
+      OPS_RUN_LIVE_GITHUB_DELIVERY_CERT: includeLive ? '1' : undefined,
+      OPS_LIVE_GITHUB_DELIVERY_STRICT: strictLive ? '1' : '0'
+    }
   }
 ];
 

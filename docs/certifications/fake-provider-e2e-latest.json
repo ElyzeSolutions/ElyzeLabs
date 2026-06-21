@@ -1,11 +1,11 @@
 {
   "schema": "ops.fake-provider-e2e-certification-archive.v1",
   "version": 1,
-  "archivedAt": "2026-06-21T15:02:31.668Z",
+  "archivedAt": "2026-06-21T15:34:30.227Z",
   "sourceReport": {
     "path": ".ops/certifications/fake-provider-e2e/certification-report.json",
     "schema": "ops.fake-provider-e2e-certification.v1",
-    "generatedAt": "2026-06-21T15:02:31.667Z"
+    "generatedAt": "2026-06-21T15:34:30.226Z"
   },
   "status": "passed",
   "registry": {

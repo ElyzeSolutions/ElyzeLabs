@@ -1,11 +1,11 @@
 {
   "schema": "ops.nightly-certification-archive.v1",
   "version": 1,
-  "archivedAt": "2026-06-21T15:05:15.323Z",
+  "archivedAt": "2026-06-21T15:36:56.572Z",
   "sourceReport": {
     "path": ".ops/certifications/nightly/certification-report.json",
     "schema": "ops.nightly-certification.v1",
-    "generatedAt": "2026-06-21T15:05:15.322Z"
+    "generatedAt": "2026-06-21T15:36:56.572Z"
   },
   "status": "passed",
   "mode": {
@@ -14,13 +14,13 @@
     "strictLive": false
   },
   "summary": {
-    "total": 9,
+    "total": 10,
     "deterministic": 6,
-    "live": 3,
+    "live": 4,
     "passed": 6,
     "failed": 0,
     "blocked": 0,
-    "skipped": 3,
+    "skipped": 4,
     "planned": 0
   },
   "gates": {
@@ -111,6 +111,15 @@
       "reportStatus": null,
       "reportPath": ".ops/certifications/live-telegram-process/certification-report.json",
       "command": "pnpm test:live-telegram-process"
+    },
+    {
+      "id": "live_github_delivery",
+      "kind": "live",
+      "trigger": "opt_in",
+      "status": "skipped",
+      "reportStatus": null,
+      "reportPath": ".ops/certifications/live-github-delivery/certification-report.json",
+      "command": "pnpm test:live-github-delivery"
     }
   ],
   "redaction": {

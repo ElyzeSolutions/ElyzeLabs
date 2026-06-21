@@ -16,9 +16,8 @@ describe('best-in-class capability matrix', () => {
 
     expect(generated.schema).toBe('ops.best-in-class-audit.v1');
     expect(generated.readiness).toBe('not_ready');
-    expect(generated.totals.requiredGaps).toBe(3);
+    expect(generated.totals.requiredGaps).toBe(2);
     expect(generated.requiredGaps.map((entry: { id: string }) => entry.id)).toEqual([
-      'operator_kanban_workboard',
       'chat_process_runtime',
       'e2e_scenario_certification'
     ]);

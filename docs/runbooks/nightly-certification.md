@@ -50,6 +50,7 @@ These run only when `OPS_NIGHTLY_CERT_INCLUDE_LIVE=1` is set:
 - Live interactive browser certification
 - Live social browser certification
 - Live Telegram process certification
+- Live GitHub delivery certification
 
 The wrapper reads each child certification report after execution. A child script that exits successfully but writes `blocked` or `skipped` still appears that way in the nightly report.
 

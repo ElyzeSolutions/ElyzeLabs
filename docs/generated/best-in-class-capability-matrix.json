@@ -2,21 +2,21 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "235ec9d639f3755aac630e1428324faaf245d77e9cfec27287f963c5f183dd7c",
-  "updatedAt": "2026-06-21T15:01:46.000Z",
+  "sourceHash": "43a3feb7756b59f8ea6025e1681eacefb50b63f2bd698ee083bd837568d325e7",
+  "updatedAt": "2026-06-21T15:33:29.518Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
   "statusCounts": {
     "ahead": 2,
-    "parity": 7,
-    "partial": 3,
+    "parity": 8,
+    "partial": 2,
     "missing": 0,
     "defer": 1
   },
   "totals": {
     "capabilities": 13,
     "requiredForBestInClass": 12,
-    "requiredGaps": 3,
+    "requiredGaps": 2,
     "deferred": 1
   },
   "competitors": [
@@ -71,15 +71,6 @@
   ],
   "requiredGaps": [
     {
-      "id": "operator_kanban_workboard",
-      "area": "kanban",
-      "priority": "P1",
-      "status": "partial",
-      "remainingGaps": [
-        "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity."
-      ]
-    },
-    {
       "id": "chat_process_runtime",
       "area": "chat_runtime",
       "priority": "P1",
@@ -94,7 +85,7 @@
       "priority": "P0",
       "status": "partial",
       "remainingGaps": [
-        "Provision stable live credentials/session profiles and flip scheduled live lanes from opt-in evidence to a required green nightly gate."
+        "Provision stable live Telegram provider credentials and authenticated browser session profiles, run live social/Telegram lanes to passed archives alongside the passed live GitHub delivery archive, and flip scheduled live lanes from opt-in evidence to a required green nightly gate."
       ]
     }
   ],
@@ -394,7 +385,7 @@
       "area": "kanban",
       "priority": "P1",
       "requiredForBestInClass": true,
-      "status": "partial",
+      "status": "parity",
       "requirement": "Operator Kanban should support drag/drop, keyboard transitions, Telegram task creation, scoped GitHub delivery truth, issue sync, repair actions, and responsive visual certification.",
       "elyzeEvidence": [
         "dashboard/src/pages/BacklogPage.tsx",
@@ -405,7 +396,10 @@
         "packages/gateway/test/integration/github-delivery-certification.test.ts",
         "scripts/testing/run-kanban-workboard-certification.mjs",
         "scripts/testing/run-browser-tests.mjs",
-        "docs/runbooks/kanban-workboard-certification.md"
+        "docs/runbooks/kanban-workboard-certification.md",
+        "scripts/testing/run-live-github-delivery-certification.mjs",
+        "docs/runbooks/live-github-delivery-certification.md",
+        "docs/certifications/live-github-delivery-latest.json"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/workboard.ts",
@@ -417,7 +411,9 @@
       "verification": {
         "commands": [
           "pnpm test:kanban-workboard:cert",
-          "pnpm exec vitest run --config vitest.config.ts dashboard/src/pages/BacklogPage.test.tsx dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/github-delivery-certification.test.ts"
+          "pnpm exec vitest run --config vitest.config.ts dashboard/src/pages/BacklogPage.test.tsx dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/github-delivery-certification.test.ts",
+          "pnpm test:live-github-delivery",
+          "OPS_RUN_LIVE_GITHUB_DELIVERY_CERT=1 pnpm test:live-github-delivery"
         ],
         "testPaths": [
           "dashboard/src/pages/BacklogPage.test.tsx",
@@ -425,12 +421,11 @@
           "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
           "packages/gateway/test/integration/github-delivery-certification.test.ts",
           "scripts/testing/run-kanban-workboard-certification.mjs",
-          "scripts/testing/run-browser-tests.mjs"
+          "scripts/testing/run-browser-tests.mjs",
+          "scripts/testing/run-live-github-delivery-certification.mjs"
         ]
       },
-      "remainingGaps": [
-        "Exercise real GitHub issue sync and repair actions with a live repository token before claiming delivery-state parity."
-      ]
+      "remainingGaps": []
     },
     {
       "id": "chat_process_runtime",
@@ -524,7 +519,10 @@
         "packages/gateway/test/integration/telegram-smoke-test.test.ts",
         "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
         "scripts/testing/run-live-telegram-process-certification.mjs",
-        "scripts/testing/scenarios/live-telegram-process.json"
+        "scripts/testing/scenarios/live-telegram-process.json",
+        "scripts/testing/run-live-github-delivery-certification.mjs",
+        "docs/runbooks/live-github-delivery-certification.md",
+        "docs/certifications/live-github-delivery-latest.json"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/messaging-providers.test.ts",
@@ -545,7 +543,9 @@
           "pnpm test:live-social-browser",
           "pnpm archive:live-social-browser",
           "pnpm test:live-telegram-process",
-          "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process"
+          "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process",
+          "pnpm test:live-github-delivery",
+          "OPS_RUN_LIVE_GITHUB_DELIVERY_CERT=1 pnpm test:live-github-delivery"
         ],
         "testPaths": [
           "packages/gateway/test/integration/browser-auth-routing.test.ts",
@@ -556,11 +556,12 @@
           "scripts/testing/run-nightly-certification.mjs",
           ".github/workflows/nightly-certification.yml",
           "scripts/testing/run-live-telegram-process-certification.mjs",
-          "scripts/testing/scenarios/live-telegram-process.json"
+          "scripts/testing/scenarios/live-telegram-process.json",
+          "scripts/testing/run-live-github-delivery-certification.mjs"
         ]
       },
       "remainingGaps": [
-        "Provision stable live credentials/session profiles and flip scheduled live lanes from opt-in evidence to a required green nightly gate."
+        "Provision stable live Telegram provider credentials and authenticated browser session profiles, run live social/Telegram lanes to passed archives alongside the passed live GitHub delivery archive, and flip scheduled live lanes from opt-in evidence to a required green nightly gate."
       ]
     },
     {
