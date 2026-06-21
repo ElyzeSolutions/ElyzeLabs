@@ -74,3 +74,5 @@ scrapling install --force
 ```
 
 Use the Browser page to create or import session profiles first. Prefer the saved Scrapling cookie/storage-state path for read-only authenticated social scraping, and use the interactive provider only for dynamic pages that need rendered click/type/read behavior.
+
+Telegram operators can start a host-browser login capture with `/browser connect <site> [chrome|edge|firefox|zen]`, then save it with `/browser save <site> [chrome|edge|firefox|zen]`. Zen is treated as a Firefox-compatible local profile source internally, but it remains an explicit operator-facing selector so Zen users do not have to choose generic Firefox.

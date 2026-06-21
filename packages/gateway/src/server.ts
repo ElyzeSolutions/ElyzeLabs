@@ -52896,6 +52896,45 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       : [];
   const parseLocalBrowserKind = (value: unknown): BrowserLocalProfileKind | null =>
     value === 'chrome' || value === 'edge' || value === 'firefox' ? value : null;
+  const normalizeTelegramBrowserSelector = (value: unknown): string =>
+    typeof value === 'string' ? value.trim().toLowerCase().replace(/[\s_]+/g, '-') : '';
+  const isZenBrowserSelector = (value: unknown): boolean => {
+    const normalized = normalizeTelegramBrowserSelector(value);
+    return normalized === 'zen' || normalized === 'zen-browser';
+  };
+  const isZenLocalBrowserProfile = (profile: LocalBrowserProfileRow): boolean => {
+    const displayName = normalizeTelegramBrowserSelector(profile.browserDisplayName);
+    const appName = normalizeTelegramBrowserSelector(profile.browserAppName);
+    const label = normalizeTelegramBrowserSelector(profile.label);
+    return profile.browserKind === 'firefox' && (displayName === 'zen' || appName === 'zen' || label.startsWith('zen-'));
+  };
+  const resolveDefaultZenLocalBrowserProfile = (): LocalBrowserProfileRow | null => {
+    const profiles = listLocalBrowserProfiles().filter(isZenLocalBrowserProfile);
+    return profiles.find((profile) => profile.isDefault) ?? profiles[0] ?? null;
+  };
+  const resolveTelegramLocalBrowserProfile = (
+    requestedSelector: unknown,
+    fallbackKind: BrowserLocalProfileKind
+  ): {
+    browserKind: BrowserLocalProfileKind;
+    displayName: string;
+    profile: LocalBrowserProfileRow | null;
+  } => {
+    if (isZenBrowserSelector(requestedSelector)) {
+      const profile = resolveDefaultZenLocalBrowserProfile();
+      return {
+        browserKind: 'firefox',
+        displayName: 'Zen',
+        profile
+      };
+    }
+    const browserKind = parseLocalBrowserKind(requestedSelector) ?? fallbackKind;
+    return {
+      browserKind,
+      displayName: browserKind,
+      profile: resolveDefaultLocalBrowserProfile(browserKind)
+    };
+  };
 
   app.put('/api/browser/config', async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
@@ -57134,7 +57173,8 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
 
       if (subcommand === 'connect') {
         const requestedSiteKey = (args[1] ?? '').trim().toLowerCase();
-        const browserKind = parseLocalBrowserKind(args[2] ?? 'chrome') ?? 'chrome';
+        const selectedBrowser = resolveTelegramLocalBrowserProfile(args[2] ?? 'chrome', 'chrome');
+        const browserKind = selectedBrowser.browserKind;
         const siteKey: BrowserConnectSiteKey =
           requestedSiteKey === 'tiktok' ||
           requestedSiteKey === 'instagram' ||
@@ -57150,7 +57190,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
             session,
             'system',
             'system',
-            'Usage: /browser connect <tiktok|instagram|reddit|x|pinterest|facebook|generic> [chrome|edge|firefox]',
+            'Usage: /browser connect <tiktok|instagram|reddit|x|pinterest|facebook|generic> [chrome|edge|firefox|zen]',
             {
               command: 'browser',
               subcommand: 'connect'
@@ -57161,13 +57201,13 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
             reason: 'browser_connect_site_required'
           });
         }
-        const profile = resolveDefaultLocalBrowserProfile(browserKind);
+        const profile = selectedBrowser.profile;
         if (!profile) {
           await saveOutboundMessage(
             session,
             'system',
             'system',
-            `No local ${browserKind} profile is available on the Elyze host. Open Browser Ops and import cookies manually instead.`,
+            `No local ${selectedBrowser.displayName} profile is available on the Elyze host. Open Browser Ops and import cookies manually instead.`,
             {
               command: 'browser',
               subcommand: 'connect'
@@ -57194,7 +57234,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
             updatedSession,
             'system',
             'system',
-            `Opened ${preset.label} in ${browserKind} on the Elyze host using profile ${profile.label}. Finish logging in, then run \`/browser save ${siteKey} ${browserKind}\`.`,
+            `Opened ${preset.label} in ${selectedBrowser.displayName} on the Elyze host using profile ${profile.label}. Finish logging in, then run \`/browser save ${siteKey} ${isZenLocalBrowserProfile(profile) ? 'zen' : browserKind}\`.`,
             {
               command: 'browser',
               subcommand: 'connect',
@@ -57226,6 +57266,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       if (subcommand === 'save') {
         const pending = parsePendingBrowserConnect(session);
         const requestedSiteKey = (args[1] ?? '').trim().toLowerCase();
+        const requestedBrowserSelector = args[2] ?? '';
         const siteKey = requestedSiteKey
           ? requestedSiteKey === 'tiktok' ||
             requestedSiteKey === 'instagram' ||
@@ -57237,13 +57278,17 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
               ? requestedSiteKey
               : null
           : pending?.siteKey ?? null;
-        const browserKind = parseLocalBrowserKind(args[2] ?? '') ?? pending?.browserKind ?? null;
+        const selectedBrowser =
+          requestedBrowserSelector.trim().length > 0
+            ? resolveTelegramLocalBrowserProfile(requestedBrowserSelector, pending?.browserKind ?? 'chrome')
+            : null;
+        const browserKind = selectedBrowser?.browserKind ?? pending?.browserKind ?? null;
         if (!siteKey || !browserKind) {
           await saveOutboundMessage(
             session,
             'system',
             'system',
-            'Usage: /browser save <site> [chrome|edge|firefox]. Run /browser connect first to open the login window.',
+            'Usage: /browser save <site> [chrome|edge|firefox|zen]. Run /browser connect first to open the login window.',
             {
               command: 'browser',
               subcommand: 'save'
@@ -57255,14 +57300,25 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
           });
         }
         const profile =
+          selectedBrowser?.profile ??
           (pending && pending.siteKey === siteKey && pending.browserKind === browserKind
             ? getLocalBrowserProfileById(pending.browserProfileId)
             : resolveDefaultLocalBrowserProfile(browserKind)) ?? null;
         if (!profile) {
-          await saveOutboundMessage(session, 'system', 'system', `No local ${browserKind} profile is available on the Elyze host.`, {
-            command: 'browser',
-            subcommand: 'save'
-          });
+          const displayName =
+            requestedBrowserSelector.trim().length > 0
+              ? resolveTelegramLocalBrowserProfile(requestedBrowserSelector, browserKind).displayName
+              : browserKind;
+          await saveOutboundMessage(
+            session,
+            'system',
+            'system',
+            `No local ${displayName} profile is available on the Elyze host.`,
+            {
+              command: 'browser',
+              subcommand: 'save'
+            }
+          );
           return jsonOk(reply, {
             status: 'blocked',
             reason: 'browser_local_profile_missing'
