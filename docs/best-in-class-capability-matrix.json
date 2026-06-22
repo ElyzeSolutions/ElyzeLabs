@@ -463,6 +463,7 @@
         "packages/gateway/test/integration/gateway.test.ts",
         "packages/gateway/test/integration/browser-auth-routing.test.ts",
         "packages/gateway/test/integration/model-routing.test.ts",
+        "scripts/testing/run-provider-readiness-certification.mjs",
         "scripts/testing/run-live-telegram-process-certification.mjs",
         "scripts/testing/archive-live-telegram-process-certification.mjs",
         "scripts/testing/scenarios/live-telegram-process.json"
@@ -482,6 +483,7 @@
           "pnpm archive:live-social-browser",
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/runtime-certification.test.ts",
           "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/model-routing.test.ts",
+          "pnpm test:provider-readiness",
           "pnpm test:live-telegram-process",
           "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process",
           "pnpm archive:live-telegram-process"
@@ -494,13 +496,14 @@
           "packages/gateway/test/integration/gateway.test.ts",
           "packages/gateway/test/integration/browser-auth-routing.test.ts",
           "packages/gateway/test/integration/model-routing.test.ts",
+          "scripts/testing/run-provider-readiness-certification.mjs",
           "scripts/testing/run-live-telegram-process-certification.mjs",
           "scripts/testing/archive-live-telegram-process-certification.mjs",
           "scripts/testing/scenarios/live-telegram-process.json"
         ]
       },
       "remainingGaps": [
-        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, latency SLO gates, /task Kanban creation, and /backlog snapshots. Provider-backed process readiness is checked before mutable Telegram smoke or ingress commands, so broken credentials fail fast without creating noisy partial Telegram exchanges. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run proves the fail-fast provider gate; invalid model configs are skipped before live generation, and the remaining live blocker is provider auth readiness: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report with passing latency evidence."
+        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, latency SLO gates, /task Kanban creation, and /backlog snapshots. The side-effect-free provider readiness lane checks provider-backed process readiness before mutable Telegram smoke or ingress commands, so broken credentials fail fast without creating noisy partial Telegram exchanges. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run proves the fail-fast provider gate; invalid model configs are skipped before live generation, and the remaining live blocker is provider auth readiness: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_PROVIDER_READINESS_CERT=1 pnpm test:provider-readiness followed by OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report with passing latency evidence."
       ]
     },
     {
@@ -527,6 +530,7 @@
         "scripts/testing/run-nightly-certification.mjs",
         "scripts/testing/archive-live-social-browser-certification.mjs",
         "scripts/testing/archive-live-telegram-process-certification.mjs",
+        "scripts/testing/run-provider-readiness-certification.mjs",
         ".github/workflows/nightly-certification.yml",
         "scripts/testing/scenarios/fake-provider-e2e.json",
         "scripts/testing/scenarios/live-social-browser.json",
@@ -570,6 +574,7 @@
           "pnpm test:live-social-browser",
           "pnpm archive:live-social-browser",
           "node --test scripts/testing/live-archive-preservation.test.mjs",
+          "pnpm test:provider-readiness",
           "pnpm test:live-telegram-process",
           "node --test scripts/testing/redaction.test.mjs",
           "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process",
@@ -587,6 +592,7 @@
           "scripts/testing/run-nightly-certification.mjs",
           ".github/workflows/nightly-certification.yml",
           "scripts/testing/live-archive-preservation.test.mjs",
+          "scripts/testing/run-provider-readiness-certification.mjs",
           "scripts/testing/run-live-telegram-process-certification.mjs",
           "scripts/testing/archive-live-telegram-process-certification.mjs",
           "scripts/testing/scenarios/live-telegram-process.json",

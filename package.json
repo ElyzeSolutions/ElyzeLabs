@@ -35,6 +35,7 @@
     "test:chat-process:cert": "node scripts/testing/run-chat-process-runtime-certification.mjs",
     "test:nightly-cert": "node scripts/testing/run-nightly-certification.mjs",
     "test:live-github-delivery": "node scripts/testing/run-live-github-delivery-certification.mjs",
+    "test:provider-readiness": "node scripts/testing/run-provider-readiness-certification.mjs",
     "test:live-telegram-process": "node scripts/testing/run-live-telegram-process-certification.mjs",
     "test:live-social-browser": "node scripts/testing/run-live-social-browser-certification.mjs",
     "archive:live-social-browser": "node scripts/testing/archive-live-social-browser-certification.mjs",

@@ -1,0 +1,668 @@
+#!/usr/bin/env node
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+import { redactError, redactEvidenceText as redactText } from './redaction.mjs';
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(SCRIPT_DIR, '../..');
+const DEFAULT_CONFIG_PATH = path.join(REPO_ROOT, 'config/control-plane.yaml');
+const REPORT_DIR = path.join(REPO_ROOT, '.ops/certifications/provider-readiness');
+const REPORT_PATH = path.join(REPORT_DIR, 'certification-report.json');
+const DEFAULT_PROCESS_MODEL_CANDIDATES = [
+  'openrouter/openai/gpt-5-mini',
+  'openrouter/openai/gpt-4.1-mini',
+  'openrouter/google/gemini-2.5-flash',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-flash-lite-latest'
+];
+
+const truthyValues = new Set(['1', 'true', 'yes', 'y', 'on']);
+const falsyValues = new Set(['0', 'false', 'no', 'n', 'off']);
+
+function isRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function envFlag(name, fallback = false) {
+  const raw = process.env[name];
+  if (raw === undefined) {
+    return fallback;
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (truthyValues.has(normalized)) {
+    return true;
+  }
+  if (falsyValues.has(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
+function positiveNumberEnv(name, fallback, minimum) {
+  const parsed = Number(process.env[name]);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(minimum, parsed);
+}
+
+function writeJson(filePath, payload) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+function readDotenvValue(name) {
+  const dotenvPath = path.join(REPO_ROOT, '.env');
+  if (!fs.existsSync(dotenvPath)) {
+    return null;
+  }
+  const lines = fs.readFileSync(dotenvPath, 'utf8').split(/\r?\n/u);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue;
+    }
+    const separator = trimmed.indexOf('=');
+    if (separator === -1) {
+      continue;
+    }
+    const key = trimmed.slice(0, separator).trim();
+    if (key !== name) {
+      continue;
+    }
+    let value = trimmed.slice(separator + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    return value.length > 0 ? value : null;
+  }
+  return null;
+}
+
+function readControlPlaneConfig(configPath = DEFAULT_CONFIG_PATH) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveApiToken(config) {
+  const candidates = [
+    process.env.OPS_PROVIDER_READINESS_API_TOKEN,
+    process.env.OPS_API_TOKEN,
+    readDotenvValue('OPS_API_TOKEN'),
+    isRecord(config.server) ? config.server.apiToken : null
+  ];
+  for (const candidate of candidates) {
+    const token = typeof candidate === 'string' ? candidate.trim() : '';
+    if (token.length > 0 && !token.includes('change-me')) {
+      return token;
+    }
+  }
+  return null;
+}
+
+function resolveGatewayBaseUrl(config) {
+  const explicit =
+    process.env.OPS_PROVIDER_READINESS_BASE_URL?.trim() ||
+    process.env.OPS_GATEWAY_BASE_URL?.trim();
+  if (explicit) {
+    return explicit.replace(/\/+$/u, '');
+  }
+  const server = isRecord(config.server) ? config.server : {};
+  const hostValue = typeof server.host === 'string' && server.host.trim() ? server.host.trim() : '127.0.0.1';
+  const host = hostValue === '0.0.0.0' ? '127.0.0.1' : hostValue;
+  const port = Number.isFinite(Number(server.port)) ? Number(server.port) : 8788;
+  return `http://${host}:${port.toString()}`;
+}
+
+function authHeaders(token) {
+  return {
+    authorization: `Bearer ${token}`,
+    'x-api-token': token,
+    'x-ops-role': 'admin'
+  };
+}
+
+function splitModelList(value) {
+  if (typeof value !== 'string') {
+    return [];
+  }
+  return value
+    .split(/[,\n]/u)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function uniqueStrings(values) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+function resolveProcessModelCandidates() {
+  const explicit = process.env.OPS_PROVIDER_READINESS_MODEL?.trim();
+  const configuredCandidates = splitModelList(process.env.OPS_PROVIDER_READINESS_MODEL_CANDIDATES);
+  const liveTelegramCandidates = splitModelList(process.env.OPS_LIVE_TELEGRAM_PROCESS_MODEL_CANDIDATES);
+  if (explicit) {
+    return uniqueStrings([explicit, ...configuredCandidates, ...liveTelegramCandidates]);
+  }
+  const liveTelegramExplicit = process.env.OPS_LIVE_TELEGRAM_PROCESS_MODEL?.trim();
+  return uniqueStrings([
+    ...(liveTelegramExplicit ? [liveTelegramExplicit] : []),
+    ...configuredCandidates,
+    ...liveTelegramCandidates,
+    ...DEFAULT_PROCESS_MODEL_CANDIDATES
+  ]);
+}
+
+function hashValue(value) {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized) {
+    return null;
+  }
+  return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+}
+
+async function requestJson(url, { method = 'GET', headers = {}, body, timeoutMs = 20000 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+        ...headers
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal
+    });
+    const raw = await response.text();
+    let payload = {};
+    if (raw.trim().length > 0) {
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        payload = { raw: redactText(raw, 500) };
+      }
+    }
+    if (!response.ok) {
+      const message = isRecord(payload) && typeof payload.error === 'string' ? payload.error : `HTTP ${response.status}`;
+      const error = new Error(message);
+      error.statusCode = response.status;
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs.toString()}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function recordStep(report, id, run) {
+  const startedAt = new Date().toISOString();
+  const startedMs = Date.now();
+  try {
+    const result = await run();
+    report.steps.push({
+      id,
+      status: 'passed',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedMs
+    });
+    return result;
+  } catch (error) {
+    report.steps.push({
+      id,
+      status: 'failed',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedMs,
+      error: redactError(error)
+    });
+    throw error;
+  }
+}
+
+function summarizeEffectiveRouting(payload) {
+  const routes = Array.isArray(payload.routes) ? payload.routes.filter(isRecord) : [];
+  const firstRoute = routes[0] ?? {};
+  const selected = isRecord(firstRoute.selected) ? firstRoute.selected : null;
+  const checks = Array.isArray(firstRoute.checks) ? firstRoute.checks.filter(isRecord) : [];
+  return {
+    available: routes.length > 0,
+    reason: typeof firstRoute.reason === 'string' ? firstRoute.reason : null,
+    requestedModel: typeof firstRoute.requestedModel === 'string' ? firstRoute.requestedModel : null,
+    selected: selected !== null,
+    selectedProvider: selected && typeof selected.provider === 'string' ? selected.provider : null,
+    selectedModel: selected && typeof selected.model === 'string' ? selected.model : null,
+    selectedProfileId: selected && typeof selected.authProfileId === 'string' ? selected.authProfileId : null,
+    checks: checks.slice(0, 8).map((check) => ({
+      model: typeof check.model === 'string' ? check.model : null,
+      provider: typeof check.provider === 'string' ? check.provider : null,
+      authProfileId: typeof check.authProfileId === 'string' ? check.authProfileId : null,
+      eligible: typeof check.eligible === 'boolean' ? check.eligible : null,
+      reason: typeof check.reason === 'string' ? check.reason : null
+    }))
+  };
+}
+
+function summarizeProcessChat(payload) {
+  const live = isRecord(payload.live) ? payload.live : {};
+  const providers = isRecord(live.providers) ? live.providers : {};
+  const processChat = isRecord(providers.processChat) ? providers.processChat : {};
+  return {
+    overall: typeof live.overall === 'string' ? live.overall : null,
+    status: typeof processChat.status === 'string' ? processChat.status : null,
+    configured: processChat.configured === true,
+    tested: processChat.tested === true,
+    ok: typeof processChat.ok === 'boolean' ? processChat.ok : null,
+    provider: typeof processChat.provider === 'string' ? processChat.provider : null,
+    model: typeof processChat.model === 'string' ? processChat.model : null,
+    latencyMs: Number.isFinite(Number(processChat.latencyMs)) ? Number(processChat.latencyMs) : null,
+    detail: typeof processChat.detail === 'string' ? redactText(processChat.detail, 500) : null
+  };
+}
+
+function normalizeModelForCompare(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function requestedCandidatePreflightFailure(routing, candidate) {
+  if (!isRecord(routing)) {
+    return null;
+  }
+  const candidateKey = normalizeModelForCompare(candidate);
+  const selectedModel = normalizeModelForCompare(routing.selectedModel);
+  const requestedCheck = Array.isArray(routing.checks)
+    ? routing.checks.find((check) => normalizeModelForCompare(check.model) === candidateKey)
+    : null;
+  if (requestedCheck && requestedCheck.eligible === false) {
+    const reason = typeof requestedCheck.reason === 'string' ? requestedCheck.reason : 'requested_model_ineligible';
+    return `Requested process model is not eligible before live generation: ${reason}.`;
+  }
+  if (routing.reason === 'invalid_model_config') {
+    return 'Requested process model has invalid model config before live generation.';
+  }
+  if (selectedModel && selectedModel !== candidateKey) {
+    return `Routing selected ${routing.selectedModel} instead of requested ${candidate}.`;
+  }
+  return null;
+}
+
+function classifyProviderFailure(attempt) {
+  const fields = [
+    attempt?.status,
+    attempt?.detail,
+    attempt?.routing?.available === false ? 'routing unavailable' : '',
+    attempt?.routing?.selected === false ? 'no selected route' : '',
+    ...(Array.isArray(attempt?.routing?.checks)
+      ? attempt.routing.checks.flatMap((check) => [check.reason, check.provider, check.authProfileId])
+      : [])
+  ];
+  const text = fields
+    .filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
+    .join(' ')
+    .toLowerCase();
+
+  if (text.includes('provider_auth_profile_cooldown') || text.includes('cooldown')) {
+    return 'provider_profile_cooldown';
+  }
+  if (text.includes('billing') || text.includes('quota') || text.includes('insufficient') || text.includes('credit')) {
+    return 'provider_billing_or_quota';
+  }
+  if (
+    text.includes('user not found') ||
+    text.includes('expired') ||
+    text.includes('invalid api key') ||
+    text.includes('invalid key') ||
+    text.includes('unauthorized') ||
+    text.includes('forbidden') ||
+    text.includes('401') ||
+    text.includes('403')
+  ) {
+    return 'provider_auth_invalid';
+  }
+  if (text.includes('rate limit') || text.includes('rate_limit') || text.includes('429')) {
+    return 'provider_rate_limited';
+  }
+  if (text.includes('no selected route') || text.includes('not configured') || text.includes('missing credential')) {
+    return 'provider_profile_ineligible';
+  }
+  if (
+    text.includes('invalid_model_config') ||
+    text.includes('invalid model config') ||
+    text.includes('model not found') ||
+    text.includes('unsupported model') ||
+    text.includes('model unavailable')
+  ) {
+    return 'model_unavailable';
+  }
+  if (text.includes('timed out') || text.includes('timeout') || text.includes('fetch failed') || text.includes('econn')) {
+    return 'provider_network';
+  }
+  if (text.includes('routing unavailable')) {
+    return 'routing_preflight_unavailable';
+  }
+  return 'provider_live_check_failed';
+}
+
+function remediationForReason(reasonCode) {
+  if (reasonCode === 'provider_auth_invalid') {
+    return 'Rotate or replace the provider credential, then rerun pnpm test:provider-readiness before live Telegram certification.';
+  }
+  if (reasonCode === 'provider_billing_or_quota') {
+    return 'Enable billing, raise quota, or put a funded provider-backed model first in OPS_PROVIDER_READINESS_MODEL_CANDIDATES.';
+  }
+  if (reasonCode === 'provider_profile_cooldown') {
+    return 'Clear or wait out the LLM auth-profile cooldown before using this candidate.';
+  }
+  if (reasonCode === 'provider_rate_limited') {
+    return 'Wait for the provider rate limit window or move a different provider-backed candidate earlier.';
+  }
+  if (reasonCode === 'provider_profile_ineligible') {
+    return 'Configure an eligible auth profile for this provider/model or remove the candidate from the provider readiness list.';
+  }
+  if (reasonCode === 'model_unavailable') {
+    return 'Replace the unavailable or invalid model config with a currently supported provider-backed process model.';
+  }
+  if (reasonCode === 'provider_network') {
+    return 'Check gateway network egress and provider reachability, then rerun the provider readiness lane.';
+  }
+  if (reasonCode === 'routing_preflight_unavailable') {
+    return 'Check /api/llm/routing/effective and LLM routing policy before rerunning the provider readiness lane.';
+  }
+  return 'Inspect the redacted candidate detail and rerun with OPS_PROVIDER_READINESS_MODEL set to a known-good provider-backed model.';
+}
+
+function summarizeAttempts(attempts) {
+  const byReason = {};
+  const recommendations = [];
+  for (const attempt of attempts) {
+    if (attempt.ok === true) {
+      continue;
+    }
+    const reasonCode = typeof attempt.reasonCode === 'string' ? attempt.reasonCode : classifyProviderFailure(attempt);
+    byReason[reasonCode] = (byReason[reasonCode] ?? 0) + 1;
+    const recommendation = remediationForReason(reasonCode);
+    if (!recommendations.includes(recommendation)) {
+      recommendations.push(recommendation);
+    }
+  }
+  return {
+    attempted: attempts.length,
+    passed: attempts.filter((attempt) => attempt.ok === true).length,
+    failed: attempts.filter((attempt) => attempt.ok !== true).length,
+    byReason,
+    recommendations
+  };
+}
+
+function createReport({ flags, gatewayBaseUrl }) {
+  return {
+    schema: 'ops.provider-readiness-certification.v1',
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    status: flags.enabled ? 'pending' : 'skipped',
+    strict: flags.strict,
+    gatewayBaseUrl,
+    processModelSelection: {
+      candidateCount: flags.processModelCandidates.length,
+      selectedProvider: null,
+      selectedModel: null,
+      explicitModelRequested: flags.explicitProcessModelRequested,
+      rawModelStoredInTrackedArchive: false,
+      routingPreflight: {
+        enabled: true,
+        endpoint: '/api/llm/routing/effective'
+      },
+      failureSummary: null
+    },
+    summary: {
+      attempted: 0,
+      passed: 0,
+      failed: 0
+    },
+    gates: {
+      gatewayReady: false,
+      providerBackedProcessChatReady: false,
+      redacted: true
+    },
+    attempts: [],
+    steps: [],
+    redaction: {
+      localReport:
+        'Local report omits API tokens, provider outputs, raw prompts, cookies, storage state, and full model credential material.'
+    },
+    followUpTasks: []
+  };
+}
+
+async function checkEffectiveRoute({ gatewayBaseUrl, headers, processModel, timeoutMs }) {
+  const query = new URLSearchParams({
+    runtime: 'process',
+    model: processModel
+  });
+  return requestJson(`${gatewayBaseUrl}/api/llm/routing/effective?${query.toString()}`, {
+    headers,
+    timeoutMs: Math.min(timeoutMs, 15000)
+  });
+}
+
+async function checkProviderLive({ gatewayBaseUrl, headers, processModel, timeoutMs }) {
+  return requestJson(`${gatewayBaseUrl}/api/onboarding/provider-keys/live-check`, {
+    method: 'POST',
+    headers,
+    body: {
+      actor: 'provider-readiness-cert',
+      processChatModel: processModel,
+      policy: 'orchestrator'
+    },
+    timeoutMs: Math.min(timeoutMs, 30000)
+  });
+}
+
+async function runProviderAttempts({ report, gatewayBaseUrl, headers, processModelCandidates, timeoutMs }) {
+  const attempts = [];
+  for (const candidate of processModelCandidates) {
+    let routing = null;
+    try {
+      const routingPayload = await recordStep(report, `routing:${attempts.length + 1}`, () =>
+        checkEffectiveRoute({ gatewayBaseUrl, headers, processModel: candidate, timeoutMs })
+      );
+      routing = summarizeEffectiveRouting(routingPayload);
+      if (!routing.selected) {
+        const attempt = {
+          status: 'skipped',
+          ok: false,
+          provider: null,
+          model: candidate,
+          detail: 'No eligible process route selected before live generation.',
+          routing
+        };
+        attempt.reasonCode = classifyProviderFailure(attempt);
+        attempt.recommendation = remediationForReason(attempt.reasonCode);
+        attempts.push(attempt);
+        continue;
+      }
+    } catch (error) {
+      routing = {
+        available: false,
+        reason: null,
+        requestedModel: candidate,
+        selected: false,
+        selectedProvider: null,
+        selectedModel: null,
+        selectedProfileId: null,
+        checks: [],
+        error: redactError(error)
+      };
+    }
+
+    const preflightFailure = requestedCandidatePreflightFailure(routing, candidate);
+    if (preflightFailure) {
+      const attempt = {
+        status: 'skipped',
+        ok: false,
+        provider: routing.selectedProvider,
+        model: candidate,
+        detail: preflightFailure,
+        routing
+      };
+      attempt.reasonCode = classifyProviderFailure(attempt);
+      attempt.recommendation = remediationForReason(attempt.reasonCode);
+      attempts.push(attempt);
+      continue;
+    }
+
+    try {
+      const payload = await recordStep(report, `provider-live:${attempts.length + 1}`, () =>
+        checkProviderLive({ gatewayBaseUrl, headers, processModel: candidate, timeoutMs })
+      );
+      const liveCheck = summarizeProcessChat(payload);
+      const attempt = {
+        status: liveCheck.status,
+        ok: liveCheck.ok,
+        provider: liveCheck.provider,
+        model: liveCheck.model ?? candidate,
+        detail: liveCheck.detail,
+        latencyMs: liveCheck.latencyMs,
+        routing
+      };
+      attempt.reasonCode = liveCheck.ok === true ? null : classifyProviderFailure(attempt);
+      attempt.recommendation = attempt.reasonCode ? remediationForReason(attempt.reasonCode) : null;
+      attempts.push(attempt);
+      if (liveCheck.status === 'ok' && liveCheck.ok === true) {
+        report.gates.providerBackedProcessChatReady = true;
+        report.processModelSelection.selectedProvider = liveCheck.provider;
+        report.processModelSelection.selectedModel = liveCheck.model ?? candidate;
+        break;
+      }
+    } catch (error) {
+      const attempt = {
+        status: 'error',
+        ok: false,
+        provider: null,
+        model: candidate,
+        detail: redactError(error),
+        routing
+      };
+      attempt.reasonCode = classifyProviderFailure(attempt);
+      attempt.recommendation = remediationForReason(attempt.reasonCode);
+      attempts.push(attempt);
+    }
+  }
+  report.attempts = attempts;
+  report.processModelSelection.failureSummary = summarizeAttempts(attempts);
+  report.summary.attempted = attempts.length;
+  report.summary.passed = attempts.filter((attempt) => attempt.ok === true).length;
+  report.summary.failed = attempts.filter((attempt) => attempt.ok !== true).length;
+}
+
+async function main() {
+  const config = readControlPlaneConfig();
+  const gatewayBaseUrl = resolveGatewayBaseUrl(config);
+  const flags = {
+    enabled: envFlag('OPS_RUN_PROVIDER_READINESS_CERT'),
+    strict: envFlag('OPS_PROVIDER_READINESS_STRICT', true),
+    timeoutMs: positiveNumberEnv('OPS_PROVIDER_READINESS_TIMEOUT_MS', 120000, 10000),
+    processModelCandidates: resolveProcessModelCandidates(),
+    explicitProcessModelRequested: Boolean(process.env.OPS_PROVIDER_READINESS_MODEL?.trim())
+  };
+  const report = createReport({ flags, gatewayBaseUrl });
+
+  fs.rmSync(REPORT_DIR, { force: true, recursive: true });
+
+  if (!flags.enabled) {
+    report.followUpTasks.push('Set OPS_RUN_PROVIDER_READINESS_CERT=1 to run provider readiness certification.');
+    writeJson(REPORT_PATH, report);
+    console.log(`provider readiness certification skipped; report: ${path.relative(REPO_ROOT, REPORT_PATH)}`);
+    return 0;
+  }
+
+  const apiToken = resolveApiToken(config);
+  if (!apiToken) {
+    report.status = 'skipped';
+    report.followUpTasks.push('Set OPS_API_TOKEN or OPS_PROVIDER_READINESS_API_TOKEN before running provider readiness certification.');
+    writeJson(REPORT_PATH, report);
+    return flags.strict ? 1 : 0;
+  }
+
+  const headers = authHeaders(apiToken);
+
+  try {
+    await recordStep(report, 'gateway-readiness', () =>
+      requestJson(`${gatewayBaseUrl}/api/health/readiness`, {
+        headers,
+        timeoutMs: 10000
+      })
+    );
+    report.gates.gatewayReady = true;
+    await runProviderAttempts({
+      report,
+      gatewayBaseUrl,
+      headers,
+      processModelCandidates: flags.processModelCandidates,
+      timeoutMs: flags.timeoutMs
+    });
+  } catch (error) {
+    report.followUpTasks.push(redactError(error));
+  }
+
+  report.status = report.gates.providerBackedProcessChatReady ? 'passed' : 'failed';
+  if (!report.gates.providerBackedProcessChatReady) {
+    const summary = report.processModelSelection.failureSummary;
+    if (summary && Array.isArray(summary.recommendations)) {
+      report.followUpTasks.push(...summary.recommendations);
+    }
+  }
+  report.marker = {
+    reportRef: hashValue(JSON.stringify({ generatedAt: report.generatedAt, attempts: report.summary.attempted })),
+    rawStoredInTrackedArchive: false
+  };
+  writeJson(REPORT_PATH, report);
+
+  if (report.status !== 'passed') {
+    console.error(`[provider-readiness-cert] ${report.status}. report=${REPORT_PATH}`);
+    const failureSummary = report.processModelSelection.failureSummary;
+    if (failureSummary) {
+      console.error(JSON.stringify(failureSummary));
+    }
+    return flags.strict ? 1 : 0;
+  }
+
+  console.log(`[provider-readiness-cert] passed. report=${REPORT_PATH}`);
+  return 0;
+}
+
+main()
+  .then((code) => {
+    process.exitCode = code;
+  })
+  .catch((error) => {
+    console.error(redactError(error));
+    process.exitCode = 1;
+  });

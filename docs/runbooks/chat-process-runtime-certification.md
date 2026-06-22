@@ -41,6 +41,14 @@ It uses `OPS_API_TOKEN` and `TELEGRAM_CHAT_ID` from the environment or `.env`. O
 
 By default the live process lane probes a short provider-backed candidate list and sets `/model` to the first route that can complete a real chat request. Put a preferred model first with `OPS_LIVE_TELEGRAM_PROCESS_MODEL`, or provide a comma-separated fallback list with `OPS_LIVE_TELEGRAM_PROCESS_MODEL_CANDIDATES`.
 
+Before touching Telegram, validate provider readiness only:
+
+```bash
+OPS_RUN_PROVIDER_READINESS_CERT=1 pnpm test:provider-readiness
+```
+
+This side-effect-free lane calls gateway readiness, `/api/llm/routing/effective`, and `POST /api/onboarding/provider-keys/live-check` for the same provider-backed process model candidates. It writes `.ops/certifications/provider-readiness/certification-report.json` with redacted per-candidate failure reasons and remediation hints, but sends no Telegram messages and creates no Kanban tasks. Override candidates with `OPS_PROVIDER_READINESS_MODEL` or `OPS_PROVIDER_READINESS_MODEL_CANDIDATES`.
+
 The lane also records operator-facing latency SLOs in both the local report and the tracked archive. By default, the provider-backed Telegram process reply must complete within `120000` ms and the full live lane must complete within `300000` ms. Override those budgets with `OPS_LIVE_TELEGRAM_PROCESS_REPLY_MAX_MS` and `OPS_LIVE_TELEGRAM_PROCESS_E2E_MAX_MS` when certifying slower hosted providers.
 
 Before sending Telegram smoke or ingress messages, the lane preflights each candidate through `/api/llm/routing/effective?runtime=process&model=...` and verifies the requested candidate itself is the selected eligible route. It then performs the provider live-check before mutable Telegram operations, so broken provider credentials fail fast without creating noisy partial Telegram exchanges. Failed candidates are recorded with a redacted `reasonCode` and remediation hint, so provider-auth, billing/quota, cooldown, rate-limit, invalid model config/model-unavailable, routing fallback, and network failures are distinguishable in the local report.
