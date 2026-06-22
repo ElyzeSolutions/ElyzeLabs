@@ -1,0 +1,131 @@
+{
+  "schema": "ops.live-telegram-process-certification-archive.v1",
+  "version": 1,
+  "archivedAt": "2026-06-22T17:48:36.835Z",
+  "sourceReport": {
+    "path": ".ops/certifications/live-telegram-process/certification-report.json",
+    "schema": "ops.live-telegram-process-certification.v1",
+    "generatedAt": "2026-06-22T17:48:23.215Z"
+  },
+  "status": "passed",
+  "registry": {
+    "path": "scripts/testing/scenarios/live-telegram-process.json",
+    "schema": "ops.live-telegram-process-scenarios.v1",
+    "scenarioCount": 7
+  },
+  "marker": {
+    "hash": "879d5ef8c5f0e705",
+    "rawStoredInTrackedArchive": false
+  },
+  "target": {
+    "configured": true,
+    "topicConfigured": false,
+    "rawIdentifiersStored": false
+  },
+  "processModelSelection": {
+    "candidateCount": 7,
+    "selectedProvider": "openrouter",
+    "selectedModel": "openrouter/openrouter/auto",
+    "explicitModelRequested": false,
+    "rawModelStoredInTrackedArchive": false,
+    "routingPreflight": {
+      "enabled": true,
+      "endpoint": "/api/llm/routing/effective"
+    },
+    "failureSummary": {
+      "attempted": 0,
+      "byReason": {},
+      "recommendations": []
+    }
+  },
+  "latency": {
+    "status": "passed",
+    "thresholds": {
+      "processReplyMaxMs": 120000,
+      "endToEndMaxMs": 300000
+    },
+    "observations": [
+      {
+        "id": "telegram_process_code_reply",
+        "observedMs": 5588,
+        "maxMs": 120000,
+        "status": "passed"
+      },
+      {
+        "id": "live_telegram_process_e2e",
+        "observedMs": 7441,
+        "maxMs": 300000,
+        "status": "passed"
+      }
+    ]
+  },
+  "summary": {
+    "scenariosTotal": 7,
+    "passed": 7,
+    "failed": 0,
+    "blocked": 0,
+    "skipped": 0
+  },
+  "gates": {
+    "telegramSmokeDelivered": true,
+    "runtimeCommandApplied": true,
+    "processModelCommandApplied": true,
+    "processProviderChatReady": true,
+    "processRunCompleted": true,
+    "processRuntimeUsed": true,
+    "processReplyContainedMarker": true,
+    "processReplyWithinLatencySlo": true,
+    "kanbanTaskCreatedFromTelegram": true,
+    "backlogSnapshotReturned": true,
+    "endToEndWithinLatencySlo": true,
+    "trackedArchiveRedacted": true
+  },
+  "scenarios": [
+    {
+      "id": "telegram_process_provider_chat_live_check",
+      "label": "The selected provider-backed process model can complete a live chat request before the Telegram process prompt is queued.",
+      "status": "passed"
+    },
+    {
+      "id": "telegram_delivery_smoke",
+      "label": "The live gateway can authenticate the Telegram bot and deliver a diagnostic message to the configured operator target.",
+      "status": "passed"
+    },
+    {
+      "id": "telegram_runtime_process_switch",
+      "label": "A real Telegram command can set the active operator session to the process runtime.",
+      "status": "passed"
+    },
+    {
+      "id": "telegram_process_model_select",
+      "label": "A real Telegram command can bind the process runtime to a provider-backed model route instead of the fail-closed local placeholder.",
+      "status": "passed"
+    },
+    {
+      "id": "telegram_process_code_reply",
+      "label": "A real Telegram operator prompt can queue a process-runtime chat run and receive a code-oriented answer.",
+      "status": "passed"
+    },
+    {
+      "id": "telegram_kanban_task_create",
+      "label": "A real Telegram operator command can create a Kanban/backlog task that is queryable through the gateway.",
+      "status": "passed"
+    },
+    {
+      "id": "telegram_backlog_snapshot",
+      "label": "A real Telegram command can retrieve the current backlog snapshot after task creation.",
+      "status": "passed"
+    }
+  ],
+  "command": "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process",
+  "evidence": [
+    "scripts/testing/run-live-telegram-process-certification.mjs",
+    "scripts/testing/scenarios/live-telegram-process.json",
+    "docs/runbooks/chat-process-runtime-certification.md"
+  ],
+  "redaction": {
+    "omitted": "Telegram chat ids, sender ids, raw prompts, message bodies, bot tokens, API tokens, provider outputs, cookies, storage state, terminal text, and raw model credential material are intentionally omitted.",
+    "outputPath": "docs/certifications/live-telegram-process-latest.json"
+  },
+  "followUpTasks": []
+}

@@ -4133,6 +4133,11 @@ interface ProviderLiveCheckResult {
   detail: string;
 }
 
+interface ProviderProcessChatLiveCheckResult extends ProviderLiveCheckResult {
+  provider: LlmProviderKey | null;
+  model: string | null;
+}
+
 interface ProviderLiveDiagnostics {
   checkedAt: string;
   overall: 'ok' | 'degraded' | 'failed';
@@ -4140,6 +4145,7 @@ interface ProviderLiveDiagnostics {
     telegram: ProviderLiveCheckResult;
     openrouter: ProviderLiveCheckResult;
     google: ProviderLiveCheckResult;
+    processChat: ProviderProcessChatLiveCheckResult;
     github: ProviderLiveCheckResult;
     voyage: ProviderLiveCheckResult;
   };
@@ -4216,6 +4222,7 @@ const PERSONNEL_MODEL_STACK = new Set([
   'openrouter/openrouter/free'
 ]);
 const EXECUTION_MODEL_STACK = new Set([
+  'openrouter/auto',
   'gemini-3.1-pro-preview',
   'gemini-3-flash-preview',
   'openrouter/minimax/minimax-m2.5'
@@ -7282,10 +7289,10 @@ export async function buildGatewayApp(
     if (leftScoped !== rightScoped) {
       return rightScoped - leftScoped;
     }
-    const leftNeedsReconnect = computeBrowserSessionProfileHealth(left).needsReconnect;
-    const rightNeedsReconnect = computeBrowserSessionProfileHealth(right).needsReconnect;
-    if (leftNeedsReconnect !== rightNeedsReconnect) {
-      return leftNeedsReconnect ? 1 : -1;
+    const leftHealthRank = browserSessionProfileAutoSelectHealthRank(left);
+    const rightHealthRank = browserSessionProfileAutoSelectHealthRank(right);
+    if (leftHealthRank !== rightHealthRank) {
+      return leftHealthRank - rightHealthRank;
     }
     const leftVerifiedAt = left.lastVerifiedAt ?? '';
     const rightVerifiedAt = right.lastVerifiedAt ?? '';
@@ -7296,6 +7303,23 @@ export async function buildGatewayApp(
       return right.updatedAt.localeCompare(left.updatedAt);
     }
     return left.id.localeCompare(right.id);
+  };
+  const browserSessionProfileAutoSelectHealthRank = (profile: BrowserSessionProfileRecord): number => {
+    const health = computeBrowserSessionProfileHealth(profile);
+    switch (health.state) {
+      case 'healthy':
+        return 0;
+      case 'stale':
+        return 1;
+      case 'unverified':
+        return 2;
+      case 'expires_soon':
+        return 3;
+      case 'needs_reconnect':
+        return 4;
+      case 'disabled':
+        return 5;
+    }
   };
   const selectBestBrowserSessionProfileForSite = (
     session: SessionRecord,
@@ -9132,7 +9156,12 @@ export async function buildGatewayApp(
     };
   };
 
-  const runProviderLiveDiagnostics = async (): Promise<ProviderLiveDiagnostics> => {
+  const runProviderLiveDiagnostics = async (
+    options: {
+      processChatModel?: string | null;
+      processPolicy?: LlmRoutePolicy;
+    } = {}
+  ): Promise<ProviderLiveDiagnostics> => {
     const checkedAt = utcNow();
     const timeoutMs = 8_000;
     const tryResolveVaultSecret = (name: string): string => {
@@ -9154,10 +9183,10 @@ export async function buildGatewayApp(
       ).trim();
     const resolveOpenRouterApiKeyForLive = (): string =>
       (
-        resolveOpenRouterApiKey() ??
-        openrouterApiKey ??
         process.env.OPENROUTER_API_KEY ??
         process.env.OPS_OPENROUTER_API_KEY ??
+        resolveOpenRouterApiKey() ??
+        openrouterApiKey ??
         tryResolveVaultSecret('providers.openrouter_api_key')
       ).trim();
     const resolveTelegramApiKeyForLive = (): string =>
@@ -9200,6 +9229,33 @@ export async function buildGatewayApp(
       status: 'skipped',
       latencyMs: null,
       detail
+    });
+
+    const makeProcessChatUntested = (input: {
+      configured: boolean;
+      status: ProviderLiveCheckStatus;
+      detail: string;
+      provider: LlmProviderKey | null;
+      model: string | null;
+    }): ProviderProcessChatLiveCheckResult => ({
+      configured: input.configured,
+      tested: false,
+      ok: null,
+      status: input.status,
+      latencyMs: null,
+      detail: input.detail,
+      provider: input.provider,
+      model: input.model
+    });
+
+    const withProcessChatRoute = (
+      result: ProviderLiveCheckResult,
+      provider: LlmProviderKey,
+      model: string | null
+    ): ProviderProcessChatLiveCheckResult => ({
+      ...result,
+      provider,
+      model
     });
 
     const probeHttpJson = async (
@@ -9248,6 +9304,8 @@ export async function buildGatewayApp(
     const telegramKey = resolveTelegramApiKeyForLive();
     const githubToken = resolveGithubToken();
     const voyageKey = resolveVoyageApiKeyForLive();
+    const processPolicy = options.processPolicy ?? 'orchestrator';
+    const requestedProcessChatModel = normalizeModelInput(options.processChatModel ?? null);
 
     const openrouterProbe: Promise<ProviderLiveCheckResult> = !openrouterKey
       ? Promise.resolve(makeMissing('OpenRouter key not configured.'))
@@ -9375,21 +9433,193 @@ export async function buildGatewayApp(
           }
         );
 
-    const [openrouter, google, telegram, github, voyage] = await Promise.all([
+    const processChatProbe = async (): Promise<ProviderProcessChatLiveCheckResult> => {
+      const route: LlmFallbackTarget | null =
+        requestedProcessChatModel === null
+          ? selectBudgetEligibleRoute('process', null, processPolicy).selected
+          : {
+              runtime: 'process',
+              model: requestedProcessChatModel
+            };
+      if (!route) {
+        return makeProcessChatUntested({
+          configured: false,
+          status: 'skipped',
+          detail: `No eligible process chat route selected for ${processPolicy} policy.`,
+          provider: null,
+          model: requestedProcessChatModel
+        });
+      }
+
+      const routeModel = normalizeModelInput(route.model);
+      const provider = inferProvider(routeModel);
+      if (route.runtime !== 'process') {
+        return makeProcessChatUntested({
+          configured: false,
+          status: 'skipped',
+          detail: `Selected route is ${route.runtime}, not process.`,
+          provider,
+          model: routeModel
+        });
+      }
+      if (!provider) {
+        return makeProcessChatUntested({
+          configured: false,
+          status: 'skipped',
+          detail: 'Selected process route is local and does not require provider chat.',
+          provider,
+          model: routeModel
+        });
+      }
+
+      const budgetCheck = evaluateRouteBudget({
+        runtime: route.runtime,
+        model: routeModel
+      });
+      if (!budgetCheck.eligible) {
+        const reason = budgetCheck.reason ?? 'route_unavailable';
+        const missingAuth =
+          reason.includes('provider_auth_profile_unconfigured') ||
+          reason.includes('provider_auth_profiles_unavailable');
+        return makeProcessChatUntested({
+          configured: !missingAuth,
+          status: missingAuth ? 'missing' : 'error',
+          detail: `Process chat route is not eligible: ${reason}.`,
+          provider,
+          model: routeModel
+        });
+      }
+
+      if (provider === 'openrouter') {
+        if (!openrouterKey) {
+          return makeProcessChatUntested({
+            configured: false,
+            status: 'missing',
+            detail: 'OpenRouter key not configured for selected process chat route.',
+            provider,
+            model: routeModel
+          });
+        }
+        const payloadModel = extractOpenRouterModelAlias(routeModel) ?? routeModel;
+        if (!payloadModel) {
+          return makeProcessChatUntested({
+            configured: true,
+            status: 'error',
+            detail: 'Selected OpenRouter process chat model is empty.',
+            provider,
+            model: routeModel
+          });
+        }
+        const result = await probeHttpJson(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${openrouterKey}`,
+              'HTTP-Referer': process.env.OPS_OPENROUTER_REFERER ?? 'https://ops-control-plane.local',
+              'X-Title': process.env.OPS_OPENROUTER_TITLE ?? 'Ops Control Plane'
+            },
+            body: JSON.stringify({
+              model: payloadModel,
+              messages: [{ role: 'user', content: 'Reply with exactly: ok' }],
+              temperature: 0,
+              max_tokens: 8
+            })
+          },
+          (payload, response) => {
+            const record = isRecord(payload) ? payload : null;
+            const choices = record && Array.isArray(record.choices) ? record.choices : [];
+            const firstChoice = choices.find(isRecord);
+            const message = firstChoice && isRecord(firstChoice.message) ? firstChoice.message : null;
+            const content = message && typeof message.content === 'string' ? message.content.trim() : '';
+            if (response.ok && content.length > 0) {
+              return { ok: true, detail: `HTTP ${response.status}, chat completion returned content` };
+            }
+            const error = record && isRecord(record.error) ? record.error : null;
+            const detail =
+              error && typeof error.message === 'string'
+                ? error.message
+                : record && typeof record.error === 'string'
+                  ? record.error
+                  : `HTTP ${response.status}`;
+            return { ok: false, detail };
+          }
+        );
+        return withProcessChatRoute(result, provider, routeModel);
+      }
+
+      if (!googleKey) {
+        return makeProcessChatUntested({
+          configured: false,
+          status: 'missing',
+          detail: 'Google key not configured for selected process chat route.',
+          provider,
+          model: routeModel
+        });
+      }
+      if (!routeModel) {
+        return makeProcessChatUntested({
+          configured: true,
+          status: 'error',
+          detail: 'Selected Google process chat model is empty.',
+          provider,
+          model: routeModel
+        });
+      }
+      const result = await probeHttpJson(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+          routeModel
+        )}:generateContent?key=${encodeURIComponent(googleKey)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: 'Reply with exactly: ok' }] }],
+            generationConfig: {
+              temperature: 0,
+              maxOutputTokens: 8
+            }
+          })
+        },
+        (payload, response) => {
+          const record = isRecord(payload) ? payload : null;
+          const candidates = record && Array.isArray(record.candidates) ? record.candidates : [];
+          const firstCandidate = candidates.find(isRecord);
+          const content = firstCandidate && isRecord(firstCandidate.content) ? firstCandidate.content : null;
+          const parts = content && Array.isArray(content.parts) ? content.parts : [];
+          const text = parts
+            .map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : ''))
+            .join('')
+            .trim();
+          if (response.ok && text.length > 0) {
+            return { ok: true, detail: `HTTP ${response.status}, generateContent returned content` };
+          }
+          const error = record && isRecord(record.error) ? record.error : null;
+          const detail = error && typeof error.message === 'string' ? error.message : `HTTP ${response.status}`;
+          return { ok: false, detail };
+        }
+      );
+      return withProcessChatRoute(result, provider, routeModel);
+    };
+
+    const [openrouter, google, telegram, github, voyage, processChat] = await Promise.all([
       openrouterProbe,
       googleProbe,
       telegramProbe,
       githubProbe,
-      voyageProbe
+      voyageProbe,
+      processChatProbe()
     ]);
 
-    const requiredReady =
-      telegram.status === 'ok' &&
-      github.status === 'ok' &&
-      (openrouter.status === 'ok' || google.status === 'ok');
-    const requiredFailure = [telegram, openrouter, google, github].some((item) => item.status === 'error');
-    const optionalFailure = [voyage].some((item) => item.status === 'error');
-    const hasSkipped = [telegram, openrouter, google, github, voyage].some((item) => item.status === 'skipped');
+    const requiredReady = telegram.status === 'ok' && github.status === 'ok' && processChat.status === 'ok';
+    const requiredFailure = [telegram, github, processChat].some((item) => item.status === 'error');
+    const optionalFailure = [openrouter, google, voyage].some((item) => item.status === 'error');
+    const hasSkipped = [telegram, openrouter, google, github, voyage, processChat].some(
+      (item) => item.status === 'skipped'
+    );
     const overall: ProviderLiveDiagnostics['overall'] = requiredFailure
       ? 'failed'
       : requiredReady && !optionalFailure && !hasSkipped
@@ -9403,6 +9633,7 @@ export async function buildGatewayApp(
         telegram,
         openrouter,
         google,
+        processChat,
         github,
         voyage
       }
@@ -51942,9 +52173,15 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
     if (!hasValidApiToken(request, config.server.apiToken)) {
       return jsonError(reply, 'Unauthorized', 401);
     }
-    const actor = 'dashboard';
+    const body = isRecord(request.body) ? request.body : {};
+    const actor = typeof body.actor === 'string' && body.actor.trim().length > 0 ? body.actor.trim() : 'dashboard';
+    const processPolicy: LlmRoutePolicy = body.policy === 'worker' ? 'worker' : 'orchestrator';
+    const processChatModel = normalizeModelInput(body.processChatModel ?? body.model ?? null);
     const providerKeys = providerKeyDiagnostics();
-    const live = await runProviderLiveDiagnostics();
+    const live = await runProviderLiveDiagnostics({
+      processChatModel,
+      processPolicy
+    });
     const now = live.checkedAt;
     writePersistedOnboardingState((current) => ({
       ...current,
@@ -52662,6 +52899,45 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       : [];
   const parseLocalBrowserKind = (value: unknown): BrowserLocalProfileKind | null =>
     value === 'chrome' || value === 'edge' || value === 'firefox' ? value : null;
+  const normalizeTelegramBrowserSelector = (value: unknown): string =>
+    typeof value === 'string' ? value.trim().toLowerCase().replace(/[\s_]+/g, '-') : '';
+  const isZenBrowserSelector = (value: unknown): boolean => {
+    const normalized = normalizeTelegramBrowserSelector(value);
+    return normalized === 'zen' || normalized === 'zen-browser';
+  };
+  const isZenLocalBrowserProfile = (profile: LocalBrowserProfileRow): boolean => {
+    const displayName = normalizeTelegramBrowserSelector(profile.browserDisplayName);
+    const appName = normalizeTelegramBrowserSelector(profile.browserAppName);
+    const label = normalizeTelegramBrowserSelector(profile.label);
+    return profile.browserKind === 'firefox' && (displayName === 'zen' || appName === 'zen' || label.startsWith('zen-'));
+  };
+  const resolveDefaultZenLocalBrowserProfile = (): LocalBrowserProfileRow | null => {
+    const profiles = listLocalBrowserProfiles().filter(isZenLocalBrowserProfile);
+    return profiles.find((profile) => profile.isDefault) ?? profiles[0] ?? null;
+  };
+  const resolveTelegramLocalBrowserProfile = (
+    requestedSelector: unknown,
+    fallbackKind: BrowserLocalProfileKind
+  ): {
+    browserKind: BrowserLocalProfileKind;
+    displayName: string;
+    profile: LocalBrowserProfileRow | null;
+  } => {
+    if (isZenBrowserSelector(requestedSelector)) {
+      const profile = resolveDefaultZenLocalBrowserProfile();
+      return {
+        browserKind: 'firefox',
+        displayName: 'Zen',
+        profile
+      };
+    }
+    const browserKind = parseLocalBrowserKind(requestedSelector) ?? fallbackKind;
+    return {
+      browserKind,
+      displayName: browserKind,
+      profile: resolveDefaultLocalBrowserProfile(browserKind)
+    };
+  };
 
   app.put('/api/browser/config', async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
@@ -56865,6 +57141,31 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         .split(/\s+/)
         .filter((entry) => entry.length > 0);
       const subcommand = (args[0] ?? 'show').toLowerCase();
+      if (subcommand === 'help') {
+        await saveOutboundMessage(
+          session,
+          'system',
+          'system',
+          [
+            'Browser auth paths:',
+            '- Use saved logins automatically: ask for TikTok, Instagram, Pinterest, X, Reddit, or Facebook and I will pick a matching connected profile when one exists.',
+            '- Host login: /browser connect <site> [chrome|edge|firefox|zen], finish login, then /browser save <site> [chrome|edge|firefox|zen].',
+            '- Current automation browser: save from Browser Ops or the Playwright current-session import when a Chrome-for-Testing/CDP login is already open.',
+            '- Phone login: create a mobile handoff in Browser Ops, open the one-time link on the phone, paste/export cookies, and submit.',
+            '- Read-only social checks use saved Scrapling cookie/storage-state first. Use /browser live <site|url> only when the page needs click/type/rendered control.',
+            'Commands: /browser list, /browser use <profile>, /browser clear, /browser live <site|url>, /browser observe, /browser read, /browser click <selector>, /browser type <selector> | <text>, /browser screenshot, /browser pdf, /browser live close.'
+          ].join('\n'),
+          {
+            command: 'browser',
+            subcommand: 'help'
+          }
+        );
+        return jsonOk(reply, {
+          status: 'command_applied',
+          command: 'browser',
+          subcommand: 'help'
+        });
+      }
       if (subcommand === 'list') {
         const profiles = listVisibleBrowserSessionProfiles(session).slice(0, 12);
         const summary = profiles
@@ -56900,7 +57201,8 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
 
       if (subcommand === 'connect') {
         const requestedSiteKey = (args[1] ?? '').trim().toLowerCase();
-        const browserKind = parseLocalBrowserKind(args[2] ?? 'chrome') ?? 'chrome';
+        const selectedBrowser = resolveTelegramLocalBrowserProfile(args[2] ?? 'chrome', 'chrome');
+        const browserKind = selectedBrowser.browserKind;
         const siteKey: BrowserConnectSiteKey =
           requestedSiteKey === 'tiktok' ||
           requestedSiteKey === 'instagram' ||
@@ -56916,7 +57218,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
             session,
             'system',
             'system',
-            'Usage: /browser connect <tiktok|instagram|reddit|x|pinterest|facebook|generic> [chrome|edge|firefox]',
+            'Usage: /browser connect <tiktok|instagram|reddit|x|pinterest|facebook|generic> [chrome|edge|firefox|zen]',
             {
               command: 'browser',
               subcommand: 'connect'
@@ -56927,13 +57229,13 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
             reason: 'browser_connect_site_required'
           });
         }
-        const profile = resolveDefaultLocalBrowserProfile(browserKind);
+        const profile = selectedBrowser.profile;
         if (!profile) {
           await saveOutboundMessage(
             session,
             'system',
             'system',
-            `No local ${browserKind} profile is available on the Elyze host. Open Browser Ops and import cookies manually instead.`,
+            `No local ${selectedBrowser.displayName} profile is available on the Elyze host. Open Browser Ops and import cookies manually instead.`,
             {
               command: 'browser',
               subcommand: 'connect'
@@ -56960,7 +57262,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
             updatedSession,
             'system',
             'system',
-            `Opened ${preset.label} in ${browserKind} on the Elyze host using profile ${profile.label}. Finish logging in, then run \`/browser save ${siteKey} ${browserKind}\`.`,
+            `Opened ${preset.label} in ${selectedBrowser.displayName} on the Elyze host using profile ${profile.label}. Finish logging in, then run \`/browser save ${siteKey} ${isZenLocalBrowserProfile(profile) ? 'zen' : browserKind}\`.`,
             {
               command: 'browser',
               subcommand: 'connect',
@@ -56992,6 +57294,7 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
       if (subcommand === 'save') {
         const pending = parsePendingBrowserConnect(session);
         const requestedSiteKey = (args[1] ?? '').trim().toLowerCase();
+        const requestedBrowserSelector = args[2] ?? '';
         const siteKey = requestedSiteKey
           ? requestedSiteKey === 'tiktok' ||
             requestedSiteKey === 'instagram' ||
@@ -57003,13 +57306,17 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
               ? requestedSiteKey
               : null
           : pending?.siteKey ?? null;
-        const browserKind = parseLocalBrowserKind(args[2] ?? '') ?? pending?.browserKind ?? null;
+        const selectedBrowser =
+          requestedBrowserSelector.trim().length > 0
+            ? resolveTelegramLocalBrowserProfile(requestedBrowserSelector, pending?.browserKind ?? 'chrome')
+            : null;
+        const browserKind = selectedBrowser?.browserKind ?? pending?.browserKind ?? null;
         if (!siteKey || !browserKind) {
           await saveOutboundMessage(
             session,
             'system',
             'system',
-            'Usage: /browser save <site> [chrome|edge|firefox]. Run /browser connect first to open the login window.',
+            'Usage: /browser save <site> [chrome|edge|firefox|zen]. Run /browser connect first to open the login window.',
             {
               command: 'browser',
               subcommand: 'save'
@@ -57021,14 +57328,25 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
           });
         }
         const profile =
+          selectedBrowser?.profile ??
           (pending && pending.siteKey === siteKey && pending.browserKind === browserKind
             ? getLocalBrowserProfileById(pending.browserProfileId)
             : resolveDefaultLocalBrowserProfile(browserKind)) ?? null;
         if (!profile) {
-          await saveOutboundMessage(session, 'system', 'system', `No local ${browserKind} profile is available on the Elyze host.`, {
-            command: 'browser',
-            subcommand: 'save'
-          });
+          const displayName =
+            requestedBrowserSelector.trim().length > 0
+              ? resolveTelegramLocalBrowserProfile(requestedBrowserSelector, browserKind).displayName
+              : browserKind;
+          await saveOutboundMessage(
+            session,
+            'system',
+            'system',
+            `No local ${displayName} profile is available on the Elyze host.`,
+            {
+              command: 'browser',
+              subcommand: 'save'
+            }
+          );
           return jsonOk(reply, {
             status: 'blocked',
             reason: 'browser_local_profile_missing'

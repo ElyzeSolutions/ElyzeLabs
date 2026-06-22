@@ -1,0 +1,254 @@
+{
+  "schema": "ops.live-social-browser-certification-archive.v1",
+  "version": 1,
+  "archivedAt": "2026-06-20T23:33:10.099Z",
+  "sourceReport": {
+    "path": ".ops/certifications/live-social-browser/certification-report.json",
+    "schema": "ops.live-social-browser-certification.v1",
+    "generatedAt": "2026-06-20T23:30:57.756Z"
+  },
+  "status": "passed",
+  "gates": {
+    "rawReportPassed": true,
+    "telegramSmokePassed": true,
+    "telegramPromptScenariosPassed": true,
+    "socialProfilesAutoSelected": true,
+    "scraplingProviderPreserved": true,
+    "connectedSharedProfilesUsed": true
+  },
+  "command": "OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM=1 OPS_LIVE_SCENARIO_TELEGRAM_PROMPTS=1 OPS_LIVE_SCENARIO_SITES=instagram,tiktok,pinterest,x,reddit OPS_LIVE_SCENARIO_TIMEOUT_MS=120000 pnpm test:live-social-browser",
+  "summary": {
+    "scenariosTotal": 5,
+    "scenariosSelected": 5,
+    "profilesAvailable": 8,
+    "profilesMatched": 5,
+    "telegramPromptScenarios": 5,
+    "telegramPromptPassed": 5,
+    "passed": 5,
+    "blocked": 0,
+    "failed": 0,
+    "skipped": 0
+  },
+  "telegram": {
+    "status": "passed",
+    "smoke": {
+      "overall": "ok",
+      "identity": "ok",
+      "delivery": "ok",
+      "targetSource": "default"
+    },
+    "promptScenarios": {
+      "status": "passed",
+      "ingressMode": "ingress",
+      "results": [
+        {
+          "id": "instagram-authenticated-read",
+          "siteKey": "instagram",
+          "status": "passed",
+          "decision": "telegram_prompt_auto_selected_profile",
+          "profile": {
+            "visibility": "shared",
+            "verificationStatus": "connected",
+            "healthState": "expires_soon"
+          },
+          "browser": {
+            "ok": true,
+            "provider": "scrapling",
+            "transport": "stdio",
+            "selectedTool": "fetch",
+            "blockedReason": null,
+            "fallbackReason": "authenticated_session_requires_dynamic_fetch"
+          },
+          "terminal": {
+            "runStatus": "completed",
+            "terminalStatus": "completed"
+          },
+          "authProfileResolution": {
+            "source": "auto_site",
+            "reason": "connected_profile_matched_target_site",
+            "siteKey": "instagram",
+            "selectedSessionProfileStatus": "connected"
+          }
+        },
+        {
+          "id": "tiktok-authenticated-read",
+          "siteKey": "tiktok",
+          "status": "passed",
+          "decision": "telegram_prompt_auto_selected_profile",
+          "profile": {
+            "visibility": "shared",
+            "verificationStatus": "connected",
+            "healthState": "expires_soon"
+          },
+          "browser": {
+            "ok": true,
+            "provider": "scrapling",
+            "transport": "stdio",
+            "selectedTool": "fetch",
+            "blockedReason": null,
+            "fallbackReason": "authenticated_session_requires_dynamic_fetch"
+          },
+          "terminal": {
+            "runStatus": "completed",
+            "terminalStatus": "completed"
+          },
+          "authProfileResolution": {
+            "source": "auto_site",
+            "reason": "connected_profile_matched_target_site",
+            "siteKey": "tiktok",
+            "selectedSessionProfileStatus": "connected"
+          }
+        },
+        {
+          "id": "pinterest-authenticated-read",
+          "siteKey": "pinterest",
+          "status": "passed",
+          "decision": "telegram_prompt_auto_selected_profile",
+          "profile": {
+            "visibility": "shared",
+            "verificationStatus": "connected",
+            "healthState": "expires_soon"
+          },
+          "browser": {
+            "ok": true,
+            "provider": "scrapling",
+            "transport": "stdio",
+            "selectedTool": "fetch",
+            "blockedReason": null,
+            "fallbackReason": "authenticated_session_requires_dynamic_fetch"
+          },
+          "terminal": {
+            "runStatus": "completed",
+            "terminalStatus": "completed"
+          },
+          "authProfileResolution": {
+            "source": "auto_site",
+            "reason": "connected_profile_matched_target_site",
+            "siteKey": "pinterest",
+            "selectedSessionProfileStatus": "connected"
+          }
+        },
+        {
+          "id": "x-authenticated-read",
+          "siteKey": "x",
+          "status": "passed",
+          "decision": "telegram_prompt_auto_selected_profile",
+          "profile": {
+            "visibility": "shared",
+            "verificationStatus": "connected",
+            "healthState": "expires_soon"
+          },
+          "browser": {
+            "ok": true,
+            "provider": "scrapling",
+            "transport": "stdio",
+            "selectedTool": "stealthy_fetch",
+            "blockedReason": null,
+            "fallbackReason": "authenticated_session_requires_dynamic_fetch"
+          },
+          "terminal": {
+            "runStatus": "completed",
+            "terminalStatus": "completed"
+          },
+          "authProfileResolution": {
+            "source": "auto_site",
+            "reason": "connected_profile_matched_target_site",
+            "siteKey": "x",
+            "selectedSessionProfileStatus": "connected"
+          }
+        },
+        {
+          "id": "reddit-authenticated-read",
+          "siteKey": "reddit",
+          "status": "passed",
+          "decision": "telegram_prompt_auto_selected_profile",
+          "profile": {
+            "visibility": "shared",
+            "verificationStatus": "connected",
+            "healthState": "expires_soon"
+          },
+          "browser": {
+            "ok": true,
+            "provider": "scrapling",
+            "transport": "stdio",
+            "selectedTool": "fetch",
+            "blockedReason": null,
+            "fallbackReason": "authenticated_session_requires_dynamic_fetch"
+          },
+          "terminal": {
+            "runStatus": "completed",
+            "terminalStatus": "completed"
+          },
+          "authProfileResolution": {
+            "source": "auto_site",
+            "reason": "connected_profile_matched_target_site",
+            "siteKey": "reddit",
+            "selectedSessionProfileStatus": "connected"
+          }
+        }
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "id": "instagram-authenticated-read",
+      "siteKey": "instagram",
+      "status": "passed",
+      "decision": "profile_selected",
+      "profileMatched": true,
+      "verification": {
+        "runStatus": null,
+        "hasTrace": false
+      }
+    },
+    {
+      "id": "tiktok-authenticated-read",
+      "siteKey": "tiktok",
+      "status": "passed",
+      "decision": "profile_selected",
+      "profileMatched": true,
+      "verification": {
+        "runStatus": null,
+        "hasTrace": false
+      }
+    },
+    {
+      "id": "pinterest-authenticated-read",
+      "siteKey": "pinterest",
+      "status": "passed",
+      "decision": "profile_selected",
+      "profileMatched": true,
+      "verification": {
+        "runStatus": null,
+        "hasTrace": false
+      }
+    },
+    {
+      "id": "x-authenticated-read",
+      "siteKey": "x",
+      "status": "passed",
+      "decision": "profile_selected",
+      "profileMatched": true,
+      "verification": {
+        "runStatus": null,
+        "hasTrace": false
+      }
+    },
+    {
+      "id": "reddit-authenticated-read",
+      "siteKey": "reddit",
+      "status": "passed",
+      "decision": "profile_selected",
+      "profileMatched": true,
+      "verification": {
+        "runStatus": null,
+        "hasTrace": false
+      }
+    }
+  ],
+  "redaction": {
+    "omitted": "Profile ids, profile labels, chat ids, sender ids, cookies, tokens, storage state, terminal text, artifact previews, base64 payloads, and social-site content are intentionally omitted.",
+    "outputPath": "docs/certifications/live-social-browser-latest.json"
+  },
+  "followUpTasks": []
+}

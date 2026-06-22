@@ -1163,15 +1163,18 @@ function binaryArtifact(
 }
 
 async function waitForCdpTab(port: number, fallbackUrl: string): Promise<CdpTab> {
+  const baseUrl = `http://127.0.0.1:${String(port)}`;
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     try {
-      const tabs = await fetchJsonArray(`http://127.0.0.1:${String(port)}/json`);
-      const tab = tabs.find((entry) => isRecord(entry) && typeof entry.webSocketDebuggerUrl === 'string');
-      if (isRecord(tab) && typeof tab.webSocketDebuggerUrl === 'string') {
-        return { webSocketDebuggerUrl: tab.webSocketDebuggerUrl, closeOnRelease: true };
+      const openedTab = await openCdpTab(baseUrl, fallbackUrl);
+      if (openedTab) {
+        return openedTab;
       }
-      await fetch(`http://127.0.0.1:${String(port)}/json/new?${encodeURIComponent(fallbackUrl)}`);
+      const pageTab = readCdpPageTab(await fetchJsonArray(`${baseUrl}/json`));
+      if (pageTab) {
+        return { ...pageTab, closeOnRelease: true };
+      }
     } catch {
       await delay(150);
     }
@@ -1200,15 +1203,9 @@ async function waitForCdpHttpEndpointTab(endpoint: string, fallbackUrl: string):
       if (openedTab) {
         return openedTab;
       }
-      const tabs = await fetchJsonArray(`${baseUrl}/json`);
-      const pageTab = tabs.find(
-        (entry) =>
-          isRecord(entry) &&
-          typeof entry.webSocketDebuggerUrl === 'string' &&
-          (entry.type === undefined || entry.type === 'page')
-      );
-      if (isRecord(pageTab) && typeof pageTab.webSocketDebuggerUrl === 'string') {
-        return { webSocketDebuggerUrl: pageTab.webSocketDebuggerUrl, closeOnRelease: false };
+      const pageTab = readCdpPageTab(await fetchJsonArray(`${baseUrl}/json`));
+      if (pageTab) {
+        return { ...pageTab, closeOnRelease: false };
       }
     } catch {
       await delay(150);
@@ -1238,6 +1235,19 @@ async function openCdpTab(baseUrl: string, fallbackUrl: string): Promise<CdpTab 
   }
   const putResponse = await fetch(target, { method: 'PUT' });
   return putResponse.ok ? readCdpTabResponse(putResponse) : null;
+}
+
+function readCdpPageTab(tabs: unknown[]): CdpTab | null {
+  for (const tab of tabs) {
+    if (
+      isRecord(tab) &&
+      typeof tab.webSocketDebuggerUrl === 'string' &&
+      (tab.type === undefined || tab.type === 'page')
+    ) {
+      return { webSocketDebuggerUrl: tab.webSocketDebuggerUrl, closeOnRelease: true };
+    }
+  }
+  return null;
 }
 
 async function readCdpTabResponse(response: Response): Promise<CdpTab | null> {

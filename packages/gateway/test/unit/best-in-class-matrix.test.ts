@@ -17,6 +17,7 @@ describe('best-in-class capability matrix', () => {
     expect(generated.schema).toBe('ops.best-in-class-audit.v1');
     expect(generated.readiness).toBe('ready');
     expect(generated.totals.requiredGaps).toBe(0);
+    expect(generated.requiredGaps.map((entry: { id: string }) => entry.id)).toEqual([]);
     expect(generated.statusCounts.ahead).toBeGreaterThan(0);
     expect(generated.statusCounts.parity).toBeGreaterThan(0);
     expect(generated.competitors.map((entry: { id: string }) => entry.id)).toEqual([

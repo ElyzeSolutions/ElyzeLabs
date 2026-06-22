@@ -7,6 +7,12 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 const DEFAULT_GATEWAY_CONFIG_PATH = path.resolve(process.cwd(), 'config/control-plane.yaml');
 const DEFAULT_DOTENV_PATH = path.resolve(process.cwd(), '.env');
+const KANBAN_VISUAL_REPORT_DIR = path.resolve(process.cwd(), '.ops', 'certifications', 'kanban-workboard');
+const KANBAN_VISUAL_SCREENSHOT_DIR = path.join(KANBAN_VISUAL_REPORT_DIR, 'screenshots');
+const KANBAN_VISUAL_REPORT_PATH = path.join(KANBAN_VISUAL_REPORT_DIR, 'browser-visual-report.json');
+const CHAT_PROCESS_REPORT_DIR = path.resolve(process.cwd(), '.ops', 'certifications', 'chat-process-runtime');
+const CHAT_PROCESS_SCREENSHOT_DIR = path.join(CHAT_PROCESS_REPORT_DIR, 'screenshots');
+const CHAT_PROCESS_VISUAL_REPORT_PATH = path.join(CHAT_PROCESS_REPORT_DIR, 'browser-visual-report.json');
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -17,6 +23,59 @@ function run(command, args) {
     throw result.error;
   }
   return result;
+}
+
+function runAgentBrowser(session, args, label) {
+  const result = run('agent-browser', ['--session', session, ...args]);
+  if (result.status !== 0) {
+    const output = `${result.stderr ?? ''}${result.stdout ?? ''}`.trim();
+    throw new Error(`${label} failed${output ? `: ${output}` : ''}`);
+  }
+  return result;
+}
+
+function parseEvalJson(result, label) {
+  const raw = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
+  const line = raw
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith('"') || entry.startsWith('{'));
+  if (!line) {
+    throw new Error(`${label} did not return JSON output.`);
+  }
+  const decoded = JSON.parse(line);
+  return typeof decoded === 'string' ? JSON.parse(decoded) : decoded;
+}
+
+function writeKanbanVisualReport(report) {
+  fs.mkdirSync(KANBAN_VISUAL_REPORT_DIR, { recursive: true });
+  fs.writeFileSync(KANBAN_VISUAL_REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+}
+
+function writeChatProcessVisualReport(report) {
+  fs.mkdirSync(CHAT_PROCESS_REPORT_DIR, { recursive: true });
+  fs.writeFileSync(CHAT_PROCESS_VISUAL_REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+}
+
+function normalizeTextForComparison(value) {
+  return String(value ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function buildDashboardStoreSeed(token) {
+  return JSON.stringify({
+    state: {
+      token,
+      activeNav: 'dashboard',
+      search: '',
+      shiftNote: '',
+      sidebarCollapsed: false,
+      officeMode: 'map',
+      notifications: [],
+      suppressedNotificationKeys: [],
+      lastSequence: 0
+    },
+    version: 0
+  });
 }
 
 async function canReach(url) {
@@ -172,7 +231,8 @@ function createFakeProcessRuntimeExecutable(root) {
       'process.stdin.setEncoding("utf8");',
       'process.stdin.on("data", (chunk) => { input += chunk; });',
       'process.stdin.on("end", () => {',
-      '  const output = input.includes("Browser onboarding ready") ? "Browser onboarding ready." : "Managed process runtime ready.";',
+      '  const exactMatch = input.match(/reply with exactly:\\s*([^\\n.]+)/i);',
+      '  const output = exactMatch?.[1]?.trim() || (input.includes("Browser onboarding ready") ? "Browser onboarding ready." : "Managed process runtime ready.");',
       '  process.stdout.write(output);',
       '});',
       'process.stdin.resume();'
@@ -309,6 +369,54 @@ async function requestJson(url, { method = 'GET', headers = {}, body } = {}) {
     throw new Error(payload?.error ? String(payload.error) : `HTTP ${response.status}`);
   }
   return payload;
+}
+
+function createTelegramIngressPayload({ updateId, senderId, text, username }) {
+  return {
+    update_id: updateId,
+    message: {
+      text,
+      chat: { id: senderId, type: 'private' },
+      from: {
+        id: senderId,
+        username: username ?? `mission_cert_${senderId}`
+      },
+      mentioned: true
+    }
+  };
+}
+
+async function waitForRunTerminalStatus(gatewayBaseUrl, headers, runId, timeoutMs = 45000) {
+  const deadline = Date.now() + timeoutMs;
+  let latestPayload = null;
+  while (Date.now() < deadline) {
+    latestPayload = await requestJson(`${gatewayBaseUrl}/api/runs/${encodeURIComponent(runId)}/terminal`, {
+      headers
+    });
+    const status = String(latestPayload?.terminal?.status ?? latestPayload?.run?.status ?? '').trim();
+    if (['completed', 'failed', 'aborted'].includes(status)) {
+      return latestPayload;
+    }
+    await sleep(500);
+  }
+  throw new Error(`run ${runId} terminal did not finish within ${timeoutMs}ms`);
+}
+
+async function waitForMessageContaining(gatewayBaseUrl, headers, sessionId, expected, timeoutMs = 45000) {
+  const deadline = Date.now() + timeoutMs;
+  let latestMessages = [];
+  while (Date.now() < deadline) {
+    const payload = await requestJson(`${gatewayBaseUrl}/api/messages?sessionId=${encodeURIComponent(sessionId)}&limit=20`, {
+      headers
+    });
+    latestMessages = Array.isArray(payload?.messages) ? payload.messages : [];
+    const match = latestMessages.find((message) => String(message?.content ?? '').includes(expected));
+    if (match) {
+      return match;
+    }
+    await sleep(500);
+  }
+  throw new Error(`session ${sessionId} did not record message containing ${JSON.stringify(expected)}`);
 }
 
 function extractApiToken(headers = {}) {
@@ -623,9 +731,88 @@ async function cleanupGithubDeliveryCockpitSmokeState(gatewayBaseUrl, headers, s
   }
 }
 
+async function seedChatProcessRuntimeSmokeState(gatewayBaseUrl, headers) {
+  const suffix = Date.now().toString(36);
+  const senderId = 710000 + Math.floor(Math.random() * 10000);
+  const ingressPayload = await requestJson(`${gatewayBaseUrl}/api/ingress/telegram`, {
+    method: 'POST',
+    body: createTelegramIngressPayload({
+      updateId: senderId * 10,
+      senderId,
+      username: `mission_cert_${suffix}`,
+      text: 'Mission Control certification handshake from Telegram.'
+    })
+  });
+  const sessionId = String(ingressPayload?.sessionId ?? '').trim();
+  if (!sessionId) {
+    throw new Error('chat/process smoke seed failed: Telegram ingress did not return a session id.');
+  }
+
+  const profileLabel = `TikTok personal login ${suffix}`;
+  const profilePayload = await requestJson(`${gatewayBaseUrl}/api/browser/session-profiles/upsert`, {
+    method: 'POST',
+    headers,
+    body: {
+      id: `browser_session_profile:mission-control-${suffix}`,
+      label: profileLabel,
+      domains: ['tiktok.com', 'instagram.com', 'pinterest.com'],
+      visibility: 'shared',
+      siteKey: 'tiktok',
+      enabled: true,
+      lastVerifiedAt: new Date().toISOString(),
+      lastVerificationStatus: 'connected',
+      lastVerificationSummary: 'Mission Control certification profile route is connected.',
+      notes: 'Seeded by chat/process runtime certification.'
+    }
+  });
+  const sessionProfileId = String(profilePayload?.sessionProfile?.id ?? '').trim();
+  if (!sessionProfileId) {
+    throw new Error('chat/process smoke seed failed: browser session profile id missing.');
+  }
+
+  await requestJson(`${gatewayBaseUrl}/api/sessions/${encodeURIComponent(sessionId)}/browser-auth-profile`, {
+    method: 'POST',
+    headers,
+    body: {
+      sessionProfileId
+    }
+  });
+
+  const expectedReceipt = `Scrapling evidence receipt ${suffix}`;
+  const runPayload = await requestJson(`${gatewayBaseUrl}/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
+    method: 'POST',
+    headers: {
+      ...headers,
+      'Idempotency-Key': `mission-control-chat-process-${suffix}`
+    },
+    body: {
+      prompt: `Use the selected TikTok browser login through Scrapling, then reply with exactly: ${expectedReceipt}`,
+      runtime: 'process',
+      source: 'dashboard',
+      autoDelegate: false
+    }
+  });
+  const runId = String(runPayload?.run?.id ?? '').trim();
+  if (!runId) {
+    throw new Error('chat/process smoke seed failed: process runtime run id missing.');
+  }
+
+  await waitForRunTerminalStatus(gatewayBaseUrl, headers, runId, 45000);
+  await waitForMessageContaining(gatewayBaseUrl, headers, sessionId, expectedReceipt, 45000);
+
+  return {
+    expectedReceipt,
+    profileLabel,
+    runId,
+    senderId,
+    sessionId,
+    sessionProfileId
+  };
+}
+
 function ensureDashboardBuild() {
   const dashboardDistIndex = path.resolve(process.cwd(), 'dashboard/dist/index.html');
-  if (fs.existsSync(dashboardDistIndex)) {
+  if (process.env.BROWSER_FORCE_DASHBOARD_BUILD !== '1' && fs.existsSync(dashboardDistIndex)) {
     return;
   }
   const buildResult = run('pnpm', ['--filter', 'dashboard', 'build']);
@@ -817,6 +1004,9 @@ const gatewayBaseUrl = process.env.BROWSER_GATEWAY_URL ?? `http://127.0.0.1:${de
 const dashboardBaseUrl = process.env.BROWSER_BASE_URL ?? gatewayBaseUrl;
 const dashboardEmbeddedInGateway =
   dashboardBaseUrl.replace(/\/$/, '') === gatewayBaseUrl.replace(/\/$/, '');
+const requireFullShell = process.env.BROWSER_REQUIRE_FULL_SHELL === '1';
+const onlyKanbanWorkboard = process.env.BROWSER_ONLY_KANBAN_WORKBOARD === '1';
+const onlyChatProcessRuntime = process.env.BROWSER_ONLY_CHAT_PROCESS_RUNTIME === '1';
 const gatewayApiToken = resolveGatewayApiToken();
 const gatewayHeaders =
   gatewayApiToken && gatewayApiToken.length > 0
@@ -1276,6 +1466,8 @@ async function runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayB
   if (journalSummaries.length === 0) {
     throw new Error('browser smoke seed failed: delivery detail did not produce journal summaries');
   }
+  const normalizedPolicyVersion = normalizeTextForComparison(policyVersion);
+  const normalizedFirstJournalSummary = normalizeTextForComparison(journalSummaries[0] ?? '');
 
   const backlogOpen = run('agent-browser', ['--session', session, 'open', `${normalizedBaseUrl}/backlog`]);
   if (backlogOpen.status !== 0) {
@@ -1302,26 +1494,48 @@ async function runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayB
     process.exit(openDrawer.status ?? 1);
   }
   await sleep(700);
+  const cockpitReady = run('agent-browser', [
+    '--session',
+    session,
+    'wait',
+    '--fn',
+    `(() => {
+      const text = (document.body?.innerText ?? "").toLowerCase().replace(/\\s+/g, " ").trim();
+      return text.includes("github delivery cockpit")${
+        normalizedPolicyVersion ? ` && text.includes(${JSON.stringify(normalizedPolicyVersion)})` : ''
+      }${
+        normalizedFirstJournalSummary ? ` && text.includes(${JSON.stringify(normalizedFirstJournalSummary)})` : ''
+      };
+    })()`
+  ]);
+  if (cockpitReady.status !== 0) {
+    console.error('browser smoke failed: seeded task drawer did not finish loading API-backed delivery policy detail.');
+    console.error(cockpitReady.stderr || cockpitReady.stdout);
+    process.exit(cockpitReady.status ?? 1);
+  }
 
   const cockpitBody = run('agent-browser', ['--session', session, 'get', 'text', 'body']);
   const cockpitText = `${cockpitBody.stdout ?? ''}\n${cockpitBody.stderr ?? ''}`;
-  if (!cockpitText.includes('GitHub delivery cockpit')) {
+  const normalizedCockpitText = normalizeTextForComparison(cockpitText);
+  if (!normalizedCockpitText.includes('github delivery cockpit')) {
     console.error('browser smoke failed: seeded task drawer did not render the GitHub delivery cockpit.');
     process.exit(1);
   }
-  if (!cockpitText.includes(blockerTitle)) {
+  if (!normalizedCockpitText.includes(normalizeTextForComparison(blockerTitle))) {
     console.error('browser smoke failed: cockpit did not render the blocker title returned by the delivery detail API.');
     process.exit(1);
   }
-  if (policyVersion && !cockpitText.includes(policyVersion)) {
+  if (policyVersion && !normalizedCockpitText.includes(normalizedPolicyVersion)) {
     console.error('browser smoke failed: cockpit did not render the API policy version.');
     process.exit(1);
   }
-  if (policySource && !cockpitText.toLowerCase().includes(policySource)) {
+  if (policySource && !normalizedCockpitText.includes(normalizeTextForComparison(policySource))) {
     console.error('browser smoke failed: cockpit did not render the API policy source.');
     process.exit(1);
   }
-  const renderedSummaryIndexes = journalSummaries.map((summary) => cockpitText.indexOf(summary));
+  const renderedSummaryIndexes = journalSummaries.map((summary) =>
+    normalizedCockpitText.indexOf(normalizeTextForComparison(summary))
+  );
   if (renderedSummaryIndexes.some((index) => index === -1)) {
     console.error('browser smoke failed: cockpit did not render the same journal summaries returned by the delivery detail API.');
     process.exit(1);
@@ -1380,7 +1594,8 @@ async function runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayB
 
   const repairedBody = run('agent-browser', ['--session', session, 'get', 'text', 'body']);
   const repairedText = `${repairedBody.stdout ?? ''}\n${repairedBody.stderr ?? ''}`;
-  if (!repairedText.includes('Last repair receipt')) {
+  const normalizedRepairedText = normalizeTextForComparison(repairedText);
+  if (!normalizedRepairedText.includes('last repair receipt')) {
     console.error('browser smoke failed: cockpit did not render the repair receipt after cleanup.');
     process.exit(1);
   }
@@ -1388,10 +1603,410 @@ async function runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayB
     console.error('browser smoke failed: cockpit repair receipt did not include the executed action.');
     process.exit(1);
   }
-  if (!repairedText.includes(String(operatorRepairEntry.summary))) {
+  if (!normalizedRepairedText.includes(normalizeTextForComparison(operatorRepairEntry.summary))) {
     console.error('browser smoke failed: cockpit did not refresh to the repaired journal truth returned by the API.');
     process.exit(1);
   }
+}
+
+function buildKanbanVisualAuditScript(viewportId) {
+  return `JSON.stringify((() => {
+    const viewport = {
+      id: ${JSON.stringify(viewportId)},
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+    const documentElement = document.documentElement;
+    const body = document.body;
+    const pageRoot = document.querySelector("#app-main") ?? body;
+    const bodyText = pageRoot?.innerText ?? "";
+    const requiredText = [
+      "Backlog",
+      "New Task",
+      "Telegram Handoff",
+      "Orchestration Inspector",
+      "Decision Stream"
+    ];
+    const normalizedBodyText = bodyText.toLowerCase();
+    const missingText = requiredText.filter((entry) => !normalizedBodyText.includes(entry.toLowerCase()));
+    const isVisible = (element) => {
+      if (element.closest("details:not([open])")) {
+        return false;
+      }
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    };
+    const hasHorizontalScrollAncestor = (element) => {
+      let parent = element.parentElement;
+      while (parent && parent !== body) {
+        const style = window.getComputedStyle(parent);
+        const overflowX = style.overflowX;
+        const clipsOrScrolls = overflowX === "auto" || overflowX === "scroll" || overflowX === "hidden" || overflowX === "clip";
+        if (clipsOrScrolls && parent.scrollWidth > parent.clientWidth + 2) {
+          return true;
+        }
+        parent = parent.parentElement;
+      }
+      return false;
+    };
+    const labelFor = (element) => {
+      const explicit =
+        element.getAttribute("aria-label") ||
+        element.getAttribute("data-testid") ||
+        element.getAttribute("placeholder") ||
+        element.getAttribute("title") ||
+        "";
+      if (explicit.trim()) {
+        return explicit.trim().replace(/\\s+/g, " ").slice(0, 100);
+      }
+      return (element.textContent ?? element.tagName.toLowerCase()).trim().replace(/\\s+/g, " ").slice(0, 100);
+    };
+    const watchedElements = [
+      ...pageRoot.querySelectorAll("button, input, select, textarea, [data-testid^='backlog-column'], [data-testid^='backlog-card'], header, section")
+    ];
+    const clippedElements = watchedElements
+      .filter(isVisible)
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        const outsideViewport = rect.left < -2 || rect.right > viewport.width + 2;
+        if (!outsideViewport || hasHorizontalScrollAncestor(element)) {
+          return null;
+        }
+        return {
+          tag: element.tagName.toLowerCase(),
+          label: labelFor(element),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width)
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 12);
+    const undersizedControls = [...pageRoot.querySelectorAll("button, input, select, textarea")]
+      .filter(isVisible)
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width >= 18 && rect.height >= 18) {
+          return null;
+        }
+        return {
+          tag: element.tagName.toLowerCase(),
+          label: labelFor(element),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 12);
+    const globalOverflowX = Math.max(documentElement.scrollWidth, body?.scrollWidth ?? 0) - viewport.width;
+    return {
+      viewport,
+      scroll: {
+        documentWidth: documentElement.scrollWidth,
+        bodyWidth: body?.scrollWidth ?? 0,
+        globalOverflowX
+      },
+      missingText,
+      clippedElements,
+      undersizedControls
+    };
+  })())`;
+}
+
+async function captureKanbanWorkboardVisuals(session, dashboardBaseUrl) {
+  const normalizedBaseUrl = dashboardBaseUrl.replace(/\/$/, '');
+  const viewports = [
+    { id: 'desktop', width: 1440, height: 1000 },
+    { id: 'tablet', width: 834, height: 1112 },
+    { id: 'mobile', width: 390, height: 844 }
+  ];
+  const results = [];
+
+  fs.mkdirSync(KANBAN_VISUAL_SCREENSHOT_DIR, { recursive: true });
+
+  for (const viewport of viewports) {
+    runAgentBrowser(session, ['set', 'viewport', String(viewport.width), String(viewport.height)], `set ${viewport.id} viewport`);
+    runAgentBrowser(session, ['open', `${normalizedBaseUrl}/backlog`], `open Backlog ${viewport.id}`);
+    runAgentBrowser(
+      session,
+      [
+        'wait',
+        '--fn',
+        `(() => {
+          const text = document.body?.innerText ?? "";
+          const normalized = text.toLowerCase();
+          return normalized.includes("backlog") && normalized.includes("new task") && normalized.includes("orchestration inspector");
+        })()`
+      ],
+      `wait for Backlog ${viewport.id}`
+    );
+    await sleep(400);
+
+    const audit = parseEvalJson(
+      runAgentBrowser(session, ['eval', buildKanbanVisualAuditScript(viewport.id)], `audit Backlog ${viewport.id}`),
+      `Backlog ${viewport.id} audit`
+    );
+    const screenshotPath = path.join(KANBAN_VISUAL_SCREENSHOT_DIR, `backlog-${viewport.id}.png`);
+    runAgentBrowser(session, ['screenshot', screenshotPath], `capture Backlog ${viewport.id} screenshot`);
+    const screenshotStat = fs.statSync(screenshotPath);
+    const failures = [];
+    if (audit.missingText.length > 0) {
+      failures.push(`missing text: ${audit.missingText.join(', ')}`);
+    }
+    if (audit.clippedElements.length > 0) {
+      failures.push(`clipped elements: ${audit.clippedElements.map((entry) => entry.label).join(', ')}`);
+    }
+    if (audit.undersizedControls.length > 0) {
+      failures.push(`undersized controls: ${audit.undersizedControls.map((entry) => entry.label).join(', ')}`);
+    }
+    if (Number(audit.scroll.globalOverflowX) > 2) {
+      failures.push(`global horizontal overflow: ${String(audit.scroll.globalOverflowX)}px`);
+    }
+    if (screenshotStat.size < 5000) {
+      failures.push('screenshot artifact is unexpectedly small');
+    }
+
+    results.push({
+      ...audit,
+      screenshotPath,
+      screenshotBytes: screenshotStat.size,
+      status: failures.length === 0 ? 'passed' : 'failed',
+      failures
+    });
+  }
+
+  runAgentBrowser(session, ['set', 'viewport', '1440', '1000'], 'restore desktop viewport');
+
+  const failed = results.filter((result) => result.status !== 'passed');
+  const report = {
+    schema: 'ops.kanban-workboard-browser-visual.v1',
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    status: failed.length === 0 ? 'passed' : 'failed',
+    target: `${normalizedBaseUrl}/backlog`,
+    screenshotsDir: KANBAN_VISUAL_SCREENSHOT_DIR,
+    viewports: results
+  };
+  writeKanbanVisualReport(report);
+
+  if (failed.length > 0) {
+    throw new Error(
+      `Backlog/Kanban visual certification failed: ${failed
+        .map((result) => `${result.viewport.id}: ${result.failures.join('; ')}`)
+        .join(' | ')}`
+    );
+  }
+
+  return report;
+}
+
+function buildChatProcessRuntimeVisualAuditScript(viewportId, seed) {
+  const requiredText = [
+    'Find a session fast',
+    'Sessions',
+    'Telegram',
+    'Conversation',
+    'Thread Posture',
+    'Runtime posture',
+    'Browser auth',
+    'Dispatch Queue',
+    'Scrapling reads',
+    seed.profileLabel,
+    seed.expectedReceipt
+  ];
+  return `JSON.stringify((() => {
+    const viewport = {
+      id: ${JSON.stringify(viewportId)},
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+    const documentElement = document.documentElement;
+    const body = document.body;
+    const pageRoot = document.querySelector("#app-main") ?? body;
+    const bodyText = pageRoot?.innerText ?? "";
+    const requiredText = ${JSON.stringify(requiredText)};
+    const normalizedBodyText = bodyText.toLowerCase();
+    const missingText = requiredText.filter((entry) => !normalizedBodyText.includes(String(entry).toLowerCase()));
+    const isVisible = (element) => {
+      if (element.closest("details:not([open])") || element.closest("[aria-hidden='true']")) {
+        return false;
+      }
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    };
+    const hasHorizontalScrollAncestor = (element) => {
+      let parent = element.parentElement;
+      while (parent && parent !== body) {
+        const style = window.getComputedStyle(parent);
+        const overflowX = style.overflowX;
+        const clipsOrScrolls = overflowX === "auto" || overflowX === "scroll" || overflowX === "hidden" || overflowX === "clip";
+        if (clipsOrScrolls && parent.scrollWidth > parent.clientWidth + 2) {
+          return true;
+        }
+        parent = parent.parentElement;
+      }
+      return false;
+    };
+    const labelFor = (element) => {
+      const explicit =
+        element.getAttribute("aria-label") ||
+        element.getAttribute("data-testid") ||
+        element.getAttribute("placeholder") ||
+        element.getAttribute("title") ||
+        "";
+      if (explicit.trim()) {
+        return explicit.trim().replace(/\\s+/g, " ").slice(0, 100);
+      }
+      return (element.textContent ?? element.tagName.toLowerCase()).trim().replace(/\\s+/g, " ").slice(0, 100);
+    };
+    const watchedElements = [
+      ...pageRoot.querySelectorAll("button, input, select, textarea, header, aside, section, main")
+    ];
+    const clippedElements = watchedElements
+      .filter(isVisible)
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        const outsideViewport = rect.left < -2 || rect.right > viewport.width + 2;
+        if (!outsideViewport || hasHorizontalScrollAncestor(element)) {
+          return null;
+        }
+        return {
+          tag: element.tagName.toLowerCase(),
+          label: labelFor(element),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width)
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 12);
+    const undersizedControls = [...pageRoot.querySelectorAll("button, input, select, textarea")]
+      .filter(isVisible)
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width >= 18 && rect.height >= 18) {
+          return null;
+        }
+        return {
+          tag: element.tagName.toLowerCase(),
+          label: labelFor(element),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 12);
+    const globalOverflowX = Math.max(documentElement.scrollWidth, body?.scrollWidth ?? 0) - viewport.width;
+    return {
+      viewport,
+      scroll: {
+        documentWidth: documentElement.scrollWidth,
+        bodyWidth: body?.scrollWidth ?? 0,
+        globalOverflowX
+      },
+      missingText,
+      clippedElements,
+      undersizedControls
+    };
+  })())`;
+}
+
+async function captureChatProcessRuntimeVisuals(session, dashboardBaseUrl, seed) {
+  const normalizedBaseUrl = dashboardBaseUrl.replace(/\/$/, '');
+  const viewports = [
+    { id: 'desktop', width: 1440, height: 1000 },
+    { id: 'tablet', width: 834, height: 1112 },
+    { id: 'mobile', width: 390, height: 844 }
+  ];
+  const results = [];
+
+  fs.mkdirSync(CHAT_PROCESS_SCREENSHOT_DIR, { recursive: true });
+
+  for (const viewport of viewports) {
+    runAgentBrowser(session, ['set', 'viewport', String(viewport.width), String(viewport.height)], `set ${viewport.id} viewport`);
+    runAgentBrowser(session, ['open', `${normalizedBaseUrl}/mission-control`], `open Mission Control ${viewport.id}`);
+    runAgentBrowser(
+      session,
+      [
+        'wait',
+        '--fn',
+        `(() => {
+          const text = document.body?.innerText ?? "";
+          const normalized = text.toLowerCase();
+          return normalized.includes("find a session fast") &&
+            normalized.includes("thread posture") &&
+            normalized.includes("browser auth") &&
+            normalized.includes(${JSON.stringify(seed.profileLabel.toLowerCase())}) &&
+            normalized.includes(${JSON.stringify(seed.expectedReceipt.toLowerCase())});
+        })()`
+      ],
+      `wait for Mission Control ${viewport.id}`
+    );
+    await sleep(400);
+
+    const audit = parseEvalJson(
+      runAgentBrowser(
+        session,
+        ['eval', buildChatProcessRuntimeVisualAuditScript(viewport.id, seed)],
+        `audit Mission Control ${viewport.id}`
+      ),
+      `Mission Control ${viewport.id} audit`
+    );
+    const screenshotPath = path.join(CHAT_PROCESS_SCREENSHOT_DIR, `mission-control-${viewport.id}.png`);
+    runAgentBrowser(session, ['screenshot', screenshotPath], `capture Mission Control ${viewport.id} screenshot`);
+    const screenshotStat = fs.statSync(screenshotPath);
+    const failures = [];
+    if (audit.missingText.length > 0) {
+      failures.push(`missing text: ${audit.missingText.join(', ')}`);
+    }
+    if (audit.clippedElements.length > 0) {
+      failures.push(`clipped elements: ${audit.clippedElements.map((entry) => entry.label).join(', ')}`);
+    }
+    if (audit.undersizedControls.length > 0) {
+      failures.push(`undersized controls: ${audit.undersizedControls.map((entry) => entry.label).join(', ')}`);
+    }
+    if (Number(audit.scroll.globalOverflowX) > 2) {
+      failures.push(`global horizontal overflow: ${String(audit.scroll.globalOverflowX)}px`);
+    }
+    if (screenshotStat.size < 5000) {
+      failures.push('screenshot artifact is unexpectedly small');
+    }
+
+    results.push({
+      ...audit,
+      screenshotPath,
+      screenshotBytes: screenshotStat.size,
+      status: failures.length === 0 ? 'passed' : 'failed',
+      failures
+    });
+  }
+
+  runAgentBrowser(session, ['set', 'viewport', '1440', '1000'], 'restore desktop viewport');
+
+  const failed = results.filter((result) => result.status !== 'passed');
+  const report = {
+    schema: 'ops.chat-process-runtime-browser-visual.v1',
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    status: failed.length === 0 ? 'passed' : 'failed',
+    target: `${normalizedBaseUrl}/mission-control`,
+    seed,
+    screenshotsDir: CHAT_PROCESS_SCREENSHOT_DIR,
+    viewports: results
+  };
+  writeChatProcessVisualReport(report);
+
+  if (failed.length > 0) {
+    throw new Error(
+      `Mission Control chat/process visual certification failed: ${failed
+        .map((result) => `${result.viewport.id}: ${result.failures.join('; ')}`)
+        .join(' | ')}`
+    );
+  }
+
+  return report;
 }
 
 try {
@@ -1467,7 +2082,9 @@ try {
     process.exit(1);
   }
 
-  githubCockpitSeed = await seedGithubDeliveryCockpitSmokeState(gatewayBaseUrl, activeGatewayHeaders);
+  if (!onlyChatProcessRuntime) {
+    githubCockpitSeed = await seedGithubDeliveryCockpitSmokeState(gatewayBaseUrl, activeGatewayHeaders);
+  }
 
   const session = `ops-browser-smoke-${Date.now().toString(36)}`;
   if (process.env.BROWSER_ENABLE_INGRESS_PROBE === '1') {
@@ -1497,6 +2114,22 @@ try {
     console.error(openResult.stderr || openResult.stdout);
     process.exit(openResult.status ?? 1);
   }
+  const bootstrapApiToken =
+    activeGatewayApiToken?.trim() ?? gatewayApiToken?.trim() ?? process.env.BROWSER_API_TOKEN?.trim() ?? '';
+  if ((requireFullShell || onlyKanbanWorkboard || onlyChatProcessRuntime) && managedGatewayStarted && bootstrapApiToken.length > 0) {
+    runAgentBrowser(
+      session,
+      [
+        'eval',
+        `(() => {
+          localStorage.setItem("ops-dashboard-store", ${JSON.stringify(buildDashboardStoreSeed(bootstrapApiToken))});
+          window.location.reload();
+          return "seeded";
+        })()`
+      ],
+      'seed managed dashboard token'
+    );
+  }
 
   const rootWait = run('agent-browser', [
     '--session',
@@ -1512,7 +2145,7 @@ try {
       const shellReady =
         (bodyText.includes("Preferences") || bodyText.includes("Settings") || bodyText.includes("Access")) &&
         (bodyText.includes("LLM Router") || bodyText.includes("LLM") || bodyText.includes("Costs"));
-      return onboardingReady || shellReady;
+      return ${requireFullShell ? 'shellReady' : 'onboardingReady || shellReady'};
     })()`
   ]);
   if (rootWait.status !== 0) {
@@ -1533,8 +2166,6 @@ try {
     (rootText.includes('Initialize Connection') &&
       rootText.includes('Unlock Vault') &&
       rootText.includes('Launch Verification'));
-  const bootstrapApiToken =
-    activeGatewayApiToken?.trim() ?? gatewayApiToken?.trim() ?? process.env.BROWSER_API_TOKEN?.trim() ?? '';
   if (focusedOnboardingMode && bootstrapApiToken.length > 0) {
     const tokenInputRefMatch = rootText.match(/textbox ".*API token.*" \[ref=([^\]]+)\]/i);
     const initializeRefMatch = rootText.match(/(?:Initialize Connection|Save token)" \[ref=([^\]]+)\]/);
@@ -1566,6 +2197,10 @@ try {
     }
   }
   if (focusedOnboardingMode) {
+    if (requireFullShell) {
+      console.error('browser smoke failed: strict full-shell mode reached focused onboarding instead of the dashboard shell.');
+      process.exit(1);
+    }
     const hasTokenEntry =
       rootText.includes('Save token') ||
       rootText.includes('API token') ||
@@ -1584,6 +2219,44 @@ try {
     process.exit(0);
   }
 
+  if (onlyChatProcessRuntime) {
+    let chatProcessSeed = null;
+    try {
+      chatProcessSeed = await seedChatProcessRuntimeSmokeState(gatewayBaseUrl, activeGatewayHeaders);
+      await captureChatProcessRuntimeVisuals(session, dashboardBaseUrl, chatProcessSeed);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      console.error(`browser smoke failed: Mission Control chat/process visual report=${CHAT_PROCESS_VISUAL_REPORT_PATH}`);
+      process.exit(1);
+    }
+  } else if (onlyKanbanWorkboard) {
+    const backlogOpen = run('agent-browser', ['--session', session, 'open', `${dashboardBaseUrl.replace(/\/$/, '')}/backlog`]);
+    if (backlogOpen.status !== 0) {
+      console.error(backlogOpen.stderr || backlogOpen.stdout);
+      process.exit(backlogOpen.status ?? 1);
+    }
+    await sleep(500);
+    const backlogBody = run('agent-browser', ['--session', session, 'get', 'text', 'body']);
+    const backlogText = `${backlogBody.stdout ?? ''}\n${backlogBody.stderr ?? ''}`;
+    const normalizedBacklogText = backlogText.toLowerCase();
+    if (!normalizedBacklogText.includes('backlog') || !normalizedBacklogText.includes('new task') || !normalizedBacklogText.includes('orchestration inspector')) {
+      console.error('browser smoke failed: Backlog page missing workboard intake or inspector sections.');
+      console.error(backlogText.slice(0, 1600));
+      process.exit(1);
+    }
+    if (!normalizedBacklogText.includes('archived') || !normalizedBacklogText.includes('decision stream')) {
+      console.error('browser smoke failed: Backlog page missing lifecycle filter/decision stream affordances.');
+      process.exit(1);
+    }
+    try {
+      await captureKanbanWorkboardVisuals(session, dashboardBaseUrl);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      console.error(`browser smoke failed: Backlog/Kanban visual report=${KANBAN_VISUAL_REPORT_PATH}`);
+      process.exit(1);
+    }
+    await runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayBaseUrl, activeGatewayHeaders, githubCockpitSeed);
+  } else {
   const hasLlmNav = rootText.includes('LLM Router') || rootText.includes('LLM') || rootText.includes('Costs');
   const hasPreferences = rootText.includes('Preferences') || rootText.includes('Settings') || rootText.includes('Access');
   if (!hasPreferences || !hasLlmNav) {
@@ -1755,7 +2428,7 @@ try {
     await sleep(250);
     const missionBody = run('agent-browser', ['--session', session, 'get', 'text', 'body']);
     const missionText = `${missionBody.stdout ?? ''}\n${missionBody.stderr ?? ''}`;
-    if (!missionText.includes('Mission Control Console')) {
+    if (!missionText.includes('Find a session fast') || !missionText.includes('Sessions')) {
       console.error('browser smoke failed: Mission Control did not render.');
       process.exit(1);
     }
@@ -1773,12 +2446,21 @@ try {
   await sleep(500);
   const backlogBody = run('agent-browser', ['--session', session, 'get', 'text', 'body']);
   const backlogText = `${backlogBody.stdout ?? ''}\n${backlogBody.stderr ?? ''}`;
-  if (!backlogText.includes('Backlog Control Plane') || !backlogText.includes('Orchestration Inspector')) {
-    console.error('browser smoke failed: Backlog page missing control-plane or inspector sections.');
+  const normalizedBacklogText = backlogText.toLowerCase();
+  if (!normalizedBacklogText.includes('backlog') || !normalizedBacklogText.includes('new task') || !normalizedBacklogText.includes('orchestration inspector')) {
+    console.error('browser smoke failed: Backlog page missing workboard intake or inspector sections.');
+    console.error(backlogText.slice(0, 1600));
     process.exit(1);
   }
-  if (!backlogText.includes('Archived') || !backlogText.includes('Decision Stream')) {
+  if (!normalizedBacklogText.includes('archived') || !normalizedBacklogText.includes('decision stream')) {
     console.error('browser smoke failed: Backlog page missing lifecycle filter/decision stream affordances.');
+    process.exit(1);
+  }
+  try {
+    await captureKanbanWorkboardVisuals(session, dashboardBaseUrl);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error(`browser smoke failed: Backlog/Kanban visual report=${KANBAN_VISUAL_REPORT_PATH}`);
     process.exit(1);
   }
 
@@ -1789,6 +2471,7 @@ try {
   await runBrowserScheduleSmoke(session, dashboardBaseUrl, gatewayBaseUrl, activeGatewayHeaders, {
     targetAgentId: browserSmokeAgentId
   });
+  }
 
   run('agent-browser', ['--session', session, 'close']);
 

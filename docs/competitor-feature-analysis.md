@@ -61,6 +61,22 @@ These are not competitor features, but they directly affect how fast new feature
 
 ## Reference Repo Takeaways
 
+### 2026-06-22 Refresh
+
+The reference repos were refreshed on June 22, 2026 before this pass:
+
+- OpenClaw moved further into tool/result UX, effective tool inventory, session artifact indexing, Workboard persistence limits, provider catalog/failover, and chat/session regression coverage.
+- Hermes added a large generic `computer_use` lane with screenshot/SOM capture, click/type/scroll/key actions, approval gates, driver doctor checks, richer goal continuation, desktop session actions, and memory provider setup.
+- NemoClaw added a live Telegram injection e2e scenario that proves shell metacharacters stay literal through sandbox exec/SSH paths and verifies process tables do not leak provider secrets.
+- PolyX reinforces the X-specific low-detection pattern: cookie-backed GraphQL requests with `auth_token` plus `ct0`, stable browser-like headers, query-id discovery, and request pacing.
+
+Impact for ElyzeLabs:
+
+- Keep Scrapling/cookie and storage-state auth as the default authenticated social read path.
+- Treat Playwright/CDP and interactive browser as guided fallback paths, not the default for read-only social scraping.
+- Make the chat-facing `/browser` help path explicit so non-technical operators can discover host capture, current-session import, and mobile handoff without knowing endpoint names.
+- Keep adding live injection/redaction checks around Telegram and provider credentials before expanding more remote browser execution.
+
 ### Hermes Agent
 
 Hermes is closest to a broad personal agent runtime. Its strongest ideas are:

@@ -1,0 +1,84 @@
+name: Nightly Certification
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      include_live:
+        description: "Run opt-in live lanes that require secrets, gateway access, and browser profiles"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      strict_live:
+        description: "Fail the workflow when a selected live lane is blocked"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-certification-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.30.3
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run nightly certification
+        env:
+          OPS_NIGHTLY_CERT_INCLUDE_LIVE: ${{ github.event.inputs.include_live == 'true' && '1' || '0' }}
+          OPS_NIGHTLY_CERT_STRICT_LIVE: ${{ github.event.inputs.strict_live == 'true' && '1' || '0' }}
+          OPS_API_TOKEN: ${{ secrets.OPS_API_TOKEN }}
+          OPS_LIVE_SCENARIO_API_TOKEN: ${{ secrets.OPS_LIVE_SCENARIO_API_TOKEN }}
+          OPS_LIVE_TELEGRAM_PROCESS_API_TOKEN: ${{ secrets.OPS_LIVE_TELEGRAM_PROCESS_API_TOKEN }}
+          OPS_LIVE_INTERACTIVE_BROWSER_API_TOKEN: ${{ secrets.OPS_LIVE_INTERACTIVE_BROWSER_API_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OPS_LIVE_TELEGRAM_PROCESS_CHAT_ID: ${{ secrets.OPS_LIVE_TELEGRAM_PROCESS_CHAT_ID }}
+          OPS_LIVE_SCENARIO_TELEGRAM_CHAT_ID: ${{ secrets.OPS_LIVE_SCENARIO_TELEGRAM_CHAT_ID }}
+        run: pnpm test:nightly-cert
+
+      - name: Upload certification reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: nightly-certification-${{ github.run_id }}
+          path: |
+            .ops/certifications/nightly/**
+            .ops/certifications/*/certification-report.json
+            .ops/certifications/*/browser-visual-report.json
+          if-no-files-found: warn

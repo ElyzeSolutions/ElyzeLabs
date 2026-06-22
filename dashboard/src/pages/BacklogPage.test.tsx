@@ -1,11 +1,98 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { installPageHarness, renderDashboardPage, apiMocks } from '../test/pageHarness';
+import type { BacklogDeliveryRow, BacklogItemRow } from '../app/types';
 import { BacklogPage } from './BacklogPage';
 
 installPageHarness();
+
+function makeBacklogDelivery(overrides: Partial<BacklogDeliveryRow> = {}): BacklogDeliveryRow {
+  return {
+    id: 'delivery-default',
+    itemId: 'backlog-item-default',
+    repoConnectionId: 'repo-1',
+    branchName: 'codex/operator-workbench',
+    commitSha: null,
+    prNumber: null,
+    prUrl: null,
+    status: 'review',
+    githubState: 'checks_pending',
+    githubStateReason: null,
+    githubStateUpdatedAt: null,
+    checksJson: '{}',
+    metadataJson: '{}',
+    githubLeaseJson: '{}',
+    githubWorktreeJson: '{}',
+    githubReconcileJson: '{}',
+    receiptStatus: null,
+    receiptAttempts: 0,
+    receiptLastError: null,
+    receiptLastAttemptAt: null,
+    workspaceRoot: null,
+    workspacePath: null,
+    outputFilesJson: '[]',
+    createdAt: '2026-05-31T10:00:00.000Z',
+    updatedAt: '2026-05-31T10:00:00.000Z',
+    checks: {},
+    metadata: {},
+    githubLease: {},
+    githubWorktree: {},
+    githubReconcile: {},
+    ...overrides
+  };
+}
+
+function makeBacklogItem(overrides: Partial<BacklogItemRow> = {}): BacklogItemRow {
+  return {
+    id: 'backlog-item-default',
+    title: 'Default backlog task',
+    description: 'Default operator task.',
+    state: 'planned',
+    priority: 70,
+    labelsJson: '[]',
+    source: 'dashboard',
+    sourceRef: null,
+    createdBy: 'operator',
+    projectId: 'operator-os',
+    repoRoot: '/workspace/elyzelabs',
+    assignedAgentId: 'software-engineer',
+    linkedSessionId: null,
+    linkedRunId: null,
+    deliveryGroupId: null,
+    blockedReason: null,
+    originSessionId: null,
+    originMessageId: null,
+    originChannel: null,
+    originChatId: null,
+    originTopicId: null,
+    metadataJson: '{}',
+    createdAt: '2026-05-31T10:00:00.000Z',
+    updatedAt: '2026-05-31T10:00:00.000Z',
+    labels: [],
+    metadata: {},
+    dependencies: [],
+    dependencyStates: [],
+    unresolvedDependencies: [],
+    dispatchReady: true,
+    dispatch: {
+      whyAgent: 'operator owner',
+      whyRuntime: 'codex',
+      dependencyState: {
+        ready: true,
+        unresolved: []
+      },
+      parallelismSlot: 1,
+      modelRouteChain: []
+    },
+    transitions: [],
+    execution: null,
+    delivery: null,
+    deliveryGroup: null,
+    ...overrides
+  };
+}
 
 describe('BacklogPage', () => {
   it('renders the backlog board with mocked data', async () => {
@@ -15,38 +102,109 @@ describe('BacklogPage', () => {
     await waitFor(() => expect(apiMocks.fetchBacklogBoard).toHaveBeenCalled());
   });
 
+  it('summarizes operator focus and filters lanes from the workbench strip', async () => {
+    const readyItem = makeBacklogItem({
+      id: 'ready-browser-capture',
+      title: 'Ready browser capture',
+      state: 'planned'
+    });
+    const heldItem = makeBacklogItem({
+      id: 'dependency-held-profile',
+      title: 'Dependency-held profile repair',
+      state: 'planned',
+      unresolvedDependencies: ['upstream-auth'],
+      dispatchReady: false,
+      dispatch: {
+        whyAgent: 'operator owner',
+        whyRuntime: 'codex',
+        dependencyState: {
+          ready: false,
+          unresolved: ['upstream-auth']
+        },
+        parallelismSlot: null,
+        modelRouteChain: []
+      }
+    });
+    const executingItem = makeBacklogItem({
+      id: 'live-capture-refresh',
+      title: 'Live capture refresh',
+      state: 'in_progress'
+    });
+    const riskyReviewItem = makeBacklogItem({
+      id: 'failed-checks-review',
+      title: 'Failed checks review',
+      state: 'review',
+      delivery: makeBacklogDelivery({
+        id: 'delivery-risk',
+        itemId: 'failed-checks-review',
+        githubState: 'checks_failed'
+      })
+    });
+    const blockedItem = makeBacklogItem({
+      id: 'blocked-provider-token',
+      title: 'Blocked provider token',
+      state: 'blocked'
+    });
+
+    apiMocks.fetchBacklogBoard.mockResolvedValue({
+      columns: {
+        idea: [],
+        triage: [],
+        planned: [readyItem, heldItem],
+        in_progress: [executingItem],
+        review: [riskyReviewItem],
+        blocked: [blockedItem],
+        done: [],
+        archived: []
+      },
+      availableScopes: []
+    });
+    apiMocks.fetchBacklogOrchestration.mockResolvedValue({
+      control: {
+        enabled: true,
+        paused: false,
+        maxParallel: 3,
+        wipLimit: 2
+      },
+      queue: {
+        planned: 1,
+        inFlight: 2
+      },
+      dispatchPolicy: {
+        projectCaps: {},
+        projectPriorityBias: {}
+      }
+    });
+
+    renderDashboardPage(<BacklogPage />, { path: '/backlog' });
+
+    expect(await screen.findByText('Ready browser capture')).toBeInTheDocument();
+    const focusStrip = await screen.findByRole('region', { name: 'Operator focus' });
+    expect(within(focusStrip).getByRole('button', { name: 'Ready: 1 dispatchable planned work' })).toBeInTheDocument();
+    expect(within(focusStrip).getByRole('button', { name: 'WIP: 2/2 active execution slots' })).toBeInTheDocument();
+    expect(within(focusStrip).getByRole('button', { name: 'Verify: 1 waiting acceptance' })).toBeInTheDocument();
+    expect(within(focusStrip).getByRole('button', { name: 'Stalled: 2 blocked or dependency-held' })).toBeInTheDocument();
+    expect(within(focusStrip).getByRole('button', { name: 'Delivery risk: 1 GitHub or evidence risk' })).toBeInTheDocument();
+
+    fireEvent.click(within(focusStrip).getByRole('button', { name: 'Delivery risk: 1 GitHub or evidence risk' }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('backlog-column-planned')).not.toBeInTheDocument();
+      expect(screen.getByTestId('backlog-column-review')).toBeInTheDocument();
+      expect(screen.getByTestId('backlog-column-blocked')).toBeInTheDocument();
+    });
+  });
+
   it('shows contract-aware Kanban transition actions', async () => {
-    const backlogItem = {
+    const backlogItem = makeBacklogItem({
       id: 'backlog-item-1',
       title: 'Wire Instagram session capture',
       description: 'Save and verify authenticated Instagram browser sessions.',
       state: 'planned',
       priority: 2,
-      labelsJson: '[]',
-      source: 'dashboard',
-      sourceRef: null,
-      createdBy: 'operator',
       projectId: 'browser-ops',
-      repoRoot: '/workspace/elyzelabs',
       assignedAgentId: 'social-browser-operator',
-      linkedSessionId: null,
-      linkedRunId: null,
-      deliveryGroupId: null,
-      blockedReason: null,
-      originSessionId: null,
-      originMessageId: null,
-      originChannel: null,
-      originChatId: null,
-      originTopicId: null,
-      metadataJson: '{}',
-      createdAt: '2026-05-31T10:00:00.000Z',
-      updatedAt: '2026-05-31T10:00:00.000Z',
       labels: ['browser'],
-      metadata: {},
-      dependencies: [],
-      dependencyStates: [],
-      unresolvedDependencies: [],
-      dispatchReady: true,
       dispatch: {
         whyAgent: 'browser specialist',
         whyRuntime: 'process browser capture',
@@ -56,12 +214,8 @@ describe('BacklogPage', () => {
         },
         parallelismSlot: 1,
         modelRouteChain: []
-      },
-      transitions: [],
-      execution: null,
-      delivery: null,
-      deliveryGroup: null
-    };
+      }
+    });
 
     apiMocks.fetchBacklogBoard.mockResolvedValue({
       columns: {
@@ -107,37 +261,15 @@ describe('BacklogPage', () => {
   });
 
   it('moves Kanban tasks by drag and drop', async () => {
-    const backlogItem = {
+    const backlogItem = makeBacklogItem({
       id: 'backlog-item-1',
       title: 'Wire Instagram session capture',
       description: 'Save and verify authenticated Instagram browser sessions.',
       state: 'planned',
       priority: 2,
-      labelsJson: '[]',
-      source: 'dashboard',
-      sourceRef: null,
-      createdBy: 'operator',
       projectId: 'browser-ops',
-      repoRoot: '/workspace/elyzelabs',
       assignedAgentId: 'social-browser-operator',
-      linkedSessionId: null,
-      linkedRunId: null,
-      deliveryGroupId: null,
-      blockedReason: null,
-      originSessionId: null,
-      originMessageId: null,
-      originChannel: null,
-      originChatId: null,
-      originTopicId: null,
-      metadataJson: '{}',
-      createdAt: '2026-05-31T10:00:00.000Z',
-      updatedAt: '2026-05-31T10:00:00.000Z',
       labels: ['browser'],
-      metadata: {},
-      dependencies: [],
-      dependencyStates: [],
-      unresolvedDependencies: [],
-      dispatchReady: true,
       dispatch: {
         whyAgent: 'browser specialist',
         whyRuntime: 'process browser capture',
@@ -147,12 +279,8 @@ describe('BacklogPage', () => {
         },
         parallelismSlot: 1,
         modelRouteChain: []
-      },
-      transitions: [],
-      execution: null,
-      delivery: null,
-      deliveryGroup: null
-    };
+      }
+    });
     const dragStore = new Map<string, string>();
     const dataTransfer = {
       clearData: (type?: string) => {
@@ -274,31 +402,19 @@ describe('BacklogPage', () => {
   });
 
   it('surfaces delivery state and syncs GitHub issues from task details', async () => {
-    const backlogItem = {
+    const backlogItem = makeBacklogItem({
       id: 'backlog-item-2',
       title: 'Polish operator Kanban',
       description: 'Add delivery state and issue sync.',
       state: 'review',
       priority: 80,
-      labelsJson: '[]',
       source: 'telegram',
       sourceRef: '-1001',
-      createdBy: 'operator',
-      projectId: 'operator-os',
-      repoRoot: '/workspace/elyzelabs',
-      assignedAgentId: 'software-engineer',
-      linkedSessionId: null,
-      linkedRunId: null,
-      deliveryGroupId: null,
-      blockedReason: null,
       originSessionId: 'session-telegram',
       originMessageId: '100',
       originChannel: 'telegram',
       originChatId: '-1001',
-      originTopicId: null,
       metadataJson: '{"githubRepoHint":{"owner":"example","repo":"elyze"}}',
-      createdAt: '2026-05-31T10:00:00.000Z',
-      updatedAt: '2026-05-31T10:00:00.000Z',
       labels: ['kanban'],
       metadata: {
         githubRepoHint: {
@@ -306,10 +422,6 @@ describe('BacklogPage', () => {
           repo: 'elyze'
         }
       },
-      dependencies: [],
-      dependencyStates: [],
-      unresolvedDependencies: [],
-      dispatchReady: true,
       dispatch: {
         whyAgent: 'delivery owner',
         whyRuntime: 'codex',
@@ -320,42 +432,13 @@ describe('BacklogPage', () => {
         parallelismSlot: 1,
         modelRouteChain: []
       },
-      transitions: [],
-      execution: null,
-      delivery: {
+      delivery: makeBacklogDelivery({
         id: 'delivery-1',
         itemId: 'backlog-item-2',
-        repoConnectionId: 'repo-1',
         branchName: 'codex/operator-kanban',
-        commitSha: null,
-        prNumber: null,
-        prUrl: null,
-        status: 'review',
-        githubState: 'checks_pending',
-        githubStateReason: null,
-        githubStateUpdatedAt: null,
-        checksJson: '{}',
-        metadataJson: '{}',
-        githubLeaseJson: '{}',
-        githubWorktreeJson: '{}',
-        githubReconcileJson: '{}',
-        receiptStatus: null,
-        receiptAttempts: 0,
-        receiptLastError: null,
-        receiptLastAttemptAt: null,
-        workspaceRoot: null,
-        workspacePath: null,
-        outputFilesJson: '[]',
-        createdAt: '2026-05-31T10:00:00.000Z',
-        updatedAt: '2026-05-31T10:00:00.000Z',
-        checks: {},
-        metadata: {},
-        githubLease: {},
-        githubWorktree: {},
-        githubReconcile: {}
-      },
-      deliveryGroup: null
-    };
+        githubState: 'checks_pending'
+      })
+    });
 
     apiMocks.fetchBacklogBoard.mockResolvedValue({
       columns: {

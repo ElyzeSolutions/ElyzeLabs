@@ -1,0 +1,36 @@
+{
+  "schema": "ops.fake-provider-e2e-scenarios.v1",
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "gemini_compact_tool_call",
+      "provider": "google",
+      "model": "gemini-2.5-pro",
+      "claims": [
+        "Compact provider-specific execute_command calls are normalized into argv-based execution plans.",
+        "Native tool sessions use provider_api execution path with tool_first_native invocation.",
+        "Final operator replies keep tool results and strip provider/runtime boilerplate."
+      ],
+      "testName": "normalizes Gemini tool calls and returns clean tool-result replies"
+    },
+    {
+      "id": "openrouter_fallback_recovery",
+      "provider": "openrouter",
+      "model": "openrouter/minimax/minimax-m2.5",
+      "claims": [
+        "A saturated fake primary Google provider produces a queue retry with an explicit fallback route.",
+        "The fake OpenRouter-compatible fallback completes the run and delivers the recovered answer.",
+        "The operator-visible answer omits the primary provider saturation error."
+      ],
+      "testName": "recovers saturated primary providers through configured fake OpenRouter fallback"
+    }
+  ],
+  "redaction": {
+    "trackedArchiveOmits": [
+      "raw provider HTTP request bodies",
+      "raw provider HTTP responses",
+      "API keys and bearer tokens",
+      "full Vitest stdout/stderr"
+    ]
+  }
+}

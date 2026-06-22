@@ -1,0 +1,182 @@
+{
+  "schema": "ops.live-github-delivery-certification-archive.v1",
+  "version": 1,
+  "archivedAt": "2026-06-21T15:32:55.123Z",
+  "sourceReport": {
+    "path": ".ops/certifications/live-github-delivery/certification-report.json",
+    "schema": "ops.live-github-delivery-certification.v1",
+    "generatedAt": "2026-06-21T15:32:53.406Z"
+  },
+  "status": "passed",
+  "strict": false,
+  "target": {
+    "configured": true,
+    "repoRef": "a347c4b202503350",
+    "rawRepoStored": false
+  },
+  "token": {
+    "envName": "GITHUB_TOKEN",
+    "presentInProcessEnv": false,
+    "presentInDotenv": true,
+    "valueStored": false
+  },
+  "marker": {
+    "hash": "681a8ed476f7f436",
+    "rawStoredInTrackedArchive": false
+  },
+  "summary": {
+    "repoConnectionCreated": true,
+    "repoSyncPassed": true,
+    "backlogItemCreated": true,
+    "deliveryLinked": true,
+    "issueSynced": true,
+    "repairPreviewed": true,
+    "repairApplied": true,
+    "detailRead": true
+  },
+  "gates": {
+    "gatewayReachable": true,
+    "repoCredentialsAccepted": true,
+    "issueWriteAccepted": true,
+    "kanbanDeliveryLinked": true,
+    "repairReceiptRecorded": true,
+    "trackedArchiveRedacted": true
+  },
+  "evidence": {
+    "repoConnection": {
+      "repoConnectionRef": "7b94cd4bb74e16b9",
+      "defaultBranch": "main",
+      "authMode": "pat_fallback",
+      "enabled": true,
+      "syncStatus": null,
+      "lastValidationStatus": "ok",
+      "canWrite": false,
+      "viewerRef": null
+    },
+    "repoSync": {
+      "repoConnection": {
+        "repoConnectionRef": "7b94cd4bb74e16b9",
+        "defaultBranch": "main",
+        "authMode": "pat_fallback",
+        "enabled": true,
+        "syncStatus": "ok",
+        "lastValidationStatus": "ok",
+        "canWrite": true,
+        "viewerRef": "98c1867da4992660"
+      },
+      "github": {
+        "defaultBranch": "main",
+        "canWrite": true,
+        "viewerRef": "98c1867da4992660"
+      }
+    },
+    "backlogItem": {
+      "itemRef": "09f450a096b2d141",
+      "state": "planned",
+      "projectId": null,
+      "labelCount": 2
+    },
+    "deliveryLink": {
+      "deliveryRef": "133e7469e871107d",
+      "status": "planned",
+      "githubState": "open_pr",
+      "issueNumber": null,
+      "issueState": null,
+      "reconcileStatus": null
+    },
+    "issue": {
+      "number": 35,
+      "state": "open",
+      "labelCount": 1,
+      "issueUrlRef": "c121d329edc04f77"
+    },
+    "issueDelivery": {
+      "deliveryRef": "133e7469e871107d",
+      "status": "planned",
+      "githubState": "open_pr",
+      "issueNumber": 35,
+      "issueState": "open",
+      "reconcileStatus": null
+    },
+    "deliveryDetail": {
+      "deliveryRef": "133e7469e871107d",
+      "status": "planned",
+      "githubState": "open_pr",
+      "issueNumber": 35,
+      "issueState": "open",
+      "reconcileStatus": null
+    },
+    "repairPreview": {
+      "action": "refresh",
+      "hasIdempotencyKey": true,
+      "risk": null
+    },
+    "repair": {
+      "delivery": {
+        "deliveryRef": "133e7469e871107d",
+        "status": "blocked",
+        "githubState": "blocked",
+        "issueNumber": 35,
+        "issueState": "open",
+        "reconcileStatus": "repair_applied"
+      },
+      "receipt": {
+        "action": "refresh",
+        "status": "applied",
+        "changed": true
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "gateway:readiness",
+      "status": "passed",
+      "durationMs": 36
+    },
+    {
+      "id": "github:repo-connection:create",
+      "status": "passed",
+      "durationMs": 3
+    },
+    {
+      "id": "github:repo-sync",
+      "status": "passed",
+      "durationMs": 595
+    },
+    {
+      "id": "kanban:item:create",
+      "status": "passed",
+      "durationMs": 5
+    },
+    {
+      "id": "kanban:delivery-link",
+      "status": "passed",
+      "durationMs": 2
+    },
+    {
+      "id": "github:issue-sync",
+      "status": "passed",
+      "durationMs": 507
+    },
+    {
+      "id": "kanban:delivery-detail",
+      "status": "passed",
+      "durationMs": 358
+    },
+    {
+      "id": "kanban:repair-preview",
+      "status": "passed",
+      "durationMs": 2
+    },
+    {
+      "id": "kanban:repair-refresh",
+      "status": "passed",
+      "durationMs": 208
+    }
+  ],
+  "redaction": {
+    "trackedArchive": "Tracked archive omits raw repo names, issue URLs, API tokens, GitHub tokens, request bodies, and gateway command output.",
+    "localReport": "Local report stores only hashed repo/run/item references and redacted errors; GitHub token values are never persisted."
+  },
+  "followUpTasks": []
+}

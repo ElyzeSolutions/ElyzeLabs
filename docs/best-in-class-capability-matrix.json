@@ -1,7 +1,7 @@
 {
   "schema": "ops.best-in-class-capability-matrix.v1",
   "version": 1,
-  "updatedAt": "2026-05-31",
+  "updatedAt": "2026-06-22T17:52:05.045Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "statusDefinitions": {
     "ahead": "ElyzeLabs has stronger current behavior with local evidence and verification.",
@@ -18,9 +18,13 @@
       "focus": [
         "prompt layering",
         "skill curation",
+        "Kanban worker lanes",
+        "desktop chat ergonomics",
         "scheduled automation discipline",
         "multi-channel operations",
-        "terminal ergonomics"
+        "terminal ergonomics",
+        "generic computer use",
+        "goal continuation"
       ]
     },
     {
@@ -31,8 +35,13 @@
         "sandbox policy tiers",
         "deny-by-default egress",
         "endpoint groups",
+        "live e2e-scenario registry",
+        "live Telegram injection tests",
+        "messaging provider certification",
+        "OpenAI-compatible provider compatibility",
         "blueprint lifecycle",
-        "operator approval loops"
+        "operator approval loops",
+        "onboarding flow context guards"
       ]
     },
     {
@@ -44,8 +53,14 @@
         "channel routing",
         "DM pairing",
         "managed browser profile",
+        "interactive browser control",
+        "Workboard E2E",
+        "chat/tool-card UX",
+        "effective tool inventory",
         "doctor/onboarding breadth",
-        "model failover"
+        "model failover",
+        "bounded platform smoke tests",
+        "context-engine projection bounds"
       ]
     }
   ],
@@ -60,6 +75,7 @@
       "referenceSignals": [
         "Hermes separates stable prompt policy, context files, memory, and session state.",
         "OpenClaw exposes pluggable context and memory prompt-section contracts.",
+        "OpenClaw's current Codex harness protects context-engine projections, hook-expanded prompt ranges, and memory routing from unbounded prompt growth.",
         "NemoClaw keeps managed tool selection explicit in onboarding paths."
       ],
       "elyzeEvidence": [
@@ -72,7 +88,9 @@
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/agent/system_prompt.py",
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/agent/prompt_builder.py",
-        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/context-engine/types.ts"
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/context-engine/types.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/codex/src/app-server/attempt-context.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/agents/harness/prompt-compaction-hook-helpers.ts"
       ],
       "verification": {
         "commands": [
@@ -106,7 +124,7 @@
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/agent/memory_manager.py",
-        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/memory/prompt-section.ts"
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/memory-core/src/prompt-section.ts"
       ],
       "verification": {
         "commands": [
@@ -125,7 +143,7 @@
       "priority": "P0",
       "requiredForBestInClass": true,
       "status": "parity",
-      "requirement": "Telegram must support governed ingress, prompt-injection-safe memory behavior, bot identity validation, and an operator-triggered outbound smoke test with redacted evidence.",
+      "requirement": "Telegram must support governed ingress, prompt-injection-safe memory behavior, bot identity validation, operator-triggered outbound smoke tests, and real exchange scenarios with redacted evidence.",
       "referenceSignals": [
         "NemoClaw soft-fails optional Telegram reachability instead of blocking unrelated setup.",
         "OpenClaw doctor/onboarding surfaces risky channel and pairing policy.",
@@ -135,25 +153,31 @@
         "packages/gateway/src/server.ts",
         "packages/gateway/test/integration/telegram-prompt-governance.test.ts",
         "packages/gateway/test/integration/telegram-smoke-test.test.ts",
-        "docs/api-contract.md"
+        "docs/api-contract.md",
+        "scripts/testing/run-live-social-browser-certification.mjs",
+        "scripts/testing/archive-live-social-browser-certification.mjs",
+        "scripts/testing/scenarios/live-social-browser.json",
+        "docs/runbooks/live-social-browser-certification.md",
+        "docs/certifications/live-social-browser-latest.json"
       ],
       "referenceEvidence": [
-        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/src/lib/onboard/telegram-reachability.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/src/lib/onboard/sandbox-messaging-preflight.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/channels/channel-routing.md",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/gateway/doctor.md"
       ],
       "verification": {
         "commands": [
-          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/telegram-smoke-test.test.ts packages/gateway/test/integration/telegram-prompt-governance.test.ts"
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/telegram-smoke-test.test.ts packages/gateway/test/integration/telegram-prompt-governance.test.ts",
+          "pnpm test:live-social-browser",
+          "OPS_RUN_LIVE_SOCIAL_BROWSER_CERT=1 OPS_LIVE_SCENARIO_TELEGRAM=1 OPS_LIVE_SCENARIO_TELEGRAM_PROMPTS=1 OPS_LIVE_SCENARIO_SITES=instagram,tiktok,pinterest,x,reddit OPS_LIVE_SCENARIO_TIMEOUT_MS=120000 pnpm test:live-social-browser",
+          "pnpm archive:live-social-browser"
         ],
         "testPaths": [
           "packages/gateway/test/integration/telegram-smoke-test.test.ts",
           "packages/gateway/test/integration/telegram-prompt-governance.test.ts"
         ]
       },
-      "remainingGaps": [
-        "A live operator-run smoke test with real Telegram credentials still needs to be executed outside mocked integration tests."
-      ]
+      "remainingGaps": []
     },
     {
       "id": "sandbox_policy_profiles",
@@ -306,32 +330,308 @@
       "priority": "P1",
       "requiredForBestInClass": true,
       "status": "parity",
-      "requirement": "Browser automation should have agent-only managed profiles, optional user-profile attach, deterministic tab/action controls, artifact preview, and policy-diff approvals.",
+      "requirement": "Browser automation should keep Scrapling-first authenticated capture for low-detection read workflows, add guided Playwright storage-state import, and expose deterministic interactive tab/click/type/screenshot/PDF controls as a complementary provider.",
       "referenceSignals": [
         "OpenClaw separates agent-managed browser profiles from real-user Chrome profile attachment.",
-        "OpenClaw documents deterministic tab/click/type/screenshot/PDF browser tools."
+        "OpenClaw documents deterministic tab/click/type/screenshot/PDF browser tools.",
+        "OpenClaw ships a broad browser extension with CDP, Playwright, browser-control, profile, and CLI action tests.",
+        "Hermes now exposes a generic computer_use schema with screenshot/SOM capture, click/type/scroll/key actions, approval gates, and driver doctor checks."
       ],
       "elyzeEvidence": [
         "packages/gateway/src/browser-service.ts",
+        "packages/gateway/src/browser-interactive-service.ts",
         "packages/gateway/src/server.ts",
         "dashboard/src/pages/BrowserPage.tsx",
+        "docs/api-contract.md",
         "packages/gateway/test/unit/browser-service.test.ts",
+        "packages/gateway/test/unit/browser-interactive-service.test.ts",
+        "packages/gateway/test/unit/browser-session-vault.test.ts",
         "packages/gateway/test/integration/browser-api.test.ts",
-        "packages/gateway/test/integration/browser-managed-profiles.test.ts"
+        "packages/gateway/test/integration/browser-managed-profiles.test.ts",
+        "packages/gateway/test/integration/browser-auth-routing.test.ts",
+        "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
+        "scripts/testing/run-interactive-browser-certification.mjs",
+        "scripts/testing/run-live-interactive-browser-certification.mjs",
+        "scripts/testing/run-live-social-browser-certification.mjs",
+        "scripts/testing/archive-live-social-browser-certification.mjs",
+        "scripts/testing/scenarios/live-social-browser.json",
+        "docs/runbooks/interactive-browser-certification.md",
+        "docs/runbooks/live-social-browser-certification.md",
+        "docs/certifications/interactive-browser-live-latest.json",
+        "docs/certifications/live-social-browser-latest.json"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/tools/browser.md",
-        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/start/wizard.md"
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/tools/browser-control.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/browser/src/browser/client-fetch.attach-only.e2e.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/start/wizard.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tools/computer_use/schema.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tools/computer_use/tool.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tools/computer_use/doctor.py"
       ],
       "verification": {
         "commands": [
-          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/browser-service.test.ts packages/gateway/test/integration/browser-api.test.ts packages/gateway/test/integration/browser-managed-profiles.test.ts dashboard/src/pages/BrowserPage.test.tsx"
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/unit/browser-service.test.ts packages/gateway/test/unit/browser-interactive-service.test.ts packages/gateway/test/unit/browser-session-vault.test.ts packages/gateway/test/integration/browser-api.test.ts packages/gateway/test/integration/browser-managed-profiles.test.ts packages/gateway/test/integration/browser-auth-routing.test.ts dashboard/src/pages/BrowserPage.test.tsx",
+          "pnpm test:interactive-browser:cert",
+          "OPS_RUN_LIVE_INTERACTIVE_BROWSER_CERT=1 pnpm test:interactive-browser:live",
+          "pnpm test:live-social-browser",
+          "pnpm archive:live-social-browser"
         ],
         "testPaths": [
           "packages/gateway/test/unit/browser-service.test.ts",
+          "packages/gateway/test/unit/browser-interactive-service.test.ts",
+          "packages/gateway/test/unit/browser-session-vault.test.ts",
           "packages/gateway/test/integration/browser-api.test.ts",
           "packages/gateway/test/integration/browser-managed-profiles.test.ts",
+          "packages/gateway/test/integration/browser-auth-routing.test.ts",
+          "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
           "dashboard/src/pages/BrowserPage.test.tsx"
+        ]
+      },
+      "remainingGaps": []
+    },
+    {
+      "id": "operator_kanban_workboard",
+      "area": "kanban",
+      "priority": "P1",
+      "requiredForBestInClass": true,
+      "status": "parity",
+      "requirement": "Operator Kanban should support drag/drop, keyboard transitions, Telegram task creation, scoped GitHub delivery truth, issue sync, repair actions, and responsive visual certification.",
+      "referenceSignals": [
+        "OpenClaw ships a Workboard controller, persistent workboard extension, CLI docs, browser tests, and E2E status persistence tests.",
+        "Hermes has Kanban CLI flows, worker lanes, toolsets, dispatcher plugins, dashboard docs, and broad Kanban regression tests."
+      ],
+      "elyzeEvidence": [
+        "dashboard/src/pages/BacklogPage.tsx",
+        "dashboard/src/components/backlog/GithubDeliveryCockpit.tsx",
+        "dashboard/src/pages/BacklogPage.test.tsx",
+        "dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx",
+        "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
+        "packages/gateway/test/integration/github-delivery-certification.test.ts",
+        "scripts/testing/run-kanban-workboard-certification.mjs",
+        "scripts/testing/run-browser-tests.mjs",
+        "docs/runbooks/kanban-workboard-certification.md",
+        "scripts/testing/run-live-github-delivery-certification.mjs",
+        "scripts/testing/live-github-delivery-archive.test.mjs",
+        "docs/runbooks/live-github-delivery-certification.md",
+        "docs/certifications/live-github-delivery-latest.json"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/workboard.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/e2e/workboard.e2e.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/workboard/src/tools.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tools/kanban_tools.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tests/hermes_cli/test_kanban_worker_spawn_toolsets.py"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm test:kanban-workboard:cert",
+          "pnpm exec vitest run --config vitest.config.ts dashboard/src/pages/BacklogPage.test.tsx dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/github-delivery-certification.test.ts",
+          "pnpm test:live-github-delivery",
+          "node --test scripts/testing/live-github-delivery-archive.test.mjs",
+          "OPS_RUN_LIVE_GITHUB_DELIVERY_CERT=1 pnpm test:live-github-delivery"
+        ],
+        "testPaths": [
+          "dashboard/src/pages/BacklogPage.test.tsx",
+          "dashboard/src/components/backlog/GithubDeliveryCockpit.test.tsx",
+          "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
+          "packages/gateway/test/integration/github-delivery-certification.test.ts",
+          "scripts/testing/run-kanban-workboard-certification.mjs",
+          "scripts/testing/run-browser-tests.mjs",
+          "scripts/testing/run-live-github-delivery-certification.mjs",
+          "scripts/testing/live-github-delivery-archive.test.mjs"
+        ]
+      },
+      "remainingGaps": []
+    },
+    {
+      "id": "chat_process_runtime",
+      "area": "chat_runtime",
+      "priority": "P1",
+      "requiredForBestInClass": true,
+      "status": "parity",
+      "requirement": "Chat should make the process runtime, persistent harnesses, provider-backed runtimes, authenticated browser profile selection, and tool evidence visible and reliable across dashboard and Telegram sessions.",
+      "referenceSignals": [
+        "OpenClaw has dense chat infrastructure for run lifecycle, tool cards, slash commands, session cache, responsive chat tests, and E2E chat flows.",
+        "OpenClaw's latest harness work preserves replacement/timed-out session state, isolates compaction cleanup, and surfaces returned tool errors.",
+        "OpenClaw's dynamic provider/model picker resolves live catalog models instead of forcing operators to memorize static model names.",
+        "OpenClaw's latest chat and tool-result UX work adds effective tool labeling, token count formatting, session action repair, and chat regression tests.",
+        "Hermes desktop chat has rich composer, session sidebar, right-rail preview, gateway recovery, process fallback, and live sequential chat tests.",
+        "Hermes goal continuation now parks on background waits, tracks subgoals, and uses strict evidence checks before declaring completion.",
+        "NemoClaw now treats real hosted agent-turn latency as a live E2E requirement with archived artifacts."
+      ],
+      "elyzeEvidence": [
+        "dashboard/src/pages/MissionControlPage.tsx",
+        "dashboard/src/pages/AgentsPage.tsx",
+        "packages/runtime/src/adapters.ts",
+        "packages/gateway/src/server.ts",
+        "docs/api-contract.md",
+        "docs/runbooks/chat-process-runtime-certification.md",
+        "scripts/testing/run-chat-process-runtime-certification.mjs",
+        "scripts/testing/archive-live-social-browser-certification.mjs",
+        "scripts/testing/run-browser-tests.mjs",
+        "docs/certifications/live-social-browser-latest.json",
+        "packages/gateway/test/integration/runtime-certification.test.ts",
+        "packages/gateway/test/integration/gateway.test.ts",
+        "packages/gateway/test/integration/browser-auth-routing.test.ts",
+        "packages/gateway/test/integration/model-routing.test.ts",
+        "scripts/testing/run-provider-readiness-certification.mjs",
+        "scripts/testing/provider-readiness-certification.test.mjs",
+        "scripts/testing/run-live-telegram-process-certification.mjs",
+        "scripts/testing/live-telegram-process-certification.test.mjs",
+        "scripts/testing/archive-live-telegram-process-certification.mjs",
+        "scripts/testing/scenarios/live-telegram-process.json",
+        "docs/certifications/live-telegram-process-latest.json",
+        "docs/certifications/nightly-certification-latest.json"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/chat.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/e2e/chat-flow.e2e.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/chat/tool-cards.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/copilot/src/attempt.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/copilot/src/tool-bridge.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/agents/tools-effective-inventory-shared.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/chat/token-format.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/chat.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/apps/desktop/src/app/chat/index.tsx",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/hermes_cli/goals.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tests/hermes_cli/test_gateway_proc_fallback.py"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm test:chat-process:cert",
+          "pnpm archive:live-social-browser",
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/runtime-certification.test.ts",
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/model-routing.test.ts",
+          "pnpm test:provider-readiness",
+          "pnpm test:live-telegram-process",
+          "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process",
+          "pnpm archive:live-telegram-process"
+        ],
+        "testPaths": [
+          "dashboard/src/pages/MissionControlPage.test.tsx",
+          "scripts/testing/run-chat-process-runtime-certification.mjs",
+          "scripts/testing/run-browser-tests.mjs",
+          "packages/gateway/test/integration/runtime-certification.test.ts",
+          "packages/gateway/test/integration/gateway.test.ts",
+          "packages/gateway/test/integration/browser-auth-routing.test.ts",
+          "packages/gateway/test/integration/model-routing.test.ts",
+          "scripts/testing/run-provider-readiness-certification.mjs",
+          "scripts/testing/provider-readiness-certification.test.mjs",
+          "scripts/testing/run-live-telegram-process-certification.mjs",
+          "scripts/testing/live-telegram-process-certification.test.mjs",
+          "scripts/testing/archive-live-telegram-process-certification.mjs",
+          "scripts/testing/scenarios/live-telegram-process.json"
+        ]
+      },
+      "remainingGaps": []
+    },
+    {
+      "id": "e2e_scenario_certification",
+      "area": "testing",
+      "priority": "P0",
+      "requiredForBestInClass": true,
+      "status": "parity",
+      "requirement": "Best-in-class claims should be backed by a deterministic scenario registry that covers Telegram exchanges, authenticated browser sites, process fallback, Kanban delivery, UI screenshots, artifacts, redaction, and nightly/live lanes.",
+      "referenceSignals": [
+        "NemoClaw maintains live e2e-scenario suites, scenario registry support tests, messaging provider tests, network policy tests, and recovery tests.",
+        "NemoClaw's latest Kimi compatibility suite proves provider-specific chat/tool quirks through a fake OpenAI-compatible endpoint plus sandbox trajectory assertions.",
+        "NemoClaw's latest Telegram injection live e2e scenario proves shell metacharacters remain data and process tables do not expose provider secrets.",
+        "OpenClaw keeps YAML QA scenarios for chat/channel/browser flows plus E2E UI tests for chat and Workboard."
+      ],
+      "elyzeEvidence": [
+        "scripts/testing/run-browser-tests.mjs",
+        "scripts/testing/run-browser-schedule-certification.mjs",
+        "scripts/testing/run-fake-provider-e2e-certification.mjs",
+        "scripts/testing/run-interactive-browser-certification.mjs",
+        "scripts/testing/run-live-interactive-browser-certification.mjs",
+        "scripts/testing/run-live-social-browser-certification.mjs",
+        "scripts/testing/redaction.mjs",
+        "scripts/testing/live-archive-preservation.test.mjs",
+        "scripts/testing/run-nightly-certification.mjs",
+        "scripts/testing/archive-live-social-browser-certification.mjs",
+        "scripts/testing/archive-live-telegram-process-certification.mjs",
+        "scripts/testing/run-provider-readiness-certification.mjs",
+        "scripts/testing/provider-readiness-certification.test.mjs",
+        "scripts/testing/nightly-certification-followup.test.mjs",
+        ".github/workflows/nightly-certification.yml",
+        "scripts/testing/scenarios/fake-provider-e2e.json",
+        "scripts/testing/scenarios/live-social-browser.json",
+        "docs/runbooks/fake-provider-e2e-certification.md",
+        "docs/runbooks/interactive-browser-certification.md",
+        "docs/runbooks/live-social-browser-certification.md",
+        "docs/runbooks/nightly-certification.md",
+        "docs/certifications/fake-provider-e2e-latest.json",
+        "docs/certifications/interactive-browser-live-latest.json",
+        "docs/certifications/live-social-browser-latest.json",
+        "docs/certifications/nightly-certification-latest.json",
+        "packages/gateway/test/integration/fake-provider-e2e.test.ts",
+        "packages/gateway/test/integration/browser-auth-routing.test.ts",
+        "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
+        "packages/gateway/test/integration/telegram-smoke-test.test.ts",
+        "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
+        "scripts/testing/run-live-telegram-process-certification.mjs",
+        "scripts/testing/live-telegram-process-certification.test.mjs",
+        "scripts/testing/scenarios/live-telegram-process.json",
+        "scripts/testing/run-live-github-delivery-certification.mjs",
+        "scripts/testing/live-github-delivery-archive.test.mjs",
+        "scripts/testing/redaction.test.mjs",
+        "docs/runbooks/live-github-delivery-certification.md",
+        "docs/certifications/live-github-delivery-latest.json",
+        "docs/certifications/live-telegram-process-latest.json"
+      ],
+      "referenceEvidence": [
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/messaging-providers.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/kimi-inference-compat.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/kimi-inference-compat-helpers.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/telegram-injection.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/phase6-messaging-helpers.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/support-tests/e2e-scenario-registry.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/qa/scenarios/channels/channel-chat-baseline.yaml",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/qa/scenarios/ui/control-ui-chat-flow-playwright.yaml"
+      ],
+      "verification": {
+        "commands": [
+          "pnpm exec vitest run --config vitest.config.ts packages/gateway/test/integration/browser-auth-routing.test.ts packages/gateway/test/integration/telegram-backlog-kanban.test.ts packages/gateway/test/integration/telegram-smoke-test.test.ts",
+          "pnpm test:fake-provider-e2e:cert",
+          "pnpm test:interactive-browser:cert",
+          "OPS_NIGHTLY_CERT_DRY_RUN=1 pnpm test:nightly-cert",
+          "pnpm test:nightly-cert",
+          "OPS_RUN_LIVE_INTERACTIVE_BROWSER_CERT=1 pnpm test:interactive-browser:live",
+          "pnpm test:live-social-browser",
+          "pnpm archive:live-social-browser",
+          "node --test scripts/testing/live-archive-preservation.test.mjs",
+          "pnpm test:provider-readiness",
+          "node --test scripts/testing/provider-readiness-certification.test.mjs",
+          "node --test scripts/testing/nightly-certification-followup.test.mjs",
+          "node --test scripts/testing/live-telegram-process-certification.test.mjs",
+          "pnpm test:live-telegram-process",
+          "node --test scripts/testing/redaction.test.mjs",
+          "OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process",
+          "pnpm archive:live-telegram-process",
+          "pnpm test:live-github-delivery",
+          "node --test scripts/testing/live-github-delivery-archive.test.mjs",
+          "OPS_RUN_LIVE_GITHUB_DELIVERY_CERT=1 pnpm test:live-github-delivery"
+        ],
+        "testPaths": [
+          "packages/gateway/test/integration/browser-auth-routing.test.ts",
+          "packages/gateway/test/integration/fake-provider-e2e.test.ts",
+          "packages/gateway/test/integration/telegram-browser-live-control.test.ts",
+          "packages/gateway/test/integration/telegram-backlog-kanban.test.ts",
+          "packages/gateway/test/integration/telegram-smoke-test.test.ts",
+          "scripts/testing/run-nightly-certification.mjs",
+          ".github/workflows/nightly-certification.yml",
+          "scripts/testing/live-archive-preservation.test.mjs",
+          "scripts/testing/run-provider-readiness-certification.mjs",
+          "scripts/testing/provider-readiness-certification.test.mjs",
+          "scripts/testing/nightly-certification-followup.test.mjs",
+          "scripts/testing/run-live-telegram-process-certification.mjs",
+          "scripts/testing/live-telegram-process-certification.test.mjs",
+          "scripts/testing/archive-live-telegram-process-certification.mjs",
+          "scripts/testing/scenarios/live-telegram-process.json",
+          "scripts/testing/redaction.test.mjs",
+          "scripts/testing/run-live-github-delivery-certification.mjs",
+          "scripts/testing/live-github-delivery-archive.test.mjs"
         ]
       },
       "remainingGaps": []
