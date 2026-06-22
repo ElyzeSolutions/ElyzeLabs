@@ -18,6 +18,8 @@ const liveEvidenceDisabled =
   args.has('--no-live-evidence') || envOptionalFlag('OPS_NIGHTLY_CERT_REQUIRE_LIVE_EVIDENCE', true) === false;
 const requireLiveEvidence = !liveEvidenceDisabled;
 const liveEvidenceMaxAgeHours = envPositiveNumber('OPS_NIGHTLY_CERT_LIVE_EVIDENCE_MAX_AGE_HOURS', 168);
+const liveTelegramProcessArchiveFollowUp =
+  'Run OPS_RUN_PROVIDER_READINESS_CERT=1 pnpm test:provider-readiness first. When it passes, pnpm test:live-telegram-process automatically uses the selected provider model; then run OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and pnpm archive:live-telegram-process.';
 
 function envFlag(name) {
   const value = process.env[name];
@@ -163,7 +165,10 @@ function evaluateLiveEvidenceGate(expectation, nowMs) {
       maxAgeHours: liveEvidenceMaxAgeHours,
       requiredGates: expectation.requiredGates,
       missingGates: expectation.requiredGates,
-      output: 'Skipped until the first passed live Telegram process archive is created.'
+      output:
+        expectation.id === 'live_telegram_process_archive'
+          ? `Skipped until the first passed live Telegram process archive is created. ${liveTelegramProcessArchiveFollowUp}`
+          : 'Skipped until the first passed live archive is created.'
     };
   }
   const time = archive ? resolveArchiveTime(archive) : null;
@@ -563,11 +568,11 @@ const report = {
     : status === 'passed'
       ? includeLive
         ? liveEvidencePending
-          ? ['Produce docs/certifications/live-telegram-process-latest.json with OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and pnpm archive:live-telegram-process.']
+          ? [liveTelegramProcessArchiveFollowUp]
           : []
         : [
             ...(liveEvidencePending
-              ? ['Produce docs/certifications/live-telegram-process-latest.json with OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and pnpm archive:live-telegram-process.']
+              ? [liveTelegramProcessArchiveFollowUp]
               : []),
             'Run with OPS_NIGHTLY_CERT_INCLUDE_LIVE=1 to refresh live lanes before archived evidence reaches its max age.'
           ]

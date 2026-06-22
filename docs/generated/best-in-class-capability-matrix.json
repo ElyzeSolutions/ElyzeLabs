@@ -2,7 +2,7 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "8e37775b754620fca974dfc9d3aef3ac8c1d245ddc5290b130f113c0b4319ff3",
+  "sourceHash": "32fb419bf1da0835594178a5a92ef602eb2935d76bc985b3f6aa7707d92e6eba",
   "updatedAt": "2026-06-21T15:33:29.518Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
@@ -85,7 +85,7 @@
       "priority": "P0",
       "status": "partial",
       "remainingGaps": [
-        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass, and will enforce live Telegram process freshness as soon as a passed archive exists. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, and keep live refresh lanes green before the 168-hour archive window expires."
+        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass, and will enforce live Telegram process freshness as soon as a passed archive exists. Its pending live Telegram follow-up now routes operators through provider readiness first and then relies on the selected-model handoff before live Telegram certification/archive creation. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, and keep live refresh lanes green before the 168-hour archive window expires."
       ]
     }
   ],
@@ -520,6 +520,7 @@
         "scripts/testing/archive-live-telegram-process-certification.mjs",
         "scripts/testing/run-provider-readiness-certification.mjs",
         "scripts/testing/provider-readiness-certification.test.mjs",
+        "scripts/testing/nightly-certification-followup.test.mjs",
         ".github/workflows/nightly-certification.yml",
         "scripts/testing/scenarios/fake-provider-e2e.json",
         "scripts/testing/scenarios/live-social-browser.json",
@@ -566,6 +567,7 @@
           "node --test scripts/testing/live-archive-preservation.test.mjs",
           "pnpm test:provider-readiness",
           "node --test scripts/testing/provider-readiness-certification.test.mjs",
+          "node --test scripts/testing/nightly-certification-followup.test.mjs",
           "node --test scripts/testing/live-telegram-process-certification.test.mjs",
           "pnpm test:live-telegram-process",
           "node --test scripts/testing/redaction.test.mjs",
@@ -586,6 +588,7 @@
           "scripts/testing/live-archive-preservation.test.mjs",
           "scripts/testing/run-provider-readiness-certification.mjs",
           "scripts/testing/provider-readiness-certification.test.mjs",
+          "scripts/testing/nightly-certification-followup.test.mjs",
           "scripts/testing/run-live-telegram-process-certification.mjs",
           "scripts/testing/live-telegram-process-certification.test.mjs",
           "scripts/testing/archive-live-telegram-process-certification.mjs",
@@ -596,7 +599,7 @@
         ]
       },
       "remainingGaps": [
-        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass, and will enforce live Telegram process freshness as soon as a passed archive exists. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, and keep live refresh lanes green before the 168-hour archive window expires."
+        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass, and will enforce live Telegram process freshness as soon as a passed archive exists. Its pending live Telegram follow-up now routes operators through provider readiness first and then relies on the selected-model handoff before live Telegram certification/archive creation. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, and keep live refresh lanes green before the 168-hour archive window expires."
       ]
     },
     {
