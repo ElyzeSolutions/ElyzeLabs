@@ -13,6 +13,9 @@ const SCENARIO_PATH = path.join(SCRIPT_DIR, 'scenarios/live-telegram-process.jso
 const REPORT_DIR = path.join(REPO_ROOT, '.ops/certifications/live-telegram-process');
 const REPORT_PATH = path.join(REPORT_DIR, 'certification-report.json');
 const ARCHIVE_PATH = path.join(REPO_ROOT, 'docs/certifications/live-telegram-process-latest.json');
+const PROVIDER_READINESS_SELECTED_ENV_PATH = process.env.OPS_LIVE_TELEGRAM_PROCESS_SELECTED_MODEL_ENV?.trim()
+  ? path.resolve(process.env.OPS_LIVE_TELEGRAM_PROCESS_SELECTED_MODEL_ENV.trim())
+  : path.join(REPO_ROOT, '.ops/certifications/provider-readiness/selected-process-model.env');
 const DEFAULT_PROCESS_MODEL_CANDIDATES = [
   'openrouter/openai/gpt-5-mini',
   'openrouter/openai/gpt-4.1-mini',
@@ -90,6 +93,47 @@ function readDotenvValue(name) {
     return value.length > 0 ? value : null;
   }
   return null;
+}
+
+function parseEnvFileValue(rawValue) {
+  const trimmed = typeof rawValue === 'string' ? rawValue.trim() : '';
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/'\\''/gu, "'");
+  }
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1).replace(/\\"/gu, '"');
+  }
+  return trimmed;
+}
+
+function readEnvAssignment(filePath, name) {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/u);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue;
+    }
+    const separator = trimmed.indexOf('=');
+    if (separator === -1) {
+      continue;
+    }
+    const key = trimmed.slice(0, separator).trim();
+    if (key !== name) {
+      continue;
+    }
+    return parseEnvFileValue(trimmed.slice(separator + 1));
+  }
+  return null;
+}
+
+function readProviderReadinessSelectedModel() {
+  return readEnvAssignment(PROVIDER_READINESS_SELECTED_ENV_PATH, 'OPS_LIVE_TELEGRAM_PROCESS_MODEL');
 }
 
 function readControlPlaneConfig(configPath = DEFAULT_CONFIG_PATH) {
@@ -203,10 +247,23 @@ function uniqueStrings(values) {
 function resolveProcessModelCandidates() {
   const explicit = process.env.OPS_LIVE_TELEGRAM_PROCESS_MODEL?.trim();
   const configuredCandidates = splitModelList(process.env.OPS_LIVE_TELEGRAM_PROCESS_MODEL_CANDIDATES);
+  const providerReadinessSelectedModel = readProviderReadinessSelectedModel();
   if (explicit) {
-    return uniqueStrings([explicit, ...configuredCandidates]);
+    return {
+      candidates: uniqueStrings([explicit, ...configuredCandidates]),
+      source: 'explicit_env',
+      providerReadinessSelectedModel
+    };
   }
-  return uniqueStrings([...configuredCandidates, ...DEFAULT_PROCESS_MODEL_CANDIDATES]);
+  return {
+    candidates: uniqueStrings([
+      ...configuredCandidates,
+      ...(providerReadinessSelectedModel ? [providerReadinessSelectedModel] : []),
+      ...DEFAULT_PROCESS_MODEL_CANDIDATES
+    ]),
+    source: providerReadinessSelectedModel ? 'provider_readiness_selected_env' : configuredCandidates.length > 0 ? 'configured_candidates' : 'defaults',
+    providerReadinessSelectedModel
+  };
 }
 
 async function requestJson(url, { method = 'GET', headers = {}, body, timeoutMs = 20000 } = {}) {
@@ -688,6 +745,14 @@ function makeReport({ flags, registry, gatewayBaseUrl, marker }) {
       selectedProvider: null,
       selectedModel: null,
       explicitModelRequested: flags.explicitProcessModelRequested,
+      candidateSource: flags.processModelCandidateSource,
+      providerReadinessSelectedEnv: {
+        path: path.relative(REPO_ROOT, PROVIDER_READINESS_SELECTED_ENV_PATH),
+        used: flags.providerReadinessSelectedModel !== null && !flags.explicitProcessModelRequested,
+        configured: flags.providerReadinessSelectedModel !== null,
+        model: flags.providerReadinessSelectedModel,
+        rawCredentialStored: false
+      },
       rawModelStoredInTrackedArchive: false,
       routingPreflight: {
         enabled: true,
@@ -1196,13 +1261,16 @@ async function main() {
   const gatewayBaseUrl = resolveGatewayBaseUrl(config);
   const target = resolveTelegramTarget();
   const marker = `ltp-${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}`;
+  const processModelSelection = resolveProcessModelCandidates();
   const flags = {
     enabled: envFlag('OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT'),
     strict: envFlag('OPS_LIVE_TELEGRAM_PROCESS_STRICT', true),
     timeoutMs: positiveNumberEnv('OPS_LIVE_TELEGRAM_PROCESS_TIMEOUT_MS', 120000, 10000),
     processReplyMaxMs: positiveNumberEnv('OPS_LIVE_TELEGRAM_PROCESS_REPLY_MAX_MS', 120000, 10000),
     endToEndMaxMs: positiveNumberEnv('OPS_LIVE_TELEGRAM_PROCESS_E2E_MAX_MS', 300000, 30000),
-    processModelCandidates: resolveProcessModelCandidates(),
+    processModelCandidates: processModelSelection.candidates,
+    processModelCandidateSource: processModelSelection.source,
+    providerReadinessSelectedModel: processModelSelection.providerReadinessSelectedModel,
     explicitProcessModelRequested: Boolean(process.env.OPS_LIVE_TELEGRAM_PROCESS_MODEL?.trim()),
     targetConfigured: Boolean(target?.target),
     topicConfigured: Boolean(target?.topic)

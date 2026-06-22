@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +10,11 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '../..');
 const REPORT_PATH = path.join(REPO_ROOT, '.ops/certifications/provider-readiness/certification-report.json');
-const SELECTED_ENV_PATH = path.join(REPO_ROOT, '.ops/certifications/provider-readiness/selected-process-model.env');
+
+function createSelectedEnvPath() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-provider-readiness-'));
+  return path.join(dir, 'selected-process-model.env');
+}
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -83,6 +88,7 @@ async function withFakeGateway(handler, run) {
 
 test('provider readiness discovers process provider models before static defaults', async () => {
   const testedModels = [];
+  const selectedEnvPath = createSelectedEnvPath();
   await withFakeGateway(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1');
     if (url.pathname === '/api/health/readiness') {
@@ -165,7 +171,8 @@ test('provider readiness discovers process provider models before static default
         ...process.env,
         OPS_RUN_PROVIDER_READINESS_CERT: '1',
         OPS_PROVIDER_READINESS_API_TOKEN: 'test-token',
-        OPS_PROVIDER_READINESS_BASE_URL: baseUrl
+        OPS_PROVIDER_READINESS_BASE_URL: baseUrl,
+        OPS_PROVIDER_READINESS_SELECTED_MODEL_ENV: selectedEnvPath
       }
     });
     assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
@@ -176,9 +183,9 @@ test('provider readiness discovers process provider models before static default
     assert.equal(report.processModelSelection.discoveredCandidateCount, 1);
     assert.equal(report.processModelSelection.selectedModel, 'openrouter/acme/dynamic-process-model');
     assert.equal(report.processModelSelection.discovery.status, 'passed');
-    assert.equal(report.processModelSelection.selectedEnvPath, '.ops/certifications/provider-readiness/selected-process-model.env');
+    assert.equal(report.processModelSelection.selectedEnvPath, path.relative(REPO_ROOT, selectedEnvPath));
 
-    const selectedEnv = fs.readFileSync(SELECTED_ENV_PATH, 'utf8');
+    const selectedEnv = fs.readFileSync(selectedEnvPath, 'utf8');
     assert.match(selectedEnv, /OPS_LIVE_TELEGRAM_PROCESS_MODEL='openrouter\/acme\/dynamic-process-model'/);
     assert.doesNotMatch(selectedEnv, /test-token/);
   });

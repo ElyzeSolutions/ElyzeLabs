@@ -49,12 +49,13 @@ OPS_RUN_PROVIDER_READINESS_CERT=1 pnpm test:provider-readiness
 
 This side-effect-free lane calls gateway readiness, `/api/llm/routing/effective`, and `POST /api/onboarding/provider-keys/live-check` for the same provider-backed process model candidates. It discovers provider-backed process candidates from the live routing registry first, then falls back to configured/static candidates. It writes `.ops/certifications/provider-readiness/certification-report.json` with redacted per-candidate failure reasons and remediation hints, but sends no Telegram messages and creates no Kanban tasks. Override candidate priority with `OPS_PROVIDER_READINESS_MODEL` or `OPS_PROVIDER_READINESS_MODEL_CANDIDATES`.
 
-When a candidate passes, the lane writes `.ops/certifications/provider-readiness/selected-process-model.env` with `OPS_LIVE_TELEGRAM_PROCESS_MODEL` and `OPS_PROVIDER_READINESS_MODEL` set to the selected model. This helper contains model names only, not credentials or provider output, and is intended for the next live Telegram run:
+When a candidate passes, the lane writes `.ops/certifications/provider-readiness/selected-process-model.env` with `OPS_LIVE_TELEGRAM_PROCESS_MODEL` and `OPS_PROVIDER_READINESS_MODEL` set to the selected model. This helper contains model names only, not credentials or provider output. The live Telegram process lane automatically prioritizes this selected model when `OPS_LIVE_TELEGRAM_PROCESS_MODEL` is not set, so the normal follow-up is:
 
 ```bash
-source .ops/certifications/provider-readiness/selected-process-model.env
 OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process
 ```
+
+You can still `source .ops/certifications/provider-readiness/selected-process-model.env` manually when you want the same selected model to override other local shell defaults.
 
 The lane also records operator-facing latency SLOs in both the local report and the tracked archive. By default, the provider-backed Telegram process reply must complete within `120000` ms and the full live lane must complete within `300000` ms. Override those budgets with `OPS_LIVE_TELEGRAM_PROCESS_REPLY_MAX_MS` and `OPS_LIVE_TELEGRAM_PROCESS_E2E_MAX_MS` when certifying slower hosted providers.
 

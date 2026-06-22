@@ -11,7 +11,9 @@ const REPO_ROOT = path.resolve(SCRIPT_DIR, '../..');
 const DEFAULT_CONFIG_PATH = path.join(REPO_ROOT, 'config/control-plane.yaml');
 const REPORT_DIR = path.join(REPO_ROOT, '.ops/certifications/provider-readiness');
 const REPORT_PATH = path.join(REPORT_DIR, 'certification-report.json');
-const SELECTED_ENV_PATH = path.join(REPORT_DIR, 'selected-process-model.env');
+const SELECTED_ENV_PATH = process.env.OPS_PROVIDER_READINESS_SELECTED_MODEL_ENV?.trim()
+  ? path.resolve(process.env.OPS_PROVIDER_READINESS_SELECTED_MODEL_ENV.trim())
+  : path.join(REPORT_DIR, 'selected-process-model.env');
 const DEFAULT_PROCESS_MODEL_CANDIDATES = [
   'openrouter/openai/gpt-5-mini',
   'openrouter/openai/gpt-4.1-mini',
