@@ -256,6 +256,45 @@ describe('browser auth routing integration', () => {
     }
   });
 
+  it('explains Telegram browser auth import paths without hiding the Scrapling-first route', async () => {
+    const telegramSends: string[] = [];
+    stubTelegramFetch(telegramSends);
+
+    const harness = await createGatewayTestHarness('browser-auth-routing-help', (config) => {
+      config.channel.telegram.botToken = '123456:ABCDEFGHIJKLMNOPQRSTUVWXyz_123456789';
+      config.browser.enabled = true;
+      config.browser.transport = 'stdio';
+      config.browser.executable = installFakeScraplingExecutable(config.runtime.workspaceRoot);
+      config.browser.allowedAgents = ['ceo-default'];
+    });
+    harnesses.push(harness);
+
+    await applyCeoBaseline(harness);
+
+    const helpResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/ingress/telegram',
+      payload: createTelegramPayload({
+        updateId: 82000,
+        senderId: 8200,
+        text: '/browser help',
+        username: 'browserhelp'
+      })
+    });
+    expect(helpResponse.statusCode).toBe(200);
+    const helpBody = expectRecord(helpResponse.json(), 'browser help response');
+    expect(helpBody.status).toBe('command_applied');
+    expect(helpBody.subcommand).toBe('help');
+
+    const sentText = telegramSends.join('\n');
+    expect(sentText).toContain('Browser auth paths:');
+    expect(sentText).toContain('/browser connect <site> [chrome|edge|firefox|zen]');
+    expect(sentText).toContain('Playwright current-session import');
+    expect(sentText).toContain('mobile handoff');
+    expect(sentText).toContain('Scrapling cookie/storage-state first');
+    expect(sentText).toContain('/browser live <site|url>');
+  });
+
   it(
     'auto-selects a connected site browser profile from Telegram without /browser use',
     async () => {

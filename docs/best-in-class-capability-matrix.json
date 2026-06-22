@@ -22,7 +22,9 @@
         "desktop chat ergonomics",
         "scheduled automation discipline",
         "multi-channel operations",
-        "terminal ergonomics"
+        "terminal ergonomics",
+        "generic computer use",
+        "goal continuation"
       ]
     },
     {
@@ -34,6 +36,7 @@
         "deny-by-default egress",
         "endpoint groups",
         "live e2e-scenario registry",
+        "live Telegram injection tests",
         "messaging provider certification",
         "OpenAI-compatible provider compatibility",
         "blueprint lifecycle",
@@ -53,6 +56,7 @@
         "interactive browser control",
         "Workboard E2E",
         "chat/tool-card UX",
+        "effective tool inventory",
         "doctor/onboarding breadth",
         "model failover",
         "bounded platform smoke tests",
@@ -330,13 +334,15 @@
       "referenceSignals": [
         "OpenClaw separates agent-managed browser profiles from real-user Chrome profile attachment.",
         "OpenClaw documents deterministic tab/click/type/screenshot/PDF browser tools.",
-        "OpenClaw ships a broad browser extension with CDP, Playwright, browser-control, profile, and CLI action tests."
+        "OpenClaw ships a broad browser extension with CDP, Playwright, browser-control, profile, and CLI action tests.",
+        "Hermes now exposes a generic computer_use schema with screenshot/SOM capture, click/type/scroll/key actions, approval gates, and driver doctor checks."
       ],
       "elyzeEvidence": [
         "packages/gateway/src/browser-service.ts",
         "packages/gateway/src/browser-interactive-service.ts",
         "packages/gateway/src/server.ts",
         "dashboard/src/pages/BrowserPage.tsx",
+        "docs/api-contract.md",
         "packages/gateway/test/unit/browser-service.test.ts",
         "packages/gateway/test/unit/browser-interactive-service.test.ts",
         "packages/gateway/test/unit/browser-session-vault.test.ts",
@@ -358,7 +364,10 @@
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/tools/browser.md",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/tools/browser-control.md",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/browser/src/browser/client-fetch.attach-only.e2e.test.ts",
-        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/start/wizard.md"
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/start/wizard.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tools/computer_use/schema.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tools/computer_use/tool.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tools/computer_use/doctor.py"
       ],
       "verification": {
         "commands": [
@@ -446,7 +455,9 @@
         "OpenClaw has dense chat infrastructure for run lifecycle, tool cards, slash commands, session cache, responsive chat tests, and E2E chat flows.",
         "OpenClaw's latest harness work preserves replacement/timed-out session state, isolates compaction cleanup, and surfaces returned tool errors.",
         "OpenClaw's dynamic provider/model picker resolves live catalog models instead of forcing operators to memorize static model names.",
+        "OpenClaw's latest chat and tool-result UX work adds effective tool labeling, token count formatting, session action repair, and chat regression tests.",
         "Hermes desktop chat has rich composer, session sidebar, right-rail preview, gateway recovery, process fallback, and live sequential chat tests.",
+        "Hermes goal continuation now parks on background waits, tracks subgoals, and uses strict evidence checks before declaring completion.",
         "NemoClaw now treats real hosted agent-turn latency as a live E2E requirement with archived artifacts."
       ],
       "elyzeEvidence": [
@@ -477,7 +488,11 @@
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/chat/tool-cards.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/copilot/src/attempt.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/copilot/src/tool-bridge.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/agents/tools-effective-inventory-shared.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/chat/token-format.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/chat.test.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/apps/desktop/src/app/chat/index.tsx",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/hermes_cli/goals.py",
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tests/hermes_cli/test_gateway_proc_fallback.py"
       ],
       "verification": {
@@ -521,6 +536,7 @@
       "referenceSignals": [
         "NemoClaw maintains live e2e-scenario suites, scenario registry support tests, messaging provider tests, network policy tests, and recovery tests.",
         "NemoClaw's latest Kimi compatibility suite proves provider-specific chat/tool quirks through a fake OpenAI-compatible endpoint plus sandbox trajectory assertions.",
+        "NemoClaw's latest Telegram injection live e2e scenario proves shell metacharacters remain data and process tables do not expose provider secrets.",
         "OpenClaw keeps YAML QA scenarios for chat/channel/browser flows plus E2E UI tests for chat and Workboard."
       ],
       "elyzeEvidence": [
@@ -567,6 +583,8 @@
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/messaging-providers.test.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/kimi-inference-compat.test.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/kimi-inference-compat-helpers.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/telegram-injection.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/phase6-messaging-helpers.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/support-tests/e2e-scenario-registry.test.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/qa/scenarios/channels/channel-chat-baseline.yaml",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/qa/scenarios/ui/control-ui-chat-flow-playwright.yaml"

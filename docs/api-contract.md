@@ -12,7 +12,7 @@ Error envelope:
 { "ok": false, "error": "message", "details": {} }
 ```
 
-Generated route coverage lives in [docs/generated/api-route-inventory.md](generated/api-route-inventory.md). Run `pnpm api:inventory` after gateway route changes and `pnpm api:inventory:check` in verification. The current inventory reports 299 Fastify routes, with 292 explicitly documented here and 7 undocumented routes.
+Generated route coverage lives in [docs/generated/api-route-inventory.md](generated/api-route-inventory.md). Run `pnpm api:inventory` after gateway route changes and `pnpm api:inventory:check` in verification. The current inventory reports 299 Fastify routes, all explicitly documented here.
 
 ## Core Endpoints
 
@@ -217,6 +217,13 @@ Browser operations, profiles, credentials, history, and artifacts:
 - `POST /api/browser/proxy-profiles/upsert`
 - `POST /api/browser/storage-states/upsert`
 - `POST /api/browser/login-capture/start`
+- `POST /api/browser/playwright-auth/start`
+- `POST /api/browser/playwright-auth/save`
+- `POST /api/browser/playwright-auth/save-current`
+- `POST /api/browser/mobile-handoff/start`
+- `GET /api/browser/mobile-handoff/:handoffId/status`
+- `GET /mobile-browser-handoff/:handoffId` (public one-time phone handoff page)
+- `POST /api/mobile-browser-handoff/:handoffId/complete`
 - `POST /api/browser/connect-account`
 - `POST /api/browser/interactive/run`
 - `POST /api/browser/interactive/sessions`

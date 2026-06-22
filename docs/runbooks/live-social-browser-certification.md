@@ -78,3 +78,9 @@ scrapling install --force
 Use the Browser page to create or import session profiles first. Prefer the saved Scrapling cookie/storage-state path for read-only authenticated social scraping, and use the interactive provider only for dynamic pages that need rendered click/type/read behavior.
 
 Telegram operators can start a host-browser login capture with `/browser connect <site> [chrome|edge|firefox|zen]`, then save it with `/browser save <site> [chrome|edge|firefox|zen]`. Zen is treated as a Firefox-compatible local profile source internally, but it remains an explicit operator-facing selector so Zen users do not have to choose generic Firefox.
+
+Operators who do not know the right import path can send `/browser help` in Telegram. The response lists the supported paths in order: automatic saved-profile inference, host login capture, current Playwright/CDP session import, mobile handoff, then `/browser live` for rendered click/type fallback. This preserves the Scrapling-first low-detection route for normal authenticated reads.
+
+The current-session import is useful when a `Google Chrome for Testing` or other Playwright/CDP browser is already logged in. Browser Ops can call `POST /api/browser/playwright-auth/save-current` with either the active Playwright CLI state or a local session metadata file containing a CDP endpoint and profile directory. The resulting profile stores filtered storage state for Scrapling reuse instead of requiring the agent to keep controlling the live browser for read-only checks.
+
+The mobile handoff path is for phone-only logins. Browser Ops creates a one-time handoff URL through `POST /api/browser/mobile-handoff/start`; the phone opens that URL, submits a cookie export or raw cookie header, and the gateway verifies the resulting session profile before exposing it to agents.

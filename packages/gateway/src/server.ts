@@ -57138,6 +57138,31 @@ function resolveDelegationTimeoutOverride(mode: string): number | null {
         .split(/\s+/)
         .filter((entry) => entry.length > 0);
       const subcommand = (args[0] ?? 'show').toLowerCase();
+      if (subcommand === 'help') {
+        await saveOutboundMessage(
+          session,
+          'system',
+          'system',
+          [
+            'Browser auth paths:',
+            '- Use saved logins automatically: ask for TikTok, Instagram, Pinterest, X, Reddit, or Facebook and I will pick a matching connected profile when one exists.',
+            '- Host login: /browser connect <site> [chrome|edge|firefox|zen], finish login, then /browser save <site> [chrome|edge|firefox|zen].',
+            '- Current automation browser: save from Browser Ops or the Playwright current-session import when a Chrome-for-Testing/CDP login is already open.',
+            '- Phone login: create a mobile handoff in Browser Ops, open the one-time link on the phone, paste/export cookies, and submit.',
+            '- Read-only social checks use saved Scrapling cookie/storage-state first. Use /browser live <site|url> only when the page needs click/type/rendered control.',
+            'Commands: /browser list, /browser use <profile>, /browser clear, /browser live <site|url>, /browser observe, /browser read, /browser click <selector>, /browser type <selector> | <text>, /browser screenshot, /browser pdf, /browser live close.'
+          ].join('\n'),
+          {
+            command: 'browser',
+            subcommand: 'help'
+          }
+        );
+        return jsonOk(reply, {
+          status: 'command_applied',
+          command: 'browser',
+          subcommand: 'help'
+        });
+      }
       if (subcommand === 'list') {
         const profiles = listVisibleBrowserSessionProfiles(session).slice(0, 12);
         const summary = profiles

@@ -2,7 +2,7 @@
   "schema": "ops.best-in-class-audit.v1",
   "version": 1,
   "sourceSchema": "ops.best-in-class-capability-matrix.v1",
-  "sourceHash": "32fb419bf1da0835594178a5a92ef602eb2935d76bc985b3f6aa7707d92e6eba",
+  "sourceHash": "66d47947dd5e7ce0f1f782e72d657093e1734295a391a35907bdbbe16791091c",
   "updatedAt": "2026-06-21T15:33:29.518Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "readiness": "not_ready",
@@ -31,7 +31,9 @@
         "desktop chat ergonomics",
         "scheduled automation discipline",
         "multi-channel operations",
-        "terminal ergonomics"
+        "terminal ergonomics",
+        "generic computer use",
+        "goal continuation"
       ]
     },
     {
@@ -43,6 +45,7 @@
         "deny-by-default egress",
         "endpoint groups",
         "live e2e-scenario registry",
+        "live Telegram injection tests",
         "messaging provider certification",
         "OpenAI-compatible provider compatibility",
         "blueprint lifecycle",
@@ -62,6 +65,7 @@
         "interactive browser control",
         "Workboard E2E",
         "chat/tool-card UX",
+        "effective tool inventory",
         "doctor/onboarding breadth",
         "model failover",
         "bounded platform smoke tests",
@@ -336,6 +340,7 @@
         "packages/gateway/src/browser-interactive-service.ts",
         "packages/gateway/src/server.ts",
         "dashboard/src/pages/BrowserPage.tsx",
+        "docs/api-contract.md",
         "packages/gateway/test/unit/browser-service.test.ts",
         "packages/gateway/test/unit/browser-interactive-service.test.ts",
         "packages/gateway/test/unit/browser-session-vault.test.ts",
@@ -357,7 +362,10 @@
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/tools/browser.md",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/tools/browser-control.md",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/browser/src/browser/client-fetch.attach-only.e2e.test.ts",
-        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/start/wizard.md"
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/docs/start/wizard.md",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tools/computer_use/schema.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tools/computer_use/tool.py",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tools/computer_use/doctor.py"
       ],
       "verification": {
         "commands": [
@@ -465,7 +473,11 @@
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/chat/tool-cards.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/copilot/src/attempt.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/extensions/copilot/src/tool-bridge.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/src/agents/tools-effective-inventory-shared.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/chat/token-format.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/chat.test.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/apps/desktop/src/app/chat/index.tsx",
+        "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/hermes_cli/goals.py",
         "/Users/p4r4disi4c/Documents/ROADMAP/hermes-agent/tests/hermes_cli/test_gateway_proc_fallback.py"
       ],
       "verification": {
@@ -550,6 +562,8 @@
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/messaging-providers.test.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/kimi-inference-compat.test.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/kimi-inference-compat-helpers.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/telegram-injection.test.ts",
+        "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/phase6-messaging-helpers.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/support-tests/e2e-scenario-registry.test.ts",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/qa/scenarios/channels/channel-chat-baseline.yaml",
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/qa/scenarios/ui/control-ui-chat-flow-playwright.yaml"
