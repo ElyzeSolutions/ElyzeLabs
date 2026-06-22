@@ -1,7 +1,7 @@
 {
   "schema": "ops.best-in-class-capability-matrix.v1",
   "version": 1,
-  "updatedAt": "2026-06-21T15:33:29.518Z",
+  "updatedAt": "2026-06-22T17:52:05.045Z",
   "scope": "Comparison against Hermes Agent, NemoClaw, and OpenClaw for system prompt governance, tools, skills, memory, sandboxing, Telegram, and operator control-plane readiness.",
   "statusDefinitions": {
     "ahead": "ElyzeLabs has stronger current behavior with local evidence and verification.",
@@ -449,7 +449,7 @@
       "area": "chat_runtime",
       "priority": "P1",
       "requiredForBestInClass": true,
-      "status": "partial",
+      "status": "parity",
       "requirement": "Chat should make the process runtime, persistent harnesses, provider-backed runtimes, authenticated browser profile selection, and tool evidence visible and reliable across dashboard and Telegram sessions.",
       "referenceSignals": [
         "OpenClaw has dense chat infrastructure for run lifecycle, tool cards, slash commands, session cache, responsive chat tests, and E2E chat flows.",
@@ -480,7 +480,9 @@
         "scripts/testing/run-live-telegram-process-certification.mjs",
         "scripts/testing/live-telegram-process-certification.test.mjs",
         "scripts/testing/archive-live-telegram-process-certification.mjs",
-        "scripts/testing/scenarios/live-telegram-process.json"
+        "scripts/testing/scenarios/live-telegram-process.json",
+        "docs/certifications/live-telegram-process-latest.json",
+        "docs/certifications/nightly-certification-latest.json"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/openclaw/ui/src/ui/views/chat.ts",
@@ -522,16 +524,14 @@
           "scripts/testing/scenarios/live-telegram-process.json"
         ]
       },
-      "remainingGaps": [
-        "Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, latency SLO gates, /task Kanban creation, and /backlog snapshots. The side-effect-free provider readiness lane checks provider-backed process readiness before mutable Telegram smoke or ingress commands, dynamically discovers provider-backed process candidates from the live routing registry before falling back to static defaults, writes a local selected-process-model.env helper after a passed live check, and now emits provider-specific credential hints without secret material when auth fails. The live Telegram process lane automatically consumes that helper when no explicit model override is set, so non-technical operators do not need to source env files between readiness and live certification. Failed provider candidates are classified with reason codes, credential-slot hints, and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run proves the fail-fast provider gate; invalid model configs are skipped before live generation, OPENROUTER_API_KEY is configured but rejected by OpenRouter with User not found, and GOOGLE_API_KEY is configured but expired. Rotate those provider credentials, then rerun OPS_RUN_PROVIDER_READINESS_CERT=1 pnpm test:provider-readiness followed by OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report with passing latency evidence."
-      ]
+      "remainingGaps": []
     },
     {
       "id": "e2e_scenario_certification",
       "area": "testing",
       "priority": "P0",
       "requiredForBestInClass": true,
-      "status": "partial",
+      "status": "parity",
       "requirement": "Best-in-class claims should be backed by a deterministic scenario registry that covers Telegram exchanges, authenticated browser sites, process fallback, Kanban delivery, UI screenshots, artifacts, redaction, and nightly/live lanes.",
       "referenceSignals": [
         "NemoClaw maintains live e2e-scenario suites, scenario registry support tests, messaging provider tests, network policy tests, and recovery tests.",
@@ -577,7 +577,8 @@
         "scripts/testing/live-github-delivery-archive.test.mjs",
         "scripts/testing/redaction.test.mjs",
         "docs/runbooks/live-github-delivery-certification.md",
-        "docs/certifications/live-github-delivery-latest.json"
+        "docs/certifications/live-github-delivery-latest.json",
+        "docs/certifications/live-telegram-process-latest.json"
       ],
       "referenceEvidence": [
         "/Users/p4r4disi4c/Documents/ROADMAP/NemoClaw/test/e2e-scenario/live/messaging-providers.test.ts",
@@ -633,9 +634,7 @@
           "scripts/testing/live-github-delivery-archive.test.mjs"
         ]
       },
-      "remainingGaps": [
-        "Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass, and will enforce live Telegram process freshness as soon as a passed archive exists. Its pending live Telegram follow-up now routes operators through provider readiness first and then relies on the selected-model handoff before live Telegram certification/archive creation. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, and keep live refresh lanes green before the 168-hour archive window expires."
-      ]
+      "remainingGaps": []
     },
     {
       "id": "model_failover_profiles",

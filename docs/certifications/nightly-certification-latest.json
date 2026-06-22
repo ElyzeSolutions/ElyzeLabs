@@ -1,11 +1,11 @@
 {
   "schema": "ops.nightly-certification-archive.v1",
   "version": 1,
-  "archivedAt": "2026-06-21T20:53:52.232Z",
+  "archivedAt": "2026-06-22T17:51:17.187Z",
   "sourceReport": {
     "path": ".ops/certifications/nightly/certification-report.json",
     "schema": "ops.nightly-certification.v1",
-    "generatedAt": "2026-06-21T20:53:52.231Z"
+    "generatedAt": "2026-06-22T17:51:17.183Z"
   },
   "status": "passed",
   "mode": {
@@ -20,10 +20,10 @@
     "deterministic": 6,
     "live": 4,
     "liveEvidence": 4,
-    "passed": 9,
+    "passed": 10,
     "failed": 0,
     "blocked": 0,
-    "skipped": 5,
+    "skipped": 4,
     "planned": 0
   },
   "gates": {
@@ -34,7 +34,7 @@
     "liveEvidenceRequired": true,
     "liveEvidenceMaxAgeHours": 168,
     "liveEvidenceFresh": true,
-    "liveEvidencePending": true,
+    "liveEvidencePending": false,
     "redactedArchiveWritten": true
   },
   "lanes": [
@@ -159,8 +159,8 @@
       "id": "live_telegram_process_archive",
       "kind": "live_evidence",
       "trigger": "archive_freshness",
-      "status": "skipped",
-      "reportStatus": null,
+      "status": "passed",
+      "reportStatus": "passed",
       "reportPath": "docs/certifications/live-telegram-process-latest.json",
       "command": "read tracked live archive"
     }
@@ -170,7 +170,6 @@
     "trackedArchive": "Tracked archive omits command output and any live artifact payloads."
   },
   "followUpTasks": [
-    "Produce docs/certifications/live-telegram-process-latest.json with OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and pnpm archive:live-telegram-process.",
     "Run with OPS_NIGHTLY_CERT_INCLUDE_LIVE=1 to refresh live lanes before archived evidence reaches its max age."
   ]
 }

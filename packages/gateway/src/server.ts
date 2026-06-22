@@ -4222,6 +4222,7 @@ const PERSONNEL_MODEL_STACK = new Set([
   'openrouter/openrouter/free'
 ]);
 const EXECUTION_MODEL_STACK = new Set([
+  'openrouter/auto',
   'gemini-3.1-pro-preview',
   'gemini-3-flash-preview',
   'openrouter/minimax/minimax-m2.5'
@@ -9182,10 +9183,10 @@ export async function buildGatewayApp(
       ).trim();
     const resolveOpenRouterApiKeyForLive = (): string =>
       (
-        resolveOpenRouterApiKey() ??
-        openrouterApiKey ??
         process.env.OPENROUTER_API_KEY ??
         process.env.OPS_OPENROUTER_API_KEY ??
+        resolveOpenRouterApiKey() ??
+        openrouterApiKey ??
         tryResolveVaultSecret('providers.openrouter_api_key')
       ).trim();
     const resolveTelegramApiKeyForLive = (): string =>
@@ -9515,7 +9516,9 @@ export async function buildGatewayApp(
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${openrouterKey}`
+              Authorization: `Bearer ${openrouterKey}`,
+              'HTTP-Referer': process.env.OPS_OPENROUTER_REFERER ?? 'https://ops-control-plane.local',
+              'X-Title': process.env.OPS_OPENROUTER_TITLE ?? 'Ops Control Plane'
             },
             body: JSON.stringify({
               model: payloadModel,

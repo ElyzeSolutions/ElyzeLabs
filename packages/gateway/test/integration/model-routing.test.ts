@@ -43,6 +43,21 @@ describe('gateway model routing integration', () => {
     return value;
   };
 
+  const headerValue = (headers: HeadersInit | undefined, key: string): string | null => {
+    if (!headers) {
+      return null;
+    }
+    if (headers instanceof Headers) {
+      return headers.get(key);
+    }
+    if (Array.isArray(headers)) {
+      const entry = headers.find(([headerKey]) => headerKey.toLowerCase() === key.toLowerCase());
+      return entry ? entry[1] : null;
+    }
+    const record = headers;
+    return record[key] ?? record[key.toLowerCase()] ?? null;
+  };
+
   afterEach(async () => {
     while (harnesses.length > 0) {
       await harnesses.pop()!.close();
@@ -523,6 +538,7 @@ describe('gateway model routing integration', () => {
         });
       }
       if (url.includes('openrouter.ai/api/v1/models')) {
+        expect(headerValue(init?.headers, 'Authorization')).toBe('Bearer test-openrouter');
         return new Response(JSON.stringify({ data: [{ id: 'openai/gpt-5-mini' }] }), {
           status: 200,
           headers: { 'content-type': 'application/json' }
@@ -531,6 +547,9 @@ describe('gateway model routing integration', () => {
       if (url.includes('openrouter.ai/api/v1/chat/completions')) {
         const body = expectRecord(init?.body ? JSON.parse(String(init.body)) : {});
         expect(body.model).toBe('openai/gpt-5-mini');
+        expect(headerValue(init?.headers, 'Authorization')).toBe('Bearer test-openrouter');
+        expect(headerValue(init?.headers, 'HTTP-Referer')).toBe('https://ops-control-plane.local');
+        expect(headerValue(init?.headers, 'X-Title')).toBe('Ops Control Plane');
         return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
           status: 200,
           headers: { 'content-type': 'application/json' }
@@ -545,6 +564,7 @@ describe('gateway model routing integration', () => {
     const harness = await createGatewayTestHarness('provider-process-chat-live-ok', (localConfig) => {
       localConfig.channel.telegram.botToken = validTelegramBotToken;
       localConfig.runtime.defaultRuntime = 'process';
+      localConfig.runtime.openrouterApiKey = 'stale-config-openrouter-key';
     });
     harnesses.push(harness);
 

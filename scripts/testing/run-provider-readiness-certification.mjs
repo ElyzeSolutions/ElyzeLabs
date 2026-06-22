@@ -15,9 +15,11 @@ const SELECTED_ENV_PATH = process.env.OPS_PROVIDER_READINESS_SELECTED_MODEL_ENV?
   ? path.resolve(process.env.OPS_PROVIDER_READINESS_SELECTED_MODEL_ENV.trim())
   : path.join(REPORT_DIR, 'selected-process-model.env');
 const DEFAULT_PROCESS_MODEL_CANDIDATES = [
+  'openrouter/auto',
+  'openrouter/minimax/minimax-m2.5',
+  'gemini-3-flash-preview',
+  'gemini-3.1-pro-preview',
   'openrouter/openai/gpt-5-mini',
-  'openrouter/openai/gpt-4.1-mini',
-  'openrouter/google/gemini-2.5-flash',
   'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
   'gemini-flash-lite-latest'
@@ -428,10 +430,13 @@ function providerCandidatePriority(model) {
   if (!normalized) {
     return 100;
   }
-  if (normalized.includes('gpt-5-mini')) {
+  if (normalized === 'openrouter/auto' || normalized === 'openrouter/openrouter/auto') {
+    return 5;
+  }
+  if (normalized.includes('minimax/minimax-m2.5')) {
     return 10;
   }
-  if (normalized.includes('gpt-4.1-mini')) {
+  if (normalized.includes('gpt-5-mini')) {
     return 20;
   }
   if (normalized.includes('gemini-2.5-flash')) {

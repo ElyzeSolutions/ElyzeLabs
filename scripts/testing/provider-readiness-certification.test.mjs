@@ -278,6 +278,8 @@ test('provider readiness reports provider-specific credential remediation withou
     });
     assert.equal(result.status, 1);
     assert.deepEqual(attemptedModels.slice(0, 2), ['openrouter/acme/needs-auth', 'gemini-2.5-flash']);
+    assert.doesNotMatch(attemptedModels.join('\n'), /openrouter\/openai\/gpt-4\.1-mini/);
+    assert.doesNotMatch(attemptedModels.join('\n'), /openrouter\/google\/gemini-2\.5-flash/);
 
     const report = readJson(REPORT_PATH);
     assert.equal(report.status, 'failed');
@@ -289,5 +291,114 @@ test('provider readiness reports provider-specific credential remediation withou
     assert.match(report.followUpTasks.join('\n'), /OPENROUTER_API_KEY or OPS_OPENROUTER_API_KEY/);
     assert.match(report.followUpTasks.join('\n'), /GOOGLE_API_KEY or OPS_GOOGLE_API_KEY/);
     assert.doesNotMatch(JSON.stringify(report), /test-secret|test-google-secret|test-token/);
+  });
+});
+
+test('provider readiness prioritizes OpenRouter auto and execution models before personnel defaults', async () => {
+  const testedModels = [];
+  const selectedEnvPath = createSelectedEnvPath();
+  await withFakeGateway(async (request, response) => {
+    const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+    if (url.pathname === '/api/health/readiness') {
+      writeJson(response, 200, { ok: true });
+      return;
+    }
+    if (url.pathname === '/api/llm/routing/effective') {
+      const requestedModel = url.searchParams.get('model');
+      const selectedModel = requestedModel ?? 'openrouter/openai/gpt-5-mini';
+      writeJson(response, 200, {
+        registry: {
+          entries: [
+            {
+              model: 'openrouter/auto',
+              provider: 'openrouter',
+              allowedRuntimes: ['process'],
+              sources: ['execution_stack']
+            },
+            {
+              model: 'openrouter/openai/gpt-5-mini',
+              provider: 'openrouter',
+              allowedRuntimes: ['process'],
+              sources: ['personnel_stack']
+            },
+            {
+              model: 'openrouter/minimax/minimax-m2.5',
+              provider: 'openrouter',
+              allowedRuntimes: ['process'],
+              sources: ['execution_stack']
+            }
+          ],
+          providers: {
+            openrouter: ['openrouter/openai/gpt-5-mini', 'openrouter/minimax/minimax-m2.5', 'openrouter/auto'],
+            google: []
+          }
+        },
+        routes: [
+          {
+            runtime: 'process',
+            policy: 'orchestrator',
+            requestedModel,
+            selected: {
+              runtime: 'process',
+              provider: 'openrouter',
+              model: selectedModel,
+              authProfileId: 'openrouter:default'
+            },
+            reason: 'selected',
+            checks: [
+              {
+                model: selectedModel,
+                provider: 'openrouter',
+                authProfileId: 'openrouter:default',
+                eligible: true,
+                reason: 'eligible'
+              }
+            ]
+          }
+        ]
+      });
+      return;
+    }
+    if (url.pathname === '/api/onboarding/provider-keys/live-check') {
+      const body = await parseBody(request);
+      testedModels.push(body.processChatModel);
+      writeJson(response, 200, {
+        live: {
+          overall: 'ok',
+          providers: {
+            processChat: {
+              status: 'ok',
+              configured: true,
+              tested: true,
+              ok: true,
+              provider: 'openrouter',
+              model: body.processChatModel,
+              latencyMs: 18,
+              detail: 'ok'
+            }
+          }
+        }
+      });
+      return;
+    }
+    writeJson(response, 404, { error: 'not found' });
+  }, async (baseUrl) => {
+    fs.rmSync(path.dirname(REPORT_PATH), { force: true, recursive: true });
+    const result = await runNodeScript(['scripts/testing/run-provider-readiness-certification.mjs'], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        OPS_RUN_PROVIDER_READINESS_CERT: '1',
+        OPS_PROVIDER_READINESS_API_TOKEN: 'test-token',
+        OPS_PROVIDER_READINESS_BASE_URL: baseUrl,
+        OPS_PROVIDER_READINESS_SELECTED_MODEL_ENV: selectedEnvPath
+      }
+    });
+    assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
+    assert.deepEqual(testedModels, ['openrouter/auto']);
+
+    const report = readJson(REPORT_PATH);
+    assert.equal(report.status, 'passed');
+    assert.equal(report.processModelSelection.selectedModel, 'openrouter/auto');
   });
 });

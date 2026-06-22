@@ -63,6 +63,10 @@ Before sending Telegram smoke or ingress messages, the lane preflights each cand
 
 Provider-auth failures include provider-specific credential hints without storing credential material. The local report names accepted env slots and vault keys, for example `OPENROUTER_API_KEY` or `OPS_OPENROUTER_API_KEY` with `providers.openrouter_api_key`, and `GOOGLE_API_KEY` or `OPS_GOOGLE_API_KEY` with `providers.google_api_key`. If the lane fails with `provider_auth_invalid`, rotate the named key or vault entry first; changing model candidates will not fix an expired or rejected provider credential.
 
+Default provider-readiness candidates are limited to registry-backed process models and prefer execution-stack models before personnel/chat defaults, so stale aliases do not obscure credential failures. Put any experimental model behind `OPS_PROVIDER_READINESS_MODEL_CANDIDATES` when intentionally certifying it.
+
+OpenRouter readiness prefers `openrouter/auto` for the tiny generation probe because it returns normal chat content with a small token budget. Reasoning-heavy OpenRouter models can spend the whole probe budget on hidden reasoning and should be certified explicitly with a larger scenario when needed.
+
 The live lane verifies:
 
 - `POST /api/telegram/smoke-test` can authenticate the bot and deliver to the operator target.
