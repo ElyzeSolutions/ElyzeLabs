@@ -43,7 +43,7 @@ By default the live process lane probes a short provider-backed candidate list a
 
 The lane also records operator-facing latency SLOs in both the local report and the tracked archive. By default, the provider-backed Telegram process reply must complete within `120000` ms and the full live lane must complete within `300000` ms. Override those budgets with `OPS_LIVE_TELEGRAM_PROCESS_REPLY_MAX_MS` and `OPS_LIVE_TELEGRAM_PROCESS_E2E_MAX_MS` when certifying slower hosted providers.
 
-Before sending a live generation request, the lane preflights each candidate through `/api/llm/routing/effective?runtime=process&model=...` and verifies the requested candidate itself is the selected eligible route. Failed candidates are recorded with a redacted `reasonCode` and remediation hint, so provider-auth, billing/quota, cooldown, rate-limit, invalid model config/model-unavailable, routing fallback, and network failures are distinguishable in the local report.
+Before sending Telegram smoke or ingress messages, the lane preflights each candidate through `/api/llm/routing/effective?runtime=process&model=...` and verifies the requested candidate itself is the selected eligible route. It then performs the provider live-check before mutable Telegram operations, so broken provider credentials fail fast without creating noisy partial Telegram exchanges. Failed candidates are recorded with a redacted `reasonCode` and remediation hint, so provider-auth, billing/quota, cooldown, rate-limit, invalid model config/model-unavailable, routing fallback, and network failures are distinguishable in the local report.
 
 The live lane verifies:
 

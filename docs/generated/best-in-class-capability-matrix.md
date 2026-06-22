@@ -5,7 +5,7 @@ Generated from `docs/best-in-class-capability-matrix.json` by `pnpm best-in-clas
 ## Summary
 
 - Schema: `ops.best-in-class-audit.v1`
-- Source hash: `c5686e1d224d2769c892e29a9916cde17f82a9a6c204d9af569a6fb8f2b5f0e5`
+- Source hash: `5127d96a06719baea6477f63e2caa7587a5e8a3abf0a655c3dbea68fb13adee7`
 - Updated at: 2026-06-21T15:33:29.518Z
 - Readiness: `not_ready`
 - Capabilities: 13
@@ -27,7 +27,7 @@ Generated from `docs/best-in-class-capability-matrix.json` by `pnpm best-in-clas
 
 | Capability | Area | Priority | Status | Gaps |
 | --- | --- | --- | --- | --- |
-| chat_process_runtime | chat_runtime | P1 | partial | Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, latency SLO gates, /task Kanban creation, and /backlog snapshots. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run proves Telegram delivery plus /runtime process; invalid model configs are skipped before live generation, and the remaining live blocker is provider auth readiness: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report with passing latency evidence. |
+| chat_process_runtime | chat_runtime | P1 | partial | Strict live Telegram process certification now covers Telegram Bot API smoke, /runtime process, provider-backed /model selection, routing-aware process candidate preflight, generation-level provider chat preflight, process chat replies, latency SLO gates, /task Kanban creation, and /backlog snapshots. Provider-backed process readiness is checked before mutable Telegram smoke or ingress commands, so broken credentials fail fast without creating noisy partial Telegram exchanges. Failed provider candidates are classified with reason codes and remediation hints in the local report, and a passed local report can be archived with pnpm archive:live-telegram-process. The current live process chat run proves the fail-fast provider gate; invalid model configs are skipped before live generation, and the remaining live blocker is provider auth readiness: OpenRouter returns User not found and Google reports an expired API key. Renew or replace the process provider credential/model, then rerun OPS_RUN_LIVE_TELEGRAM_PROCESS_CERT=1 pnpm test:live-telegram-process and archive the passed report with passing latency evidence. |
 | e2e_scenario_certification | testing | P0 | partial | Nightly certification now requires fresh tracked live evidence archives for live interactive browser, authenticated social browser, and GitHub delivery before it can pass, and will enforce live Telegram process freshness as soon as a passed archive exists. Remaining: provision stable live Telegram provider credentials, produce a passed live Telegram process archive, and keep live refresh lanes green before the 168-hour archive window expires. |
 
 ## Matrix

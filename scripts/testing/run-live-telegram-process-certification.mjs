@@ -1244,9 +1244,6 @@ async function main() {
         timeoutMs: 10000
       })
     );
-    await runSmoke({ report, registry, gatewayBaseUrl, headers, target, timeoutMs: flags.timeoutMs });
-    await startFreshSession({ report, gatewayBaseUrl, target, timeoutMs: flags.timeoutMs, updateId: baseUpdateId + 1 });
-    await runRuntimeSwitch({ report, registry, gatewayBaseUrl, target, timeoutMs: flags.timeoutMs, updateId: baseUpdateId + 2 });
     const selectedProcessModel = await selectProcessProviderChatModel({
       report,
       registry,
@@ -1255,6 +1252,9 @@ async function main() {
       processModelCandidates: flags.processModelCandidates,
       timeoutMs: flags.timeoutMs
     });
+    await runSmoke({ report, registry, gatewayBaseUrl, headers, target, timeoutMs: flags.timeoutMs });
+    await startFreshSession({ report, gatewayBaseUrl, target, timeoutMs: flags.timeoutMs, updateId: baseUpdateId + 1 });
+    await runRuntimeSwitch({ report, registry, gatewayBaseUrl, target, timeoutMs: flags.timeoutMs, updateId: baseUpdateId + 2 });
     await runProcessModelSelect({
       report,
       registry,
