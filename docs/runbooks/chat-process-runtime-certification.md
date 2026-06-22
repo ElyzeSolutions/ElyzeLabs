@@ -61,6 +61,8 @@ The lane also records operator-facing latency SLOs in both the local report and 
 
 Before sending Telegram smoke or ingress messages, the lane preflights each candidate through `/api/llm/routing/effective?runtime=process&model=...` and verifies the requested candidate itself is the selected eligible route. It then performs the provider live-check before mutable Telegram operations, so broken provider credentials fail fast without creating noisy partial Telegram exchanges. Failed candidates are recorded with a redacted `reasonCode` and remediation hint, so provider-auth, billing/quota, cooldown, rate-limit, invalid model config/model-unavailable, routing fallback, and network failures are distinguishable in the local report.
 
+Provider-auth failures include provider-specific credential hints without storing credential material. The local report names accepted env slots and vault keys, for example `OPENROUTER_API_KEY` or `OPS_OPENROUTER_API_KEY` with `providers.openrouter_api_key`, and `GOOGLE_API_KEY` or `OPS_GOOGLE_API_KEY` with `providers.google_api_key`. If the lane fails with `provider_auth_invalid`, rotate the named key or vault entry first; changing model candidates will not fix an expired or rejected provider credential.
+
 The live lane verifies:
 
 - `POST /api/telegram/smoke-test` can authenticate the bot and deliver to the operator target.

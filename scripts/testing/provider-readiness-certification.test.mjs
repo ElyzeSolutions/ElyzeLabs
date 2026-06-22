@@ -190,3 +190,104 @@ test('provider readiness discovers process provider models before static default
     assert.doesNotMatch(selectedEnv, /test-token/);
   });
 });
+
+test('provider readiness reports provider-specific credential remediation without secrets', async () => {
+  const selectedEnvPath = createSelectedEnvPath();
+  const attemptedModels = [];
+  await withFakeGateway(async (request, response) => {
+    const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+    if (url.pathname === '/api/health/readiness') {
+      writeJson(response, 200, { ok: true });
+      return;
+    }
+    if (url.pathname === '/api/llm/routing/effective') {
+      const requestedModel = url.searchParams.get('model');
+      const provider = requestedModel?.startsWith('gemini') ? 'google' : 'openrouter';
+      writeJson(response, 200, {
+        registry: {
+          entries: [],
+          providers: {
+            openrouter: [],
+            google: []
+          }
+        },
+        routes: [
+          {
+            runtime: 'process',
+            policy: 'orchestrator',
+            requestedModel,
+            selected: {
+              runtime: 'process',
+              provider,
+              model: requestedModel,
+              authProfileId: `${provider}:default`
+            },
+            reason: 'selected',
+            checks: [
+              {
+                model: requestedModel,
+                provider,
+                authProfileId: `${provider}:default`,
+                eligible: true,
+                reason: 'eligible'
+              }
+            ]
+          }
+        ]
+      });
+      return;
+    }
+    if (url.pathname === '/api/onboarding/provider-keys/live-check') {
+      const body = await parseBody(request);
+      attemptedModels.push(body.processChatModel);
+      const isGoogle = String(body.processChatModel).startsWith('gemini');
+      writeJson(response, 200, {
+        live: {
+          overall: 'failed',
+          providers: {
+            processChat: {
+              status: 'error',
+              configured: true,
+              tested: true,
+              ok: false,
+              provider: isGoogle ? 'google' : 'openrouter',
+              model: body.processChatModel,
+              latencyMs: 12,
+              detail: isGoogle ? 'API key expired. Please renew the API key.' : 'User not found.'
+            }
+          }
+        }
+      });
+      return;
+    }
+    writeJson(response, 404, { error: 'not found' });
+  }, async (baseUrl) => {
+    fs.rmSync(path.dirname(REPORT_PATH), { force: true, recursive: true });
+    const result = await runNodeScript(['scripts/testing/run-provider-readiness-certification.mjs'], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        OPENROUTER_API_KEY: 'test-secret',
+        GOOGLE_API_KEY: 'test-google-secret',
+        OPS_RUN_PROVIDER_READINESS_CERT: '1',
+        OPS_PROVIDER_READINESS_API_TOKEN: 'test-token',
+        OPS_PROVIDER_READINESS_BASE_URL: baseUrl,
+        OPS_PROVIDER_READINESS_MODEL_CANDIDATES: 'openrouter/acme/needs-auth,gemini-2.5-flash',
+        OPS_PROVIDER_READINESS_SELECTED_MODEL_ENV: selectedEnvPath
+      }
+    });
+    assert.equal(result.status, 1);
+    assert.deepEqual(attemptedModels.slice(0, 2), ['openrouter/acme/needs-auth', 'gemini-2.5-flash']);
+
+    const report = readJson(REPORT_PATH);
+    assert.equal(report.status, 'failed');
+    assert.equal(report.processModelSelection.failureSummary.byReason.provider_auth_invalid, attemptedModels.length);
+    assert.ok(report.processModelSelection.failureSummary.byCredential.openrouter.authFailures >= 1);
+    assert.ok(report.processModelSelection.failureSummary.byCredential.google.authFailures >= 1);
+    assert.deepEqual(report.attempts[0].credentialHint.acceptedEnvKeys, ['OPENROUTER_API_KEY', 'OPS_OPENROUTER_API_KEY']);
+    assert.deepEqual(report.attempts[1].credentialHint.acceptedEnvKeys, ['GOOGLE_API_KEY', 'OPS_GOOGLE_API_KEY']);
+    assert.match(report.followUpTasks.join('\n'), /OPENROUTER_API_KEY or OPS_OPENROUTER_API_KEY/);
+    assert.match(report.followUpTasks.join('\n'), /GOOGLE_API_KEY or OPS_GOOGLE_API_KEY/);
+    assert.doesNotMatch(JSON.stringify(report), /test-secret|test-google-secret|test-token/);
+  });
+});

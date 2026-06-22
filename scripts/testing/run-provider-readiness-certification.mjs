@@ -22,6 +22,18 @@ const DEFAULT_PROCESS_MODEL_CANDIDATES = [
   'gemini-2.5-flash-lite',
   'gemini-flash-lite-latest'
 ];
+const PROVIDER_CREDENTIAL_HINTS = {
+  openrouter: {
+    provider: 'openrouter',
+    envKeys: ['OPENROUTER_API_KEY', 'OPS_OPENROUTER_API_KEY'],
+    vaultKey: 'providers.openrouter_api_key'
+  },
+  google: {
+    provider: 'google',
+    envKeys: ['GOOGLE_API_KEY', 'OPS_GOOGLE_API_KEY'],
+    vaultKey: 'providers.google_api_key'
+  }
+};
 
 const truthyValues = new Set(['1', 'true', 'yes', 'y', 'on']);
 const falsyValues = new Set(['0', 'false', 'no', 'n', 'off']);
@@ -208,6 +220,50 @@ function hashValue(value) {
     return null;
   }
   return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+}
+
+function isEnvSlotConfigured(name) {
+  const envValue = process.env[name];
+  if (typeof envValue === 'string' && envValue.trim().length > 0) {
+    return true;
+  }
+  return readDotenvValue(name) !== null;
+}
+
+function providerFromModel(model) {
+  const normalized = typeof model === 'string' ? model.trim().toLowerCase() : '';
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.startsWith('openrouter/') || normalized.startsWith('openrouter:') || normalized.startsWith('or:')) {
+    return 'openrouter';
+  }
+  if (normalized.startsWith('gemini') || normalized.startsWith('google/')) {
+    return 'google';
+  }
+  return null;
+}
+
+function credentialHintForProvider(provider) {
+  const normalized = typeof provider === 'string' ? provider.trim().toLowerCase() : '';
+  const hint = PROVIDER_CREDENTIAL_HINTS[normalized];
+  if (!hint) {
+    return null;
+  }
+  return {
+    provider: hint.provider,
+    acceptedEnvKeys: hint.envKeys,
+    configuredEnvKeys: hint.envKeys.filter(isEnvSlotConfigured),
+    vaultKey: hint.vaultKey
+  };
+}
+
+function credentialHintForAttempt(attempt) {
+  const provider =
+    (typeof attempt?.provider === 'string' && attempt.provider.trim()) ||
+    (typeof attempt?.routing?.selectedProvider === 'string' && attempt.routing.selectedProvider.trim()) ||
+    providerFromModel(attempt?.model);
+  return credentialHintForProvider(provider);
 }
 
 async function requestJson(url, { method = 'GET', headers = {}, body, timeoutMs = 20000 } = {}) {
@@ -505,8 +561,12 @@ function classifyProviderFailure(attempt) {
   return 'provider_live_check_failed';
 }
 
-function remediationForReason(reasonCode) {
+function remediationForReason(reasonCode, attempt = null) {
   if (reasonCode === 'provider_auth_invalid') {
+    const hint = credentialHintForAttempt(attempt);
+    if (hint) {
+      return `Rotate or replace the ${hint.provider} credential (${hint.acceptedEnvKeys.join(' or ')}; vault ${hint.vaultKey}), then rerun pnpm test:provider-readiness before live Telegram certification.`;
+    }
     return 'Rotate or replace the provider credential, then rerun pnpm test:provider-readiness before live Telegram certification.';
   }
   if (reasonCode === 'provider_billing_or_quota') {
@@ -535,6 +595,7 @@ function remediationForReason(reasonCode) {
 
 function summarizeAttempts(attempts) {
   const byReason = {};
+  const byCredential = {};
   const recommendations = [];
   for (const attempt of attempts) {
     if (attempt.ok === true) {
@@ -542,7 +603,19 @@ function summarizeAttempts(attempts) {
     }
     const reasonCode = typeof attempt.reasonCode === 'string' ? attempt.reasonCode : classifyProviderFailure(attempt);
     byReason[reasonCode] = (byReason[reasonCode] ?? 0) + 1;
-    const recommendation = remediationForReason(reasonCode);
+    const credentialHint = credentialHintForAttempt(attempt);
+    if (credentialHint && reasonCode === 'provider_auth_invalid') {
+      const existing = byCredential[credentialHint.provider] ?? {
+        provider: credentialHint.provider,
+        acceptedEnvKeys: credentialHint.acceptedEnvKeys,
+        configuredEnvKeys: credentialHint.configuredEnvKeys,
+        vaultKey: credentialHint.vaultKey,
+        authFailures: 0
+      };
+      existing.authFailures += 1;
+      byCredential[credentialHint.provider] = existing;
+    }
+    const recommendation = remediationForReason(reasonCode, attempt);
     if (!recommendations.includes(recommendation)) {
       recommendations.push(recommendation);
     }
@@ -552,6 +625,7 @@ function summarizeAttempts(attempts) {
     passed: attempts.filter((attempt) => attempt.ok === true).length,
     failed: attempts.filter((attempt) => attempt.ok !== true).length,
     byReason,
+    byCredential,
     recommendations
   };
 }
@@ -649,7 +723,8 @@ async function runProviderAttempts({ report, gatewayBaseUrl, headers, processMod
           routing
         };
         attempt.reasonCode = classifyProviderFailure(attempt);
-        attempt.recommendation = remediationForReason(attempt.reasonCode);
+        attempt.credentialHint = credentialHintForAttempt(attempt);
+        attempt.recommendation = remediationForReason(attempt.reasonCode, attempt);
         attempts.push(attempt);
         continue;
       }
@@ -678,7 +753,8 @@ async function runProviderAttempts({ report, gatewayBaseUrl, headers, processMod
         routing
       };
       attempt.reasonCode = classifyProviderFailure(attempt);
-      attempt.recommendation = remediationForReason(attempt.reasonCode);
+      attempt.credentialHint = credentialHintForAttempt(attempt);
+      attempt.recommendation = remediationForReason(attempt.reasonCode, attempt);
       attempts.push(attempt);
       continue;
     }
@@ -698,7 +774,8 @@ async function runProviderAttempts({ report, gatewayBaseUrl, headers, processMod
         routing
       };
       attempt.reasonCode = liveCheck.ok === true ? null : classifyProviderFailure(attempt);
-      attempt.recommendation = attempt.reasonCode ? remediationForReason(attempt.reasonCode) : null;
+      attempt.credentialHint = attempt.reasonCode ? credentialHintForAttempt(attempt) : null;
+      attempt.recommendation = attempt.reasonCode ? remediationForReason(attempt.reasonCode, attempt) : null;
       attempts.push(attempt);
       if (liveCheck.status === 'ok' && liveCheck.ok === true) {
         report.gates.providerBackedProcessChatReady = true;
@@ -721,7 +798,8 @@ async function runProviderAttempts({ report, gatewayBaseUrl, headers, processMod
         routing
       };
       attempt.reasonCode = classifyProviderFailure(attempt);
-      attempt.recommendation = remediationForReason(attempt.reasonCode);
+      attempt.credentialHint = credentialHintForAttempt(attempt);
+      attempt.recommendation = remediationForReason(attempt.reasonCode, attempt);
       attempts.push(attempt);
     }
   }
