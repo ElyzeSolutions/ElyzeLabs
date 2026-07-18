@@ -337,6 +337,17 @@ type BacklogErrorBanner = {
   remediation: string[];
 } | null;
 
+type WorkbenchSignalTone = 'neutral' | 'positive' | 'warn' | 'critical';
+
+type WorkbenchSignal = {
+  id: string;
+  label: string;
+  value: string;
+  detail: string;
+  tone: WorkbenchSignalTone;
+  states: BacklogState[];
+};
+
 const DEFAULT_ORCHESTRATION_STATE: BacklogOrchestrationState = {
   enabled: true,
   paused: true,
@@ -346,6 +357,84 @@ const DEFAULT_ORCHESTRATION_STATE: BacklogOrchestrationState = {
   projectCaps: {},
   projectPriorityBias: {}
 };
+
+function hasUnresolvedDependencies(item: BacklogItemRow): boolean {
+  return (item.unresolvedDependencies?.length ?? 0) > 0;
+}
+
+function isDispatchable(item: BacklogItemRow): boolean {
+  return item.dispatchReady !== false && !hasUnresolvedDependencies(item);
+}
+
+function isDeliveryRisk(item: BacklogItemRow): boolean {
+  const state = item.delivery?.githubState ?? null;
+  const receiptStatus = item.delivery?.receiptStatus ?? null;
+  return (
+    state === 'checks_failed' ||
+    state === 'blocked' ||
+    state === 'review_changes_requested' ||
+    state === 'closed_unmerged' ||
+    state === 'reverted' ||
+    receiptStatus === 'failed'
+  );
+}
+
+function buildWorkbenchSignals(columns: BacklogBoardColumns, orchestration: BacklogOrchestrationState): WorkbenchSignal[] {
+  const items = Object.values(columns).flat();
+  const readyForDispatch = columns.planned.filter(isDispatchable).length;
+  const verificationQueue = columns.review.length;
+  const stalledItems = columns.blocked.length + items.filter((item) => item.state !== 'blocked' && hasUnresolvedDependencies(item)).length;
+  const deliveryRisk = items.filter(isDeliveryRisk).length;
+  const inFlight = orchestration.queue.inFlight;
+
+  return [
+    {
+      id: 'ready',
+      label: 'Ready',
+      value: clampCount(readyForDispatch),
+      detail: 'dispatchable planned work',
+      tone: readyForDispatch > 0 ? 'positive' : 'neutral',
+      states: ['planned']
+    },
+    {
+      id: 'wip',
+      label: 'WIP',
+      value: `${clampCount(inFlight)}/${clampCount(orchestration.wipLimit)}`,
+      detail: orchestration.paused ? 'orchestrator paused' : 'active execution slots',
+      tone:
+        orchestration.wipLimit > 0 && inFlight >= orchestration.wipLimit
+          ? 'warn'
+          : inFlight > 0
+            ? 'positive'
+            : 'neutral',
+      states: ['in_progress']
+    },
+    {
+      id: 'verify',
+      label: 'Verify',
+      value: clampCount(verificationQueue),
+      detail: 'waiting acceptance',
+      tone: verificationQueue > 0 ? 'warn' : 'neutral',
+      states: ['review']
+    },
+    {
+      id: 'stalled',
+      label: 'Stalled',
+      value: clampCount(stalledItems),
+      detail: 'blocked or dependency-held',
+      tone: stalledItems > 0 ? 'critical' : 'neutral',
+      states: ['blocked']
+    },
+    {
+      id: 'delivery',
+      label: 'Delivery risk',
+      value: clampCount(deliveryRisk),
+      detail: 'GitHub or evidence risk',
+      tone: deliveryRisk > 0 ? 'critical' : 'neutral',
+      states: ['review', 'blocked']
+    }
+  ];
+}
 
 function useBacklogPageController(token?: string) {
   const queryClient = useQueryClient();
@@ -572,6 +661,7 @@ function useBacklogPageController(token?: string) {
     () => describeScope(scope, selectedProject, selectedRepo),
     [scope, selectedProject, selectedRepo]
   );
+  const workbenchSignals = useMemo(() => buildWorkbenchSignals(columns, orchestration), [columns, orchestration]);
 
   const currentScopeCount = useMemo(() => {
     if (scope.unscopedOnly) {
@@ -877,6 +967,7 @@ function useBacklogPageController(token?: string) {
     unscopedSummary,
     currentScopeCount,
     currentScopeLabel,
+    workbenchSignals,
     cleanupBusy,
     cleanupCopy,
     cleanupScopeCount,
@@ -919,6 +1010,7 @@ export function BacklogPage() {
     unscopedSummary,
     currentScopeCount,
     currentScopeLabel,
+    workbenchSignals,
     cleanupBusy,
     cleanupCopy,
     cleanupScopeCount,
@@ -975,6 +1067,11 @@ export function BacklogPage() {
           onCreated={load}
         />
 
+        <WorkbenchPulseStrip
+          signals={workbenchSignals}
+          onApplyPreset={applyPreset}
+        />
+
         <section className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[1fr_320px]">
           <div className="min-h-0 overflow-visible pb-4 md:overflow-x-auto">
             <div className="flex min-h-full flex-col items-stretch gap-4 md:inline-flex md:flex-row md:items-start md:pr-4">
@@ -1017,6 +1114,68 @@ export function BacklogPage() {
         />
       </div>
     </LazyMotion>
+  );
+}
+
+function signalToneClass(tone: WorkbenchSignalTone): string {
+  if (tone === 'positive') {
+    return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100';
+  }
+  if (tone === 'warn') {
+    return 'border-amber-500/25 bg-amber-500/10 text-amber-100';
+  }
+  if (tone === 'critical') {
+    return 'border-rose-500/25 bg-rose-500/10 text-rose-100';
+  }
+  return 'border-white/8 bg-white/[0.025] text-slate-200';
+}
+
+function WorkbenchSignalIcon({ id }: { id: string }) {
+  if (id === 'ready') {
+    return <Target size={15} weight="bold" />;
+  }
+  if (id === 'wip') {
+    return <Lightning size={15} weight="fill" />;
+  }
+  if (id === 'verify') {
+    return <CheckCircle size={15} weight="bold" />;
+  }
+  if (id === 'stalled') {
+    return <WarningCircle size={15} weight="fill" />;
+  }
+  return <ShieldCheck size={15} weight="bold" />;
+}
+
+function WorkbenchPulseStrip({
+  signals,
+  onApplyPreset
+}: {
+  signals: WorkbenchSignal[];
+  onApplyPreset: (states: BacklogState[]) => void;
+}) {
+  return (
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Operator focus">
+      {signals.map((signal) => (
+        <button
+          key={signal.id}
+          type="button"
+          aria-label={`${signal.label}: ${signal.value} ${signal.detail}`}
+          onClick={() => onApplyPreset(signal.states)}
+          className={`min-h-[92px] rounded-2xl border px-4 py-3 text-left shadow-[0_14px_36px_rgba(0,0,0,0.18)] transition-[transform,border-color,background-color,color,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(0,0,0,0.22)] active:scale-[0.96] ${signalToneClass(signal.tone)}`}
+        >
+          <span className="flex items-start justify-between gap-3">
+            <span className="min-w-0">
+              <span className="block text-[10px] uppercase tracking-[0.16em] opacity-70">{signal.label}</span>
+              <span className="mt-2 block font-mono text-2xl font-semibold tabular-nums text-current">{signal.value}</span>
+            </span>
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-current/15 bg-black/10 text-current">
+              <WorkbenchSignalIcon id={signal.id} />
+            </span>
+          </span>
+          <span className="mt-2 block text-pretty text-xs leading-5 opacity-75">{signal.detail}</span>
+        </button>
+      ))}
+    </section>
   );
 }
 

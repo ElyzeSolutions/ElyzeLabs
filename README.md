@@ -51,6 +51,8 @@ ElyzeLabs is a baseline, not a locked vertical product.
 
 ## Quick Start
 
+Use Node 22.x and pnpm 10.x. CI runs Node 22, and native SQLite dependencies are built for that runtime ABI.
+
 ```bash
 pnpm install
 cp .env.example .env

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createFirefoxLocalProfileFixture,
+  createZenLocalProfileFixture,
   installFakeOpenCommand
 } from './browser-local-profile-fixtures.js';
 import { createGatewayTestHarness, type GatewayTestHarness } from './test-harness.js';
@@ -216,6 +217,8 @@ describe('browser auth routing integration', () => {
   const originalPath = process.env.PATH;
   const originalFirefoxProfileRoot = process.env.OPS_BROWSER_FIREFOX_PROFILE_ROOT;
   const originalFirefoxBinary = process.env.OPS_BROWSER_VISIBLE_FIREFOX_BIN;
+  const originalZenProfileRoot = process.env.OPS_BROWSER_ZEN_PROFILE_ROOT;
+  const originalZenBinary = process.env.OPS_BROWSER_VISIBLE_ZEN_BIN;
 
   afterEach(async () => {
     if (originalGoogleApiKey === undefined) {
@@ -234,6 +237,16 @@ describe('browser auth routing integration', () => {
     } else {
       process.env.OPS_BROWSER_VISIBLE_FIREFOX_BIN = originalFirefoxBinary;
     }
+    if (originalZenProfileRoot === undefined) {
+      delete process.env.OPS_BROWSER_ZEN_PROFILE_ROOT;
+    } else {
+      process.env.OPS_BROWSER_ZEN_PROFILE_ROOT = originalZenProfileRoot;
+    }
+    if (originalZenBinary === undefined) {
+      delete process.env.OPS_BROWSER_VISIBLE_ZEN_BIN;
+    } else {
+      process.env.OPS_BROWSER_VISIBLE_ZEN_BIN = originalZenBinary;
+    }
     vi.stubGlobal(
       'fetch',
       (originalFetch ?? (async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))) as typeof fetch
@@ -241,6 +254,45 @@ describe('browser auth routing integration', () => {
     while (harnesses.length > 0) {
       await harnesses.pop()!.close();
     }
+  });
+
+  it('explains Telegram browser auth import paths without hiding the Scrapling-first route', async () => {
+    const telegramSends: string[] = [];
+    stubTelegramFetch(telegramSends);
+
+    const harness = await createGatewayTestHarness('browser-auth-routing-help', (config) => {
+      config.channel.telegram.botToken = '123456:ABCDEFGHIJKLMNOPQRSTUVWXyz_123456789';
+      config.browser.enabled = true;
+      config.browser.transport = 'stdio';
+      config.browser.executable = installFakeScraplingExecutable(config.runtime.workspaceRoot);
+      config.browser.allowedAgents = ['ceo-default'];
+    });
+    harnesses.push(harness);
+
+    await applyCeoBaseline(harness);
+
+    const helpResponse = await harness.inject({
+      method: 'POST',
+      url: '/api/ingress/telegram',
+      payload: createTelegramPayload({
+        updateId: 82000,
+        senderId: 8200,
+        text: '/browser help',
+        username: 'browserhelp'
+      })
+    });
+    expect(helpResponse.statusCode).toBe(200);
+    const helpBody = expectRecord(helpResponse.json(), 'browser help response');
+    expect(helpBody.status).toBe('command_applied');
+    expect(helpBody.subcommand).toBe('help');
+
+    const sentText = telegramSends.join('\n');
+    expect(sentText).toContain('Browser auth paths:');
+    expect(sentText).toContain('/browser connect <site> [chrome|edge|firefox|zen]');
+    expect(sentText).toContain('Playwright current-session import');
+    expect(sentText).toContain('mobile handoff');
+    expect(sentText).toContain('Scrapling cookie/storage-state first');
+    expect(sentText).toContain('/browser live <site|url>');
   });
 
   it(
@@ -1060,6 +1112,117 @@ describe('browser auth routing integration', () => {
       dbAfterSave.close();
 
       expect(telegramSends.join('\n')).toContain('Finish logging in');
+      expect(telegramSends.join('\n')).toContain('Saved Reddit');
+    },
+    20_000
+  );
+
+  it(
+    'treats Zen as a Firefox-compatible local profile in Telegram browser connect and save commands',
+    async () => {
+      const telegramSends: string[] = [];
+      stubTelegramFetch(telegramSends);
+
+      const harness = await createGatewayTestHarness('browser-auth-routing-connect-save-zen', (config) => {
+        const localProfileHome = path.join(config.runtime.workspaceRoot, 'local-browser-home');
+        createZenLocalProfileFixture(localProfileHome, {
+          sessionCookie: 'reddit-zen-session',
+          domain: '.reddit.com'
+        });
+        const fakeOpen = installFakeOpenCommand(config.runtime.workspaceRoot);
+        process.env.OPS_BROWSER_ZEN_PROFILE_ROOT = path.join(
+          localProfileHome,
+          'Library',
+          'Application Support',
+          'zen'
+        );
+        process.env.OPS_BROWSER_VISIBLE_ZEN_BIN = path.join(config.runtime.workspaceRoot, 'missing-zen');
+        process.env.PATH = `${fakeOpen.binDir}:${process.env.PATH ?? ''}`;
+        config.channel.telegram.botToken = '123456:ABCDEFGHIJKLMNOPQRSTUVWXyz_123456789';
+        config.browser.enabled = true;
+        config.browser.transport = 'stdio';
+        config.browser.executable = installFakeScraplingExecutable(config.runtime.workspaceRoot);
+        config.browser.allowedAgents = ['ceo-default'];
+      });
+      harnesses.push(harness);
+
+      await applyCeoBaseline(harness);
+
+      const runtimeResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/ingress/telegram',
+        payload: createTelegramPayload({
+          updateId: 84020,
+          senderId: 8402,
+          text: '/runtime process',
+          username: 'browserzen'
+        })
+      });
+      expect(runtimeResponse.statusCode).toBe(200);
+
+      const connectResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/ingress/telegram',
+        payload: createTelegramPayload({
+          updateId: 84021,
+          senderId: 8402,
+          text: '/browser connect reddit zen',
+          username: 'browserzen'
+        })
+      });
+      expect(connectResponse.statusCode).toBe(200);
+      const connectBody = expectRecord(connectResponse.json(), 'connect response');
+      expect(connectBody.status).toBe('command_applied');
+
+      const fakeOpenLogPath = path.join(harness.config.runtime.workspaceRoot, 'fake-open.log');
+      await harness.waitForCondition(
+        'telegram browser connect Zen fake open log',
+        async () => fs.existsSync(fakeOpenLogPath) && fs.readFileSync(fakeOpenLogPath, 'utf8').includes('https://www.reddit.com/'),
+        5_000
+      );
+      const fakeOpenLog = fs.readFileSync(fakeOpenLogPath, 'utf8');
+      expect(fakeOpenLog).toContain('-a');
+      expect(fakeOpenLog).toContain('Zen');
+      expect(fakeOpenLog).toContain('https://www.reddit.com/');
+
+      const telegramSessionId = await findTelegramSessionId(harness);
+      const dbAfterConnect = harness.createDb();
+      const telegramSessionAfterConnect = dbAfterConnect.getSessionById(telegramSessionId);
+      expect(telegramSessionAfterConnect).toBeDefined();
+      const connectMetadata = expectRecord(JSON.parse(telegramSessionAfterConnect?.metadataJson ?? '{}'), 'connect metadata');
+      const browserConnectDraft = expectRecord(connectMetadata.browserConnectDraft, 'browser connect draft');
+      expect(browserConnectDraft.siteKey).toBe('reddit');
+      expect(browserConnectDraft.browserKind).toBe('firefox');
+      expect(String(browserConnectDraft.browserProfileId ?? '')).toMatch(/^firefox:/);
+      dbAfterConnect.close();
+
+      const saveResponse = await harness.inject({
+        method: 'POST',
+        url: '/api/ingress/telegram',
+        payload: createTelegramPayload({
+          updateId: 84022,
+          senderId: 8402,
+          text: '/browser save reddit zen',
+          username: 'browserzen'
+        })
+      });
+      expect(saveResponse.statusCode).toBe(200);
+      const saveBody = expectRecord(saveResponse.json(), 'save response');
+      expect(saveBody.status).toBe('command_applied');
+      expect(typeof saveBody.sessionProfileId).toBe('string');
+
+      const dbAfterSave = harness.createDb();
+      const savedProfile = dbAfterSave.getBrowserSessionProfileById(String(saveBody.sessionProfileId));
+      expect(savedProfile).toBeDefined();
+      expect(savedProfile?.visibility).toBe('session_only');
+      expect(savedProfile?.browserKind).toBe('firefox');
+      expect(savedProfile?.browserProfileName).toBe('Default (release)');
+      expect(savedProfile?.browserProfilePath).toContain(path.join('Application Support', 'zen'));
+      expect(savedProfile?.lastVerificationStatus).toBe('connected');
+      dbAfterSave.close();
+
+      expect(telegramSends.join('\n')).toContain('Opened Reddit in Zen');
+      expect(telegramSends.join('\n')).toContain('/browser save reddit zen');
       expect(telegramSends.join('\n')).toContain('Saved Reddit');
     },
     20_000

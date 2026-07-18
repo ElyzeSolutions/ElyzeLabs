@@ -1,0 +1,137 @@
+{
+  "schema": "ops.live-interactive-browser-certification-archive.v1",
+  "version": 1,
+  "archivedAt": "2026-06-21T08:11:24.905Z",
+  "sourceReport": {
+    "path": ".ops/certifications/interactive-browser-live/certification-report.json",
+    "schema": "ops.live-interactive-browser-certification.v1",
+    "generatedAt": "2026-06-21T08:11:21.003Z"
+  },
+  "status": "passed",
+  "target": {
+    "url": "https://www.selenium.dev/selenium/web/web-form.html",
+    "description": "Selenium public web form fixture; non-mutating local form interaction only."
+  },
+  "gates": {
+    "externalLiveRunPassed": true,
+    "providerIsCdpChrome": true,
+    "clickPassed": true,
+    "typePassed": true,
+    "screenshotPersisted": true,
+    "pdfPersisted": true,
+    "nonMutatingTarget": true
+  },
+  "command": "OPS_RUN_LIVE_INTERACTIVE_BROWSER_CERT=1 pnpm test:interactive-browser:live",
+  "control": {
+    "ok": true,
+    "provider": "cdp_chrome",
+    "startedUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "finalUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "actions": [
+      {
+        "index": 0,
+        "type": "open",
+        "ok": true,
+        "selector": null,
+        "url": "https://www.selenium.dev/selenium/web/web-form.html",
+        "error": null
+      },
+      {
+        "index": 1,
+        "type": "read",
+        "ok": true,
+        "selector": null,
+        "url": null,
+        "error": null
+      },
+      {
+        "index": 2,
+        "type": "click",
+        "ok": true,
+        "selector": "#my-check-2",
+        "url": null,
+        "error": null
+      },
+      {
+        "index": 3,
+        "type": "type",
+        "ok": true,
+        "selector": "#my-text-id",
+        "url": null,
+        "error": null
+      },
+      {
+        "index": 4,
+        "type": "type",
+        "ok": true,
+        "selector": "textarea[name=\"my-textarea\"]",
+        "url": null,
+        "error": null
+      },
+      {
+        "index": 5,
+        "type": "snapshot",
+        "ok": true,
+        "selector": null,
+        "url": null,
+        "error": null
+      },
+      {
+        "index": 6,
+        "type": "screenshot",
+        "ok": true,
+        "selector": null,
+        "url": null,
+        "error": null
+      },
+      {
+        "index": 7,
+        "type": "pdf",
+        "ok": true,
+        "selector": null,
+        "url": null,
+        "error": null
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "interactive_artifact:1:read",
+        "actionIndex": 1,
+        "kind": "read",
+        "mimeType": "text/plain",
+        "sizeBytes": 286,
+        "persistedPath": null
+      },
+      {
+        "id": "interactive_artifact:5:snapshot",
+        "actionIndex": 5,
+        "kind": "snapshot",
+        "mimeType": "text/plain",
+        "sizeBytes": 1381,
+        "persistedPath": null
+      },
+      {
+        "id": "interactive_artifact:6:screenshot",
+        "actionIndex": 6,
+        "kind": "screenshot",
+        "mimeType": "image/png",
+        "sizeBytes": 138369,
+        "persistedPath": ".ops/certifications/interactive-browser-live/artifacts/screenshot.png"
+      },
+      {
+        "id": "interactive_artifact:7:pdf",
+        "actionIndex": 7,
+        "kind": "pdf",
+        "mimeType": "application/pdf",
+        "sizeBytes": 58858,
+        "persistedPath": ".ops/certifications/interactive-browser-live/artifacts/pdf.pdf"
+      }
+    ],
+    "error": null
+  },
+  "redaction": {
+    "omitted": "No base64, page text, typed text previews, cookies, tokens, storage state, profile ids, or profile labels are stored in this tracked archive.",
+    "outputPath": "docs/certifications/interactive-browser-live-latest.json"
+  },
+  "followUpTasks": []
+}

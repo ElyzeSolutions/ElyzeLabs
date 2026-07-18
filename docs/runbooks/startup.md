@@ -1,7 +1,7 @@
 # Startup Runbook
 
 ## Preconditions
-- Node 22+, pnpm 10+, Docker (optional).
+- Node 22.x, pnpm 10.x, Docker (optional). CI and native SQLite dependencies are pinned to Node 22 ABI.
 - Config file present at `config/control-plane.yaml`.
 
 ## Local Startup

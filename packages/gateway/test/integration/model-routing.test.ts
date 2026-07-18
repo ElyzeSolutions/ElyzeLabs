@@ -14,6 +14,9 @@ describe('gateway model routing integration', () => {
   const originalStartupMode = process.env.OPS_LLM_STARTUP_VALIDATION_MODE;
   const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
   const originalGoogleApiKey = process.env.GOOGLE_API_KEY;
+  const originalGithubToken = process.env.GITHUB_TOKEN;
+  const originalGhToken = process.env.GH_TOKEN;
+  const originalOpsGithubPat = process.env.OPS_GITHUB_PAT;
   const validTelegramBotToken = '123456:ABCDEFGHIJKLMNOPQRSTUVWXyz_123456789';
   const harnesses: GatewayTestHarness[] = [];
 
@@ -40,6 +43,21 @@ describe('gateway model routing integration', () => {
     return value;
   };
 
+  const headerValue = (headers: HeadersInit | undefined, key: string): string | null => {
+    if (!headers) {
+      return null;
+    }
+    if (headers instanceof Headers) {
+      return headers.get(key);
+    }
+    if (Array.isArray(headers)) {
+      const entry = headers.find(([headerKey]) => headerKey.toLowerCase() === key.toLowerCase());
+      return entry ? entry[1] : null;
+    }
+    const record = headers;
+    return record[key] ?? record[key.toLowerCase()] ?? null;
+  };
+
   afterEach(async () => {
     while (harnesses.length > 0) {
       await harnesses.pop()!.close();
@@ -58,6 +76,21 @@ describe('gateway model routing integration', () => {
       delete process.env.GOOGLE_API_KEY;
     } else {
       process.env.GOOGLE_API_KEY = originalGoogleApiKey;
+    }
+    if (originalGithubToken === undefined) {
+      delete process.env.GITHUB_TOKEN;
+    } else {
+      process.env.GITHUB_TOKEN = originalGithubToken;
+    }
+    if (originalGhToken === undefined) {
+      delete process.env.GH_TOKEN;
+    } else {
+      process.env.GH_TOKEN = originalGhToken;
+    }
+    if (originalOpsGithubPat === undefined) {
+      delete process.env.OPS_GITHUB_PAT;
+    } else {
+      process.env.OPS_GITHUB_PAT = originalOpsGithubPat;
     }
   });
 
@@ -476,6 +509,156 @@ describe('gateway model routing integration', () => {
         () => telegramSends.some((message) => message.includes(marker)),
         5_000
       );
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('proves selected OpenRouter process chat with a generation-level live check', async () => {
+    process.env.OPENROUTER_API_KEY = 'test-openrouter';
+    process.env.GITHUB_TOKEN = 'test-github';
+    delete process.env.GH_TOKEN;
+    delete process.env.OPS_GITHUB_PAT;
+
+    const previousFetch = globalThis.fetch;
+    const urls: string[] = [];
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      urls.push(url);
+      if (url.includes('api.telegram.org')) {
+        return new Response(JSON.stringify({ ok: true, result: { username: 'elyze_test_bot' } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (url.includes('api.github.com/user')) {
+        return new Response(JSON.stringify({ login: 'elyze-test' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (url.includes('openrouter.ai/api/v1/models')) {
+        expect(headerValue(init?.headers, 'Authorization')).toBe('Bearer test-openrouter');
+        return new Response(JSON.stringify({ data: [{ id: 'openai/gpt-5-mini' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (url.includes('openrouter.ai/api/v1/chat/completions')) {
+        const body = expectRecord(init?.body ? JSON.parse(String(init.body)) : {});
+        expect(body.model).toBe('openai/gpt-5-mini');
+        expect(headerValue(init?.headers, 'Authorization')).toBe('Bearer test-openrouter');
+        expect(headerValue(init?.headers, 'HTTP-Referer')).toBe('https://ops-control-plane.local');
+        expect(headerValue(init?.headers, 'X-Title')).toBe('Ops Control Plane');
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      return new Response(JSON.stringify({ ok: true, models: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    };
+
+    const harness = await createGatewayTestHarness('provider-process-chat-live-ok', (localConfig) => {
+      localConfig.channel.telegram.botToken = validTelegramBotToken;
+      localConfig.runtime.defaultRuntime = 'process';
+      localConfig.runtime.openrouterApiKey = 'stale-config-openrouter-key';
+    });
+    harnesses.push(harness);
+
+    try {
+      const response = await harness.inject({
+        method: 'POST',
+        url: '/api/onboarding/provider-keys/live-check',
+        payload: {
+          actor: 'process-chat-live-ok-test',
+          processChatModel: 'openrouter/openai/gpt-5-mini',
+          policy: 'orchestrator'
+        }
+      });
+      expect(response.statusCode).toBe(200);
+      const body = expectRecord(response.json());
+      const live = expectRecord(body.live);
+      const providers = expectRecord(live.providers);
+      const processChat = expectRecord(providers.processChat);
+      expect(processChat.status).toBe('ok');
+      expect(processChat.ok).toBe(true);
+      expect(processChat.provider).toBe('openrouter');
+      expect(processChat.model).toBe('openrouter/openai/gpt-5-mini');
+      expect(urls.some((url) => url.includes('openrouter.ai/api/v1/chat/completions'))).toBe(true);
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it('fails provider live check when OpenRouter metadata works but chat auth fails', async () => {
+    process.env.OPENROUTER_API_KEY = 'test-openrouter';
+    process.env.GITHUB_TOKEN = 'test-github';
+    delete process.env.GH_TOKEN;
+    delete process.env.OPS_GITHUB_PAT;
+
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('api.telegram.org')) {
+        return new Response(JSON.stringify({ ok: true, result: { username: 'elyze_test_bot' } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (url.includes('api.github.com/user')) {
+        return new Response(JSON.stringify({ login: 'elyze-test' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (url.includes('openrouter.ai/api/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'openai/gpt-5-mini' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (url.includes('openrouter.ai/api/v1/chat/completions')) {
+        return new Response(JSON.stringify({ error: { message: 'User not found.' } }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      return new Response(JSON.stringify({ ok: true, models: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    };
+
+    const harness = await createGatewayTestHarness('provider-process-chat-live-fail', (localConfig) => {
+      localConfig.channel.telegram.botToken = validTelegramBotToken;
+      localConfig.runtime.defaultRuntime = 'process';
+    });
+    harnesses.push(harness);
+
+    try {
+      const response = await harness.inject({
+        method: 'POST',
+        url: '/api/onboarding/provider-keys/live-check',
+        payload: {
+          actor: 'process-chat-live-fail-test',
+          processChatModel: 'openrouter/openai/gpt-5-mini',
+          policy: 'orchestrator'
+        }
+      });
+      expect(response.statusCode).toBe(200);
+      const body = expectRecord(response.json());
+      const live = expectRecord(body.live);
+      const providers = expectRecord(live.providers);
+      const openrouter = expectRecord(providers.openrouter);
+      const processChat = expectRecord(providers.processChat);
+      expect(openrouter.status).toBe('ok');
+      expect(processChat.status).toBe('error');
+      expect(processChat.ok).toBe(false);
+      expect(processChat.detail).toBe('User not found.');
+      expect(live.overall).toBe('failed');
     } finally {
       globalThis.fetch = previousFetch;
     }
