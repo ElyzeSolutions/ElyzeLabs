@@ -1,6 +1,6 @@
 # Nightly Certification
 
-This lane turns the individual best-in-class certification commands into one scheduled operator habit. It records deterministic gates every night, requires recent tracked live-evidence archives, and keeps secret-bearing live refresh runs opt-in until stable credentials, gateway access, and browser session profiles are available.
+This lane turns the individual best-in-class certification commands into one scheduled operator habit. It records deterministic gates every night, verifies recent tracked live-evidence archives during local and manually dispatched certification, and keeps secret-bearing live refresh runs opt-in until stable credentials, gateway access, and browser session profiles are available.
 
 ## Commands
 
@@ -44,9 +44,9 @@ OPS_NIGHTLY_CERT_INCLUDE_LIVE=1 OPS_NIGHTLY_CERT_STRICT_LIVE=1 pnpm test:nightly
 
 ## Scheduled Workflow
 
-`.github/workflows/nightly-certification.yml` runs at `03:17 UTC` daily and can also be started manually from GitHub Actions.
+`.github/workflows/nightly-certification.yml` runs at `03:17 UTC` daily and can also be started manually from GitHub Actions. Browser actions use a 45-second default timeout so the first cold browser session has the same readiness budget as warmed follow-up lanes.
 
-The default scheduled run executes deterministic gates and verifies tracked live evidence freshness. Manual dispatch can set `include_live=true` to refresh live lanes with current credentials and session profiles.
+The scheduled run executes deterministic gates with `OPS_NIGHTLY_CERT_REQUIRE_LIVE_EVIDENCE=0`. Stale tracked live evidence remains a manual/live-certification concern instead of making every deterministic nightly run fail after the freshness window expires. Manual dispatch keeps live-evidence enforcement enabled and can set `include_live=true` to exercise live lanes with current credentials and session profiles.
 
 ## Deterministic Lanes
 
@@ -70,7 +70,7 @@ The wrapper reads each child certification report after execution. A child scrip
 
 ## Archived Live Evidence
 
-These are required by default unless `OPS_NIGHTLY_CERT_REQUIRE_LIVE_EVIDENCE=0` or `--no-live-evidence` is set:
+These are required by default for local and manually dispatched certification unless `OPS_NIGHTLY_CERT_REQUIRE_LIVE_EVIDENCE=0` or `--no-live-evidence` is set. The scheduled GitHub Actions run sets that flag to `0` so its result reflects deterministic regressions:
 
 - `docs/certifications/interactive-browser-live-latest.json`
 - `docs/certifications/live-social-browser-latest.json`
@@ -95,7 +95,8 @@ GitHub Actions also uploads `.ops/certifications/**` reports as workflow artifac
 
 - Deterministic certification lanes stay runnable from one command and one scheduled workflow.
 - Live certification readiness is visible and cannot be confused with deterministic pass/fail status.
-- Recent live evidence is required even when secret-bearing live refresh lanes are not selected.
+- Recent live evidence is required during local and manually dispatched certification even when secret-bearing live refresh lanes are not selected.
+- Scheduled deterministic results remain actionable when tracked live archives age out between operator-managed refreshes.
 - Reports distinguish `passed`, `failed`, `blocked`, `skipped`, and dry-run `planned` states.
 - Archives omit command output and live artifact payloads.
 
