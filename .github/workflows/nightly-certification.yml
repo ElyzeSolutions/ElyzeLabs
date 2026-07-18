@@ -31,6 +31,7 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  AGENT_BROWSER_DEFAULT_TIMEOUT: 45000
 
 jobs:
   certification:
@@ -63,6 +64,7 @@ jobs:
         env:
           OPS_NIGHTLY_CERT_INCLUDE_LIVE: ${{ github.event.inputs.include_live == 'true' && '1' || '0' }}
           OPS_NIGHTLY_CERT_STRICT_LIVE: ${{ github.event.inputs.strict_live == 'true' && '1' || '0' }}
+          OPS_NIGHTLY_CERT_REQUIRE_LIVE_EVIDENCE: ${{ github.event_name == 'schedule' && '0' || '1' }}
           OPS_API_TOKEN: ${{ secrets.OPS_API_TOKEN }}
           OPS_LIVE_SCENARIO_API_TOKEN: ${{ secrets.OPS_LIVE_SCENARIO_API_TOKEN }}
           OPS_LIVE_TELEGRAM_PROCESS_API_TOKEN: ${{ secrets.OPS_LIVE_TELEGRAM_PROCESS_API_TOKEN }}

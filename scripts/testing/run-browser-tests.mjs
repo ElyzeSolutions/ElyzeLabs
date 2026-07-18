@@ -1451,6 +1451,7 @@ async function runBrowserScheduleSmoke(session, dashboardBaseUrl, gatewayBaseUrl
 async function runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayBaseUrl, headers, seed) {
   const normalizedBaseUrl = dashboardBaseUrl.replace(/\/$/, '');
   const detailUrl = `${gatewayBaseUrl}/api/backlog/items/${encodeURIComponent(seed.itemId)}/delivery/detail`;
+  const cardSelector = `[data-testid=${JSON.stringify(`backlog-card-${seed.itemId}`)}]`;
   const initialDetail = seed.detail;
   const blockerTitle = String(
     initialDetail?.contracts?.githubDelivery?.blockedReasonTaxonomy?.checks_failed?.title ?? 'Checks failed'
@@ -1476,20 +1477,15 @@ async function runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayB
   }
   await sleep(500);
 
-  const openDrawer = run('agent-browser', [
-    '--session',
-    session,
-    'wait',
-    '--fn',
-    `(() => {
-      const target = [...document.querySelectorAll('article')].find((entry) => entry.textContent?.includes(${JSON.stringify(seed.title)}));
-      if (!target) return false;
-      target.click();
-      return true;
-    })()`
-  ]);
+  const cardReady = run('agent-browser', ['--session', session, 'wait', cardSelector]);
+  if (cardReady.status !== 0) {
+    console.error('browser smoke failed: seeded GitHub delivery card did not render.');
+    console.error(cardReady.stderr || cardReady.stdout);
+    process.exit(cardReady.status ?? 1);
+  }
+  const openDrawer = run('agent-browser', ['--session', session, 'click', cardSelector]);
   if (openDrawer.status !== 0) {
-    console.error('browser smoke failed: backlog task drawer did not open for seeded GitHub delivery item.');
+    console.error('browser smoke failed: seeded GitHub delivery card could not be clicked.');
     console.error(openDrawer.stderr || openDrawer.stdout);
     process.exit(openDrawer.status ?? 1);
   }
@@ -1511,6 +1507,21 @@ async function runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayB
   if (cockpitReady.status !== 0) {
     console.error('browser smoke failed: seeded task drawer did not finish loading API-backed delivery policy detail.');
     console.error(cockpitReady.stderr || cockpitReady.stdout);
+    const failedBody = run('agent-browser', ['--session', session, 'get', 'text', 'body']);
+    console.error(`dashboard body excerpt:\n${`${failedBody.stdout ?? ''}\n${failedBody.stderr ?? ''}`.slice(0, 4000)}`);
+    try {
+      const latestDetail = await requestJson(detailUrl, { headers });
+      console.error(
+        `delivery detail API remained reachable: ${JSON.stringify({
+          status: latestDetail?.delivery?.status ?? null,
+          githubState: latestDetail?.delivery?.githubState ?? null,
+          policyVersion: latestDetail?.delivery?.metadata?.githubPolicy?.version ?? null,
+          journalEntries: Array.isArray(latestDetail?.journal?.entries) ? latestDetail.journal.entries.length : 0
+        })}`
+      );
+    } catch (error) {
+      console.error(`delivery detail API diagnostic failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
     process.exit(cockpitReady.status ?? 1);
   }
 
