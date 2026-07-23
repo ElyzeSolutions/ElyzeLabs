@@ -13,6 +13,8 @@ const KANBAN_VISUAL_REPORT_PATH = path.join(KANBAN_VISUAL_REPORT_DIR, 'browser-v
 const CHAT_PROCESS_REPORT_DIR = path.resolve(process.cwd(), '.ops', 'certifications', 'chat-process-runtime');
 const CHAT_PROCESS_SCREENSHOT_DIR = path.join(CHAT_PROCESS_REPORT_DIR, 'screenshots');
 const CHAT_PROCESS_VISUAL_REPORT_PATH = path.join(CHAT_PROCESS_REPORT_DIR, 'browser-visual-report.json');
+// 0.28+ requires Node 24, while this repository and its Actions workflows intentionally run Node 22.
+const AGENT_BROWSER_FALLBACK_PACKAGE = 'agent-browser@0.27.3';
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -851,7 +853,7 @@ function createBrowserCommandWrapper() {
   const wrapperPath = path.join(wrapperRoot, 'agent-browser');
   fs.writeFileSync(
     wrapperPath,
-    ['#!/usr/bin/env bash', 'exec npx -y agent-browser "$@"'].join('\n'),
+    ['#!/usr/bin/env bash', `exec npx -y ${AGENT_BROWSER_FALLBACK_PACKAGE} "$@"`].join('\n'),
     { encoding: 'utf8', mode: 0o755 }
   );
   fs.chmodSync(wrapperPath, 0o755);
@@ -981,7 +983,7 @@ if (hasAgentBrowser) {
   }
   console.log('agent-browser is available and responsive.');
 } else {
-  const fallbackCheck = spawnSync('npx', ['-y', 'agent-browser', '--help'], { encoding: 'utf8' });
+  const fallbackCheck = spawnSync('npx', ['-y', AGENT_BROWSER_FALLBACK_PACKAGE, '--help'], { encoding: 'utf8' });
   if (fallbackCheck.status === 0) {
     cleanupAgentBrowserWrapper = createBrowserCommandWrapper();
     console.log(
@@ -2259,6 +2261,7 @@ try {
       console.error('browser smoke failed: Backlog page missing lifecycle filter/decision stream affordances.');
       process.exit(1);
     }
+    await runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayBaseUrl, activeGatewayHeaders, githubCockpitSeed);
     try {
       await captureKanbanWorkboardVisuals(session, dashboardBaseUrl);
     } catch (error) {
@@ -2266,7 +2269,6 @@ try {
       console.error(`browser smoke failed: Backlog/Kanban visual report=${KANBAN_VISUAL_REPORT_PATH}`);
       process.exit(1);
     }
-    await runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayBaseUrl, activeGatewayHeaders, githubCockpitSeed);
   } else {
   const hasLlmNav = rootText.includes('LLM Router') || rootText.includes('LLM') || rootText.includes('Costs');
   const hasPreferences = rootText.includes('Preferences') || rootText.includes('Settings') || rootText.includes('Access');
@@ -2467,6 +2469,7 @@ try {
     console.error('browser smoke failed: Backlog page missing lifecycle filter/decision stream affordances.');
     process.exit(1);
   }
+  await runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayBaseUrl, activeGatewayHeaders, githubCockpitSeed);
   try {
     await captureKanbanWorkboardVisuals(session, dashboardBaseUrl);
   } catch (error) {
@@ -2474,8 +2477,6 @@ try {
     console.error(`browser smoke failed: Backlog/Kanban visual report=${KANBAN_VISUAL_REPORT_PATH}`);
     process.exit(1);
   }
-
-  await runGithubDeliveryCockpitSmoke(session, dashboardBaseUrl, gatewayBaseUrl, activeGatewayHeaders, githubCockpitSeed);
   await runBrowserOpsSmoke(session, dashboardBaseUrl, {
     targetAgentId: browserSmokeAgentId
   });
