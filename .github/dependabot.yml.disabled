@@ -1,3 +1,5 @@
+# Temporarily suspended to keep repository automation at zero cost.
+# Restore this file to `.github/dependabot.yml` when pipelines resume.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
