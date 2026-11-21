@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Suspense, lazy, useCallback, useEffect, useMemo } from 'react';
-import { Link, Outlet, useLocation, useNavigate, useRouter } from '@tanstack/react-router';
+import { Link, Outlet, useLocation, useNavigate, useRouter, type ErrorComponentProps } from '@tanstack/react-router';
 
 import { onboardingStatusQueryOptions } from './queryOptions';
 import { useRealtimeSync } from './realtime';
@@ -33,13 +33,14 @@ export function DefaultNotFound() {
   );
 }
 
-export function DefaultCatchBoundary({ error }: { error: Error }) {
+export function DefaultCatchBoundary({ error }: ErrorComponentProps) {
   const router = useRouter();
+  const message = error instanceof Error && error.message ? error.message : 'Unexpected route error.';
 
   return (
     <section className="rounded-2xl border border-rose-500/10 bg-rose-500/5 p-8 text-center">
       <p className="text-sm font-medium text-white">Route load failed</p>
-      <p className="mt-2 text-xs text-[var(--shell-muted)]">{error.message || 'Unexpected route error.'}</p>
+      <p className="mt-2 text-xs text-[var(--shell-muted)]">{message}</p>
       <button
         type="button"
         onClick={() => void router.invalidate()}
