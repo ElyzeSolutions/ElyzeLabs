@@ -400,6 +400,18 @@ function resolveRuntimeAdapterLaunchCommand(config: AdapterCommandConfig, metada
   return resolveIfRelative(config.command);
 }
 
+function resolveTmuxLaunchCommand(config: AdapterCommandConfig, context: RuntimeAdapterContext): string {
+  const command = resolveRuntimeAdapterLaunchCommand(config, context.metadata);
+  if (path.isAbsolute(command) || command.startsWith('-')) {
+    return command;
+  }
+
+  // A tmux login shell may resolve a different binary from the gateway's PATH.
+  const result = spawnSync('which', [command], { cwd: context.workspacePath, encoding: 'utf8' });
+  const executable = result.stdout?.trim();
+  return result.status === 0 && executable && path.isAbsolute(executable) ? executable : command;
+}
+
 function resolveRuntimeAdapterLaunchArgs(args: string[], metadata: Record<string, unknown>): string[] {
   const baseDir = resolveRuntimeAdapterBaseDir(metadata);
   return args.map((entry) => {
@@ -1574,7 +1586,7 @@ class ProcessBackedAdapter implements RuntimeAdapter {
     await fs.writeFile(outputFile, '', 'utf8');
     await fs.writeFile(promptFile, `${prompt}\n`, 'utf8');
 
-    const launchCommand = resolveRuntimeAdapterLaunchCommand(this.command, context.metadata);
+    const launchCommand = resolveTmuxLaunchCommand(this.command, context);
     const launchArgs = resolveRuntimeAdapterLaunchArgs(commandArgs, context.metadata);
     const commandScript = [shellQuote(launchCommand), ...launchArgs.map((entry) => shellQuote(entry))].join(' ');
     const script = [
@@ -1693,7 +1705,9 @@ class ProcessBackedAdapter implements RuntimeAdapter {
     const { sessionName, runtimeDir, outputFile, promptFile, statusFile } = files;
     const gitAutomationEnv = buildGitAutomationEnvironment();
     const scriptFile = path.join(runtimeDir, `send-${context.runId}.sh`);
-    const commandScript = [shellQuote(this.command.command), ...commandArgs.map((entry) => shellQuote(entry))].join(' ');
+    const launchCommand = resolveTmuxLaunchCommand(this.command, context);
+    const launchArgs = resolveRuntimeAdapterLaunchArgs(commandArgs, context.metadata);
+    const commandScript = [shellQuote(launchCommand), ...launchArgs.map((entry) => shellQuote(entry))].join(' ');
     const script = [
       '#!/usr/bin/env bash',
       'set +e',
